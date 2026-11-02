@@ -83,12 +83,24 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                 )
             },
             snackbarHost = { SnackbarHost(snackbar) },
-            floatingActionButton = {
-                if (screen == "home" && !busy) ExtendedFloatingActionButton(
-                    onClick = { if (!busy) vm.create { id -> documentId = id; screen = "camera" } },
-                    icon = { AppIcon(R.drawable.ic_camera, null) }, text = { Text(stringResource(R.string.new_scan)) },
-                    containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
-                )
+            bottomBar = {
+                if (screen == "home") Surface(tonalElevation = 1.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Button(
+                            enabled = !busy,
+                            onClick = { vm.create { id -> documentId = id; screen = "camera" } },
+                            modifier = Modifier.heightIn(min = 56.dp),
+                            shape = RoundedCornerShape(20.dp),
+                        ) {
+                            AppIcon(R.drawable.ic_camera, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.new_scan))
+                        }
+                    }
+                }
             },
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
@@ -154,7 +166,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
 
 @Composable
 private fun HomeScreen(documents: List<DocumentSummary>, busy: Boolean, onOpen: (String) -> Unit, onImport: () -> Unit, onDelete: (DocumentSummary) -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineLarge)
             Text(stringResource(R.string.library_subtitle), Modifier.padding(top = 8.dp, bottom = 20.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
