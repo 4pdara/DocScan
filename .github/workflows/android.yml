@@ -1,0 +1,81 @@
+name: Android checks and APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install pinned SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Test, lint and build
+        run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --console=plain
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocScan-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          retention-days: 14
+
+  device-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable hardware acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Test PDF export on Android and capture the home screen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          disable-animations: true
+          script: |
+            ./gradlew connectedDebugAndroidTest --console=plain
+            adb shell am start -n io.github.user4pdara.docscan.debug/com.docscan.android.MainActivity
+            adb shell input keyevent 82
+            sleep 3
+            adb shell pidof io.github.user4pdara.docscan.debug
+            mkdir -p app/build/reports/screenshots
+            adb exec-out screencap -p > app/build/reports/screenshots/home.png
+      - name: Upload device test reports and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-device-reports
+          path: app/build/reports/
+          retention-days: 14
