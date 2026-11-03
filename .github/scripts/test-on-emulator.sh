@@ -5,6 +5,7 @@ collect_device_reports() {
   mkdir -p app/build/reports/screenshots
   adb pull /sdcard/Pictures/DocScanTest app/build/reports/screenshots/ || true
   adb logcat -d > app/build/reports/screenshots/logcat.txt || true
+  adb logcat -d -s DocScanTest:E || true
   adb exec-out screencap -p > app/build/reports/screenshots/last-screen.png || true
 }
 trap collect_device_reports EXIT

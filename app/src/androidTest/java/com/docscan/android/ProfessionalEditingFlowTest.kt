@@ -117,10 +117,17 @@ class ProfessionalEditingFlowTest {
         }
         screenshot("crop-loupe.png")
         canvas.performTouchInput { up() }
+        val navigation = androidx.lifecycle.ViewModelProvider(ui.activity)[DocScanViewModel::class.java]
+        assertEquals("crop", navigation.screen)
+        assertEquals(id, navigation.pageId)
         ui.activityRule.scenario.recreate()
         try {
             ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.crop_hint)).fetchSemanticsNodes().isNotEmpty() }
         } catch (error: Throwable) {
+            val restored = androidx.lifecycle.ViewModelProvider(ui.activity)[DocScanViewModel::class.java]
+            android.util.Log.e("DocScanTest", "restored route=" + restored.screen +
+                ", selected page matches=" + (restored.pageId == id) +
+                ", database page exists=" + runBlocking { app.database.documents().page(id) != null })
             runCatching { screenshot("crop-restore-failure.png") }
             println(ui.onAllNodes(isRoot()).onLast().printToString())
             throw error

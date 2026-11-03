@@ -41,6 +41,7 @@ import com.docscan.android.processing.ScanFilter
 import com.docscan.android.processing.AutoCaptureGate
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -161,7 +162,14 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         val page = pages.firstOrNull { it.id == pageId }
                         if (page != null) PageEditor(page, vm, busy, onCrop = { screen = "crop" },
                             onRetake = { retakePageId = page.id; screen = "camera" })
-                        else if (loadedPages != null) LaunchedEffect(Unit) { screen = "document" }
+                        else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
+                            val selectedPage = pageId
+                            val selectedDocument = documentId
+                            // A cached list can lag behind a saved route. Confirm deletion in Room first.
+                            if (selectedDocument == null || vm.repository.observePages(selectedDocument).first().none { it.id == selectedPage }) {
+                                screen = "document"
+                            }
+                        }
                         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
                     "crop" -> {
@@ -172,7 +180,14 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                                 onCancel = { screen = "editor" },
                                 onApply = { quad, format -> vm.crop(page.id, quad, format) { screen = "editor" } })
                         }
-                        else if (loadedPages != null) LaunchedEffect(Unit) { screen = "document" }
+                        else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
+                            val selectedPage = pageId
+                            val selectedDocument = documentId
+                            // A cached list can lag behind a saved route. Confirm deletion in Room first.
+                            if (selectedDocument == null || vm.repository.observePages(selectedDocument).first().none { it.id == selectedPage }) {
+                                screen = "document"
+                            }
+                        }
                         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
                     else -> DocumentScreen(document, pages, vm, busy,
