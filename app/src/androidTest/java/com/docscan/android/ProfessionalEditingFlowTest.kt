@@ -8,7 +8,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.content.res.Configuration
 import android.content.res.Resources
-import android.view.ContextThemeWrapper
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
@@ -107,14 +106,22 @@ class ProfessionalEditingFlowTest {
         val size = canvas.fetchSemanticsNode().size
         val scale = minOf(size.width / 300f, size.height / 400f)
         val top = (size.height - 400 * scale) / 2
+        val slop = android.view.ViewConfiguration.get(ui.activity).scaledTouchSlop.toFloat()
         canvas.performTouchInput {
             down(androidx.compose.ui.geometry.Offset(size.width / 2f, top + 2f))
-            moveTo(androidx.compose.ui.geometry.Offset(size.width / 2f, top + 40f), 300)
+            moveTo(androidx.compose.ui.geometry.Offset(size.width / 2f, top + slop + 4f), 100)
+            moveTo(androidx.compose.ui.geometry.Offset(size.width / 2f, top + slop + 400 * scale * .2f), 200)
         }
         screenshot("crop-loupe.png")
         canvas.performTouchInput { up() }
         ui.activityRule.scenario.recreate()
-        ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.crop_hint)).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.crop_hint)).fetchSemanticsNodes().isNotEmpty() }
+        } catch (error: Throwable) {
+            runCatching { screenshot("crop-restore-failure.png") }
+            println(ui.onAllNodes(isRoot()).onLast().printToString())
+            throw error
+        }
         ui.onNodeWithText(text(R.string.crop_options)).performClick()
         ui.onNodeWithText(text(R.string.format_letter)).assertIsSelected()
         ui.onNodeWithText(text(R.string.done)).performClick()
@@ -129,17 +136,23 @@ class ProfessionalEditingFlowTest {
         ui.onNodeWithText(text(R.string.format_letter)).assertIsSelected()
     }
 
+    @Suppress("DEPRECATION")
     @Test fun hebrewEditorFiltersAdjustmentsAndCropOptionsRemainUsable() {
-        val configuration = Configuration(ui.activity.resources.configuration).apply { setLocale(Locale("he")) }
-        val localized = ContextThemeWrapper(ui.activity, ui.activity.applicationInfo.theme).apply { applyOverrideConfiguration(configuration) }
-        labels = localized.resources
+        val original = Configuration(ui.activity.resources.configuration)
+        val originalApp = Configuration(app.resources.configuration)
+        val configuration = Configuration(original).apply { setLocale(Locale.forLanguageTag("he")) }
+        labels = ui.activity.resources
         ui.runOnUiThread {
+            // Dialog windows create their own Android context; update the actual test Activity resources.
+            ui.activity.resources.updateConfiguration(configuration, ui.activity.resources.displayMetrics)
+            app.resources.updateConfiguration(configuration, app.resources.displayMetrics)
             ui.activity.setContent {
-                CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides configuration) {
+                CompositionLocalProvider(LocalContext provides ui.activity, LocalConfiguration provides configuration) {
                     DocScanTheme { DocScanApp() }
                 }
             }
         }
+        try {
         ui.onNodeWithText(text(R.string.library_title)).assertIsDisplayed()
         screenshot("he-home.png")
         editingPage { id, _ ->
@@ -156,6 +169,12 @@ class ProfessionalEditingFlowTest {
             ui.onNodeWithText(text(R.string.crop_options)).performClick()
             ui.onNodeWithText(text(R.string.format_a4)).performClick()
             screenshot("he-crop-options.png")
+        }
+        } finally {
+            ui.runOnUiThread {
+                ui.activity.resources.updateConfiguration(original, ui.activity.resources.displayMetrics)
+                app.resources.updateConfiguration(originalApp, app.resources.displayMetrics)
+            }
         }
     }
 }

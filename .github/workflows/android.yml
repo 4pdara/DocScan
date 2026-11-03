@@ -67,18 +67,7 @@ jobs:
           target: default
           arch: x86_64
           disable-animations: true
-          script: |
-            ./gradlew connectedDebugAndroidTest --console=plain
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            mkdir -p app/build/reports/screenshots
-            adb pull /sdcard/Pictures/DocScanTest app/build/reports/screenshots/
-            adb logcat -c
-            adb shell am start -W -n io.github.user4pdara.docscan.debug/com.docscan.android.MainActivity
-            adb shell input keyevent 82
-            sleep 3
-            adb logcat -d > app/build/reports/screenshots/logcat.txt
-            adb shell pidof io.github.user4pdara.docscan.debug
-            adb exec-out screencap -p > app/build/reports/screenshots/home.png
+          script: bash .github/scripts/test-on-emulator.sh
       - name: Upload device test reports and screenshot
         if: always()
         uses: actions/upload-artifact@v4

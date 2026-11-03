@@ -52,7 +52,7 @@ fun FilterPicker(page: PageEntity, repository: DocumentRepository, busy: Boolean
     val filtersLabel = stringResource(R.string.filters_label)
     val thumbnails = rememberLazyListState(initialFirstVisibleItemIndex = ScanFilter.entries.indexOfFirst { it.name == page.filter }.coerceAtLeast(0))
     val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .85f).toDp() }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.open_filters), style = MaterialTheme.typography.titleLarge)
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -97,7 +97,7 @@ fun AdjustmentSheet(page: PageEntity, repository: DocumentRepository, onApply: (
     var settings by rememberSaveable(page.id, page.brightness, page.contrast, page.saturation, page.sharpness,
         stateSaver = adjustmentsSaver) { mutableStateOf(page.adjustments()) }
     val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .85f).toDp() }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).padding(horizontal = 20.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.image_adjustments), style = MaterialTheme.typography.titleLarge)

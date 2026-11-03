@@ -128,7 +128,7 @@ class ScanEditingFlowTest {
             ui.onNodeWithContentDescription(text(R.string.back)).performClick()
             ui.onNodeWithText(text(R.string.edit)).performClick()
             ui.onNodeWithText(text(R.string.open_filters)).performClick()
-            ui.onNodeWithText("25%").assertIsDisplayed()
+            ui.onNodeWithText("25%").performScrollTo().assertIsDisplayed()
             assertEquals("CLEAN_COLOR", runBlocking { app.database.documents().page(page.id)?.filter })
             assertArrayEquals(original, app.repository.source(page).readBytes())
         } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }

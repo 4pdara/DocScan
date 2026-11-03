@@ -111,7 +111,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
 @Composable
 private fun CropOptions(rectangle: Boolean, format: PageFormat, onRectangle: (Boolean) -> Unit,
     onFormat: (PageFormat) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.crop_mode), style = MaterialTheme.typography.titleLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
