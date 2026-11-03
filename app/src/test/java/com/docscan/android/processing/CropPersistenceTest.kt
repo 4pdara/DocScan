@@ -24,6 +24,53 @@ import java.util.UUID
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CropPersistenceTest {
+    @Test fun cleanupChoiceAndStrengthSurviveReopenWithoutChangingSource() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "cleanup-${UUID.randomUUID()}.db"
+        var database = DocScanDatabase.open(context, name)
+        var repository = DocumentRepository(context, database)
+        val input = File(context.cacheDir, "cleanup-${UUID.randomUUID()}.png")
+        var id: String? = null
+        try {
+            val image = Bitmap.createBitmap(120, 160, Bitmap.Config.ARGB_8888)
+            image.eraseColor(Color.rgb(160, 160, 160))
+            input.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
+            val original = input.readBytes()
+            val doc = repository.create("Cleanup").also { id = it }
+            val page = repository.importImage(doc, Uri.fromFile(input))
+            repository.setFilter(page.id, ScanFilter.CLEAN_COLOR); repository.setFilterStrength(page.id, 35)
+            database.close(); database = DocScanDatabase.open(context, name); repository = DocumentRepository(context, database)
+            val saved = requireNotNull(database.documents().page(page.id))
+            assertEquals("CLEAN_COLOR", saved.filter); assertEquals(35, saved.filterStrength)
+            val zero = ImagePipeline.render(repository.source(saved), 0, ScanFilter.CLEAN_COLOR, 1000, filterStrength = 0)
+            val full = ImagePipeline.render(repository.source(saved), 0, ScanFilter.CLEAN_COLOR, 1000, filterStrength = 100)
+            try { assertEquals(Color.rgb(160, 160, 160), zero.getPixel(60, 80)); assertEquals(Color.WHITE, full.getPixel(60, 80)) }
+            finally { zero.recycle(); full.recycle() }
+            assertArrayEquals(original, repository.source(saved).readBytes())
+        } finally { id?.let { repository.deleteDocument(it) }; database.close(); context.deleteDatabase(name); input.delete() }
+    }
+
+    @Test fun versionTwoCropAndOriginalSurviveCleanupMigration() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "migration-two-${UUID.randomUUID()}.db"
+        val path = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
+        val crop = CropQuad(CropPoint(.1f, .1f), CropPoint(.9f, .1f), CropPoint(.9f, .9f), CropPoint(.1f, .9f)).encode()
+        SQLiteDatabase.openOrCreateDatabase(path, null).use { old ->
+            old.execSQL("CREATE TABLE documents (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)")
+            old.execSQL("CREATE TABLE pages (id TEXT NOT NULL PRIMARY KEY, documentId TEXT NOT NULL, position INTEGER NOT NULL, sourceFile TEXT NOT NULL, rotation INTEGER NOT NULL, filter TEXT NOT NULL, crop TEXT, FOREIGN KEY(documentId) REFERENCES documents(id) ON DELETE CASCADE)")
+            old.execSQL("CREATE INDEX index_pages_documentId ON pages(documentId)")
+            old.execSQL("INSERT INTO documents VALUES ('doc', 'Existing crop', 1, 1)")
+            old.execSQL("INSERT INTO pages VALUES ('page', 'doc', 0, 'original.source', 90, 'GRAYSCALE', ?)", arrayOf(crop))
+            old.version = 2
+        }
+        val database = DocScanDatabase.open(context, name)
+        try {
+            val page = requireNotNull(database.documents().page("page"))
+            assertEquals(crop, page.crop); assertEquals(90, page.rotation)
+            assertEquals("GRAYSCALE", page.filter); assertEquals(70, page.filterStrength)
+        } finally { database.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun perspectiveMappingKeepsAllFourCornerColorsInOrder() {
         val bitmap = Bitmap.createBitmap(320, 240, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(Color.WHITE)

@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.filters.SdkSuppress
@@ -92,6 +93,65 @@ class ScanEditingFlowTest {
             ui.onNodeWithText(text(R.string.reset_crop)).performClick()
             ui.onNodeWithText(text(R.string.apply_crop)).performClick()
             ui.waitUntil(10_000) { runBlocking { app.database.documents().page(page.id)?.crop == null } }
+            assertArrayEquals(original, app.repository.source(page).readBytes())
+        } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }
+    }
+
+    @Test fun cleanupFilterAndStrengthCanBeSelectedAndReopened() {
+        val title = "Cleanup UI ${UUID.randomUUID()}"
+        val input = File(ui.activity.cacheDir, "cleanup-ui.png")
+        val bitmap = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        for (x in 0 until 300) canvas.drawLine(x.toFloat(), 0f, x.toFloat(), 400f,
+            Paint().apply { color = Color.rgb(140 + x / 4, 140 + x / 4, 140 + x / 4) })
+        for (y in 100..300 step 30) canvas.drawRect(50f, y.toFloat(), 250f, y + 3f, Paint().apply { color = Color.DKGRAY })
+        input.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val original = input.readBytes()
+        val id = runBlocking { app.repository.create(title) }
+        try {
+            val page = runBlocking { app.repository.importImage(id, Uri.fromFile(input)) }
+            ui.waitUntil(10_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithText(title).performScrollTo().performClick()
+            ui.onNodeWithText(text(R.string.edit)).performClick()
+            ui.onNodeWithContentDescription(text(R.string.filters_label))
+                .performScrollToNode(hasText(text(R.string.clean_color)))
+            ui.onNodeWithText(text(R.string.clean_color)).performClick()
+            ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.filter_strength)).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithContentDescription(text(R.string.filter_strength)).performSemanticsAction(SemanticsActions.SetProgress) { it(25f) }
+            ui.waitUntil(10_000) { runBlocking { app.database.documents().page(page.id)?.filterStrength == 25 } }
+            saveScreenshot("image-cleanup.png")
+            ui.onNodeWithContentDescription(text(R.string.back)).performClick()
+            ui.onNodeWithText(text(R.string.edit)).performClick()
+            ui.onNodeWithText("25%").assertIsDisplayed()
+            assertEquals("CLEAN_COLOR", runBlocking { app.database.documents().page(page.id)?.filter })
+            assertArrayEquals(original, app.repository.source(page).readBytes())
+        } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }
+    }
+
+    @Test fun cameraThumbnailsOpenReviewAndRetakeCanBeCancelledSafely() {
+        val title = "Preview strip ${UUID.randomUUID()}"
+        val input = File(ui.activity.cacheDir, "preview-strip.png")
+        val bitmap = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.LTGRAY)
+        input.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val original = input.readBytes()
+        val id = runBlocking { app.repository.create(title) }
+        try {
+            val page = runBlocking { app.repository.importImage(id, Uri.fromFile(input)) }
+            ui.waitUntil(10_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithText(title).performScrollTo().performClick()
+            ui.onNodeWithText(text(R.string.save_images)).assertIsDisplayed()
+            ui.onNodeWithText(text(R.string.add_pages)).performClick()
+            ui.waitUntil(10_000) { ui.onAllNodesWithText(ui.activity.getString(R.string.page_label, 1)).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithText(ui.activity.getString(R.string.page_label, 1)).performClick()
+            ui.onNodeWithText(text(R.string.retake)).performClick()
+            ui.onNodeWithContentDescription(text(R.string.fast_scan)).assertIsOff()
+            ui.onNodeWithText(text(R.string.cancel)).performClick()
+            ui.onNodeWithText(text(R.string.retake)).assertIsDisplayed()
+            ui.onNodeWithContentDescription(text(R.string.back)).performClick()
+            ui.onNodeWithText(ui.activity.getString(R.string.page_label, 1)).assertIsDisplayed()
+            saveScreenshot("camera-pages.png")
+            assertEquals(1, runBlocking { app.database.documents().pages(id).size })
             assertArrayEquals(original, app.repository.source(page).readBytes())
         } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }
     }

@@ -18,7 +18,11 @@ import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +48,8 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.docscan.android.R
+import com.docscan.android.data.DocumentRepository
+import com.docscan.android.data.PageEntity
 import com.docscan.android.processing.AutoCaptureGate
 import com.docscan.android.processing.CaptureDecision
 import com.docscan.android.processing.CaptureStatus
@@ -55,7 +61,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 fun CameraScreen(
-    pageCount: Int, busy: Boolean, onDone: () -> Unit,
+    pages: List<PageEntity>, repository: DocumentRepository, gate: AutoCaptureGate,
+    busy: Boolean, manualOnly: Boolean, onDone: () -> Unit, onReview: (String) -> Unit,
     onCapture: (File, (Boolean) -> Unit) -> Unit, onFailure: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -79,7 +86,7 @@ fun CameraScreen(
         }
         return
     }
-    var automatic by rememberSaveable { mutableStateOf(true) }
+    var automatic by rememberSaveable { mutableStateOf(!manualOnly) }
     var paused by rememberSaveable { mutableStateOf(false) }
     val controller = remember(automatic) { LifecycleCameraController(context).apply {
         setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
@@ -91,7 +98,8 @@ fun CameraScreen(
         scaleType = PreviewView.ScaleType.FIT_CENTER
         this.controller = controller
     } }
-    val gate = remember { AutoCaptureGate() }
+    val thumbnails = rememberLazyListState()
+    LaunchedEffect(pages.size) { if (pages.isNotEmpty()) thumbnails.animateScrollToItem(pages.lastIndex) }
     var cameraReady by remember(controller) { mutableStateOf(false) }
     var unavailable by remember(controller) { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
@@ -188,9 +196,9 @@ fun CameraScreen(
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(fastLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            Switch(automatic, modifier = Modifier.semantics { contentDescription = fastLabel }, enabled = !busy && !capturing,
+            Switch(automatic, modifier = Modifier.semantics { contentDescription = fastLabel }, enabled = !busy && !capturing && !manualOnly,
                 onCheckedChange = { automatic = it; paused = false })
-            Text(stringResource(R.string.page_count, pageCount), style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.page_count, pages.size), style = MaterialTheme.typography.labelLarge)
         }
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
             if (!unavailable) AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
@@ -214,6 +222,15 @@ fun CameraScreen(
                 }
             }
         }
+        if (pages.isNotEmpty() && !manualOnly) LazyRow(state = thumbnails, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
+                Column(Modifier.width(58.dp).clickable(enabled = !busy && !capturing) { onReview(page.id) },
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    PagePreview(page, repository, Modifier.fillMaxWidth().height(56.dp), edge = 160)
+                    Text(stringResource(R.string.page_label, index + 1), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(if (automatic) R.string.auto_scan_hint else R.string.manual_scan_hint), Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -231,7 +248,7 @@ fun CameraScreen(
                 if (capturing || busy) CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                 else { AppIcon(R.drawable.ic_camera, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.capture)) }
             }
-            TextButton(enabled = !busy && !capturing, onClick = onDone) { Text(stringResource(R.string.done)) }
+            TextButton(enabled = !busy && !capturing, onClick = onDone) { Text(stringResource(if (manualOnly) R.string.cancel else R.string.done)) }
         }
     }
 }

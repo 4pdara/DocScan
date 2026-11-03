@@ -2,6 +2,7 @@ package com.docscan.android.processing
 
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** Coarse page texture, centered to ignore uniform exposure changes. No OCR or persisted content. */
 data class PageFingerprint(val cells: List<Float>) {
@@ -28,7 +29,9 @@ data class PageFingerprint(val cells: List<Float>) {
                 sum / 16
             }
             val mean = cells.average().toFloat()
-            return PageFingerprint(cells.map { it - mean })
+            val deviation = sqrt(cells.sumOf { ((it - mean) * (it - mean)).toDouble() } / cells.size).toFloat()
+            val scale = 32f / deviation.coerceAtLeast(12f)
+            return PageFingerprint(cells.map { (it - mean) * scale })
         }
     }
 }

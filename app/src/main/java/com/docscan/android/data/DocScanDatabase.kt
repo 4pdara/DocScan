@@ -30,6 +30,7 @@ data class PageEntity(
     val rotation: Int = 0,
     val filter: String = "ORIGINAL",
     val crop: String? = null,
+    @ColumnInfo(defaultValue = "70") val filterStrength: Int = 70,
 )
 
 data class DocumentSummary(@Embedded val document: DocumentEntity, val pageCount: Int)
@@ -74,7 +75,7 @@ interface DocumentDao {
     suspend fun deleteDocument(id: String)
 }
 
-@Database(entities = [DocumentEntity::class, PageEntity::class], version = 2, exportSchema = true)
+@Database(entities = [DocumentEntity::class, PageEntity::class], version = 3, exportSchema = true)
 abstract class DocScanDatabase : RoomDatabase() {
     abstract fun documents(): DocumentDao
 
@@ -84,7 +85,12 @@ abstract class DocScanDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE pages ADD COLUMN crop TEXT")
             }
         }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pages ADD COLUMN filterStrength INTEGER NOT NULL DEFAULT 70")
+            }
+        }
         fun open(context: Context, name: String = "docscan.db"): DocScanDatabase =
-            Room.databaseBuilder(context, DocScanDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
+            Room.databaseBuilder(context, DocScanDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

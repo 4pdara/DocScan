@@ -49,12 +49,19 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         }
     }
 
-    private suspend fun publishImage(documentId: String, input: InputStream): PageEntity {
+    suspend fun replaceImage(pageId: String, uri: Uri): PageEntity = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val page = requireNotNull(dao.page(pageId))
+            requireNotNull(appContext.contentResolver.openInputStream(uri)).use { publishImage(page.documentId, it, page) }
+        }
+    }
+
+    private suspend fun publishImage(documentId: String, input: InputStream, replacement: PageEntity? = null): PageEntity {
         requireNotNull(dao.document(documentId)) { "Document no longer exists" }
         val id = UUID.randomUUID().toString()
         val temporary = File(staging, "$id.pending")
         val destination = File(originals, "$id.source")
-        try {
+        val published = try {
             FileOutputStream(temporary).use { output ->
                 val buffer = ByteArray(64 * 1024)
                 var total = 0L
@@ -70,10 +77,11 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
             ImagePipeline.validate(temporary)
             val crop = try { ImagePipeline.detectCrop(temporary) } catch (_: Exception) { null }
             check(temporary.renameTo(destination)) { "Cannot save original" }
-            return database.withTransaction {
+            database.withTransaction {
                 val position = (dao.pages(documentId).maxOfOrNull { it.position } ?: -1) + 1
-                val page = PageEntity(id, documentId, position, destination.name, crop = crop?.encode())
-                dao.insertPage(page)
+                val page = replacement?.copy(sourceFile = destination.name, rotation = 0, crop = crop?.encode())
+                    ?: PageEntity(id, documentId, position, destination.name, crop = crop?.encode())
+                if (replacement == null) dao.insertPage(page) else dao.updatePage(page)
                 dao.touch(documentId, System.currentTimeMillis())
                 page
             }
@@ -81,6 +89,9 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
             temporary.delete(); destination.delete()
             throw failure
         }
+        // The old source remains available until both the new file and database update succeed.
+        if (replacement != null) runCatching { source(replacement).delete() }
+        return published
     }
 
     suspend fun rename(id: String, title: String) = withContext(Dispatchers.IO) {
@@ -90,6 +101,10 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
 
     suspend fun rotate(pageId: String) = updatePage(pageId) { it.copy(rotation = (it.rotation + 90) % 360) }
     suspend fun setFilter(pageId: String, filter: ScanFilter) = updatePage(pageId) { it.copy(filter = filter.name) }
+    suspend fun setFilterStrength(pageId: String, strength: Int) {
+        require(strength in 0..100)
+        updatePage(pageId) { it.copy(filterStrength = strength) }
+    }
     suspend fun setCrop(pageId: String, crop: CropQuad?) {
         require(crop == null || crop.isValid())
         updatePage(pageId) { it.copy(crop = crop?.encode()) }

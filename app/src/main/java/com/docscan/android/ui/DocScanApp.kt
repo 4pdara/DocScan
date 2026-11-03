@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -34,7 +36,9 @@ import com.docscan.android.data.DocumentSummary
 import com.docscan.android.data.PageEntity
 import com.docscan.android.export.ExportNames
 import com.docscan.android.processing.ScanFilter
+import com.docscan.android.processing.AutoCaptureGate
 import kotlinx.coroutines.flow.flowOf
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,8 +52,12 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     var screen by rememberSaveable { mutableStateOf("home") }
     var documentId by rememberSaveable { mutableStateOf<String?>(null) }
     var pageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var retakePageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var returnToCamera by rememberSaveable { mutableStateOf(false) }
+    val captureGate = remember(documentId) { AutoCaptureGate() }
     var importTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var exportTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var imageExportTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDeleteDocument by remember { mutableStateOf<DocumentSummary?>(null) }
     var pendingDeletePage by remember { mutableStateOf<PageEntity?>(null) }
     var renaming by remember { mutableStateOf(false) }
@@ -67,7 +75,19 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         if (uri != null && id != null) vm.export(id, uri)
         exportTarget = null
     }
-    fun navigateBack() { screen = when (screen) { "crop" -> "editor"; "camera", "editor" -> "document"; else -> "home" } }
+    val imageFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val id = imageExportTarget
+        if (uri != null && id != null) vm.exportImages(id, uri)
+        imageExportTarget = null
+    }
+    fun navigateBack() {
+        screen = when (screen) {
+            "crop" -> "editor"
+            "camera" -> if (retakePageId != null) { retakePageId = null; "editor" } else "document"
+            "editor" -> if (returnToCamera) "camera" else "document"
+            else -> "home"
+        }
+    }
     BackHandler(screen != "home") { navigateBack() }
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
         Scaffold(
@@ -110,13 +130,24 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         onImport = { importTarget = null; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         onDelete = { pendingDeleteDocument = it },
                     )
-                    "camera" -> documentId?.let { id -> CameraScreen(
-                        pages.size, busy, onDone = { screen = "document" },
-                        onCapture = { file, onSaved -> vm.capture(id, file, onSaved) }, onFailure = vm::cameraError,
+                    "camera" -> documentId?.let { id ->
+                        val target = retakePageId
+                        CameraScreen(
+                        pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = { navigateBack() },
+                        onReview = { pageId = it; returnToCamera = true; screen = "editor" },
+                        onCapture = { file, onSaved ->
+                            if (target == null) vm.capture(id, file, onSaved)
+                            else if (screen != "camera" || retakePageId != target) { file.delete(); onSaved(false) }
+                            else vm.retake(target, file) { saved ->
+                                onSaved(saved)
+                                if (saved) { retakePageId = null; screen = "editor" }
+                            }
+                        }, onFailure = vm::cameraError,
                     ) }
                     "editor" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) PageEditor(page, vm, busy, onCrop = { screen = "crop" })
+                        if (page != null) PageEditor(page, vm, busy, onCrop = { screen = "crop" },
+                            onRetake = { retakePageId = page.id; screen = "camera" })
                         else LaunchedEffect(Unit) { screen = "document" }
                     }
                     "crop" -> {
@@ -129,10 +160,11 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     else -> DocumentScreen(document, pages, vm, busy,
                         onCamera = { screen = "camera" },
                         onImport = { importTarget = documentId; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onEdit = { pageId = it; screen = "editor" },
+                        onEdit = { pageId = it; returnToCamera = false; screen = "editor" },
                         onDelete = { pendingDeletePage = it },
                         onRename = { editedName = document?.title.orEmpty(); renaming = true },
                         onExport = { exportTarget = documentId; exportPicker.launch(ExportNames.pdf(document?.title.orEmpty())) },
+                        onExportImages = { imageExportTarget = documentId; imageFolderPicker.launch(null) },
                         onShare = {
                             documentId?.let { id -> vm.export(id, onShare = { file ->
                                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
@@ -205,7 +237,7 @@ private fun HomeScreen(documents: List<DocumentSummary>, busy: Boolean, onOpen: 
 private fun DocumentScreen(
     document: DocumentEntity?, pages: List<PageEntity>, vm: DocScanViewModel, busy: Boolean,
     onCamera: () -> Unit, onImport: () -> Unit, onEdit: (String) -> Unit,
-    onDelete: (PageEntity) -> Unit, onRename: () -> Unit, onExport: () -> Unit, onShare: () -> Unit,
+    onDelete: (PageEntity) -> Unit, onRename: () -> Unit, onExport: () -> Unit, onExportImages: () -> Unit, onShare: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -219,7 +251,8 @@ private fun DocumentScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionButton(R.drawable.ic_pdf, stringResource(R.string.save_pdf), !busy && pages.isNotEmpty(), Modifier.weight(1f), onExport)
-            ActionButton(R.drawable.ic_share, stringResource(R.string.share_pdf), !busy && pages.isNotEmpty(), Modifier.weight(1f), onShare)
+            ActionButton(R.drawable.ic_image, stringResource(R.string.save_images), !busy && pages.isNotEmpty(), Modifier.weight(1f), onExportImages)
+            IconButton(enabled = !busy && pages.isNotEmpty(), onClick = onShare) { AppIcon(R.drawable.ic_share, stringResource(R.string.share_pdf)) }
         }
         if (pages.isEmpty()) EmptyState(stringResource(R.string.no_pages_title), stringResource(R.string.no_pages_body), Modifier.weight(1f))
         else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -247,21 +280,39 @@ private fun DocumentScreen(
 }
 
 @Composable
-private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit) {
+private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit, onRetake: () -> Unit) {
     var showOriginal by rememberSaveable(page.id) { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    var strength by remember(page.id, page.filterStrength) { mutableFloatStateOf(page.filterStrength.toFloat()) }
+    val cleanupSelected = page.filter in listOf(ScanFilter.CLEAN_COLOR.name, ScanFilter.CLEAN_TEXT.name)
+    val strengthLabel = stringResource(R.string.filter_strength)
+    val filtersLabel = stringResource(R.string.filters_label)
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         PagePreview(if (showOriginal) page.copy(rotation = 0, filter = ScanFilter.ORIGINAL.name, crop = null) else page, vm.repository, Modifier.weight(1f).fillMaxWidth(), edge = 1400)
-        ActionButton(R.drawable.ic_crop, stringResource(R.string.crop_title), !busy && !showOriginal, Modifier.fillMaxWidth(), onCrop)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionButton(R.drawable.ic_crop, stringResource(R.string.crop_title), !busy && !showOriginal, Modifier.weight(1f), onCrop)
+            ActionButton(R.drawable.ic_camera, stringResource(R.string.retake), !busy && !showOriginal, Modifier.weight(1f), onRetake)
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(showOriginal, onCheckedChange = { showOriginal = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.show_original)) }
             IconButton(enabled = !busy && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(modifier = Modifier.semantics { contentDescription = filtersLabel }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(ScanFilter.entries) { filter ->
                 FilterChip(selected = page.filter == filter.name, enabled = !busy && !showOriginal, onClick = { vm.filter(page.id, filter) }, label = { Text(filterLabel(filter)) })
             }
         }
-        Text(stringResource(R.string.original_preserved), style = MaterialTheme.typography.bodyMedium)
+        if (cleanupSelected) {
+            Column {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(strengthLabel, style = MaterialTheme.typography.labelLarge)
+                    Text("${strength.roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+                }
+                Slider(value = strength, onValueChange = { strength = it }, valueRange = 0f..100f,
+                    enabled = !busy && !showOriginal, modifier = Modifier.semantics { contentDescription = strengthLabel },
+                    onValueChangeFinished = { vm.filterStrength(page.id, strength.roundToInt()) })
+            }
+        }
+        Text(stringResource(R.string.original_preserved), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.prototype_filters), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

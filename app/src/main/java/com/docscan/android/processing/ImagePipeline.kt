@@ -19,7 +19,7 @@ object ImagePipeline {
         require(bounds.outWidth.toLong() * bounds.outHeight <= MAX_SOURCE_PIXELS) { "Image dimensions too large" }
     }
 
-    fun render(file: File, rotation: Int, filter: ScanFilter, maxEdge: Int, crop: CropQuad? = null): Bitmap {
+    fun render(file: File, rotation: Int, filter: ScanFilter, maxEdge: Int, crop: CropQuad? = null, filterStrength: Int = 70): Bitmap {
         require(maxEdge in 64..4000)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
@@ -60,7 +60,11 @@ object ImagePipeline {
             }
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            for (index in pixels.indices) pixels[index] = PixelFilters.apply(pixels[index], filter)
+            if (filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT) {
+                DocumentFilters.apply(pixels, bitmap.width, bitmap.height, filter, filterStrength)
+            } else {
+                for (index in pixels.indices) pixels[index] = PixelFilters.apply(pixels[index], filter)
+            }
             bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         }
         return bitmap

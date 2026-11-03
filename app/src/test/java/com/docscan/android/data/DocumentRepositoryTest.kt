@@ -59,6 +59,39 @@ class DocumentRepositoryTest {
         assertArrayEquals(bytes, repository.source(reopened).readBytes())
     }
 
+    @Test fun retakeReplacesOnlyTheChosenPageAfterTheNewSourceIsSafe(): Unit = runBlocking {
+        val id = repository.create("Retake")
+        val first = repository.importImage(id, Uri.fromFile(image()))
+        val second = repository.importImage(id, Uri.fromFile(image()))
+        repository.rotate(first.id); repository.setFilter(first.id, ScanFilter.CLEAN_COLOR); repository.setFilterStrength(first.id, 35)
+        val replacement = File(context.cacheDir, "retake-${UUID.randomUUID()}.png")
+        val bitmap = Bitmap.createBitmap(40, 50, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(0xFF112233.toInt())
+        replacement.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val old = repository.source(first)
+        val updated = repository.replaceImage(first.id, Uri.fromFile(replacement))
+        assertEquals(first.id, updated.id); assertEquals(first.position, updated.position)
+        assertEquals(0, updated.rotation); assertEquals("CLEAN_COLOR", updated.filter); assertEquals(35, updated.filterStrength)
+        assertEquals(listOf(first.id, second.id), database.documents().pages(id).map { it.id })
+        assertFalse(old.exists()); assertArrayEquals(replacement.readBytes(), repository.source(updated).readBytes())
+        assertTrue(repository.source(second).exists())
+        repository.deleteDocument(id); replacement.delete()
+    }
+
+    @Test fun failedRetakePreservesOldSourceAndAllEdits(): Unit = runBlocking {
+        val id = repository.create("Failed retake")
+        val page = repository.importImage(id, Uri.fromFile(image()))
+        repository.rotate(page.id)
+        val original = repository.source(page).readBytes()
+        val broken = File(context.cacheDir, "bad-retake-${UUID.randomUUID()}.png").apply { writeText("not an image") }
+        assertTrue(runCatching { repository.replaceImage(page.id, Uri.fromFile(broken)) }.isFailure)
+        val retained = requireNotNull(database.documents().page(page.id))
+        assertEquals(90, retained.rotation); assertEquals(page.sourceFile, retained.sourceFile)
+        assertArrayEquals(original, repository.source(retained).readBytes())
+        assertEquals(1, database.documents().pages(id).size)
+        repository.deleteDocument(id); broken.delete()
+    }
+
     @Test fun invalidInputDoesNotPublishAPage() = runBlocking {
         val id = repository.create("Draft")
         val broken = File(context.cacheDir, "invalid.png").apply { writeText("not an image") }

@@ -15,6 +15,7 @@ object DocumentDetector {
     fun detect(image: GrayImage): DocumentDetection? {
         val w = image.width; val h = image.height; val pixels = image.pixels
         if (w < 32 || h < 32 || w * h > 1_000_000) return null
+        EdgeDocumentDetector.detect(image)?.let { return it }
         val histogram = IntArray(256)
         pixels.forEach { histogram[it.coerceIn(0, 255)]++ }
         val total = pixels.size

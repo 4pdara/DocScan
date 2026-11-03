@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 object LumaSampler {
     /** Respect Y-plane padding, pixel stride, crop origin and all sensor rotations. */
     fun sample(buffer: ByteBuffer, rowStride: Int, pixelStride: Int,
-        left: Int, top: Int, width: Int, height: Int, rotation: Int, maxEdge: Int = 360): GrayImage {
+        left: Int, top: Int, width: Int, height: Int, rotation: Int, maxEdge: Int = 288): GrayImage {
         require(width > 0 && height > 0 && rowStride > 0 && pixelStride > 0)
         require(rotation in listOf(0, 90, 180, 270))
         val scale = minOf(1f, maxEdge.toFloat() / max(width, height))

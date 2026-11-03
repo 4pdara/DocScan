@@ -18,7 +18,7 @@ object PdfExporter {
         val pdf = PdfDocument()
         try {
                 pages.forEachIndexed { index, page ->
-                    val bitmap = ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), 2400, CropQuad.decode(page.crop))
+                    val bitmap = ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), 2400, CropQuad.decode(page.crop), page.filterStrength)
                     try {
                         val landscape = bitmap.width > bitmap.height
                         val width = if (landscape) 842 else 595
