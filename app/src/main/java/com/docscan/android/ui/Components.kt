@@ -20,6 +20,7 @@ import com.docscan.android.R
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
 import com.docscan.android.processing.ImagePipeline
+import com.docscan.android.processing.CropQuad
 import com.docscan.android.processing.ScanFilter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -54,10 +55,10 @@ private data class PreviewResult(val bitmap: Bitmap? = null, val failed: Boolean
 
 @Composable
 fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modifier = Modifier, edge: Int = 640) {
-    val preview by produceState(PreviewResult(), page.id, page.rotation, page.filter, edge) {
+    val preview by produceState(PreviewResult(), page.id, page.rotation, page.filter, page.crop, edge) {
         value = try {
             PreviewResult(withContext(Dispatchers.Default) {
-                ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), edge)
+                ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), edge, CropQuad.decode(page.crop))
             })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { PreviewResult(failed = true) }

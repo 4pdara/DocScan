@@ -67,7 +67,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         if (uri != null && id != null) vm.export(id, uri)
         exportTarget = null
     }
-    fun navigateBack() { screen = if (screen == "camera" || screen == "editor") "document" else "home" }
+    fun navigateBack() { screen = when (screen) { "crop" -> "editor"; "camera", "editor" -> "document"; else -> "home" } }
     BackHandler(screen != "home") { navigateBack() }
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
         Scaffold(
@@ -116,7 +116,14 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     ) }
                     "editor" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) PageEditor(page, vm, busy)
+                        if (page != null) PageEditor(page, vm, busy, onCrop = { screen = "crop" })
+                        else LaunchedEffect(Unit) { screen = "document" }
+                    }
+                    "crop" -> {
+                        val page = pages.firstOrNull { it.id == pageId }
+                        if (page != null) CropScreen(page, vm.repository, busy,
+                            onCancel = { screen = "editor" },
+                            onApply = { quad -> vm.crop(page.id, quad) { screen = "editor" } })
                         else LaunchedEffect(Unit) { screen = "document" }
                     }
                     else -> DocumentScreen(document, pages, vm, busy,
@@ -240,10 +247,11 @@ private fun DocumentScreen(
 }
 
 @Composable
-private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean) {
+private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit) {
     var showOriginal by rememberSaveable(page.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PagePreview(if (showOriginal) page.copy(rotation = 0, filter = ScanFilter.ORIGINAL.name) else page, vm.repository, Modifier.weight(1f).fillMaxWidth(), edge = 1400)
+        PagePreview(if (showOriginal) page.copy(rotation = 0, filter = ScanFilter.ORIGINAL.name, crop = null) else page, vm.repository, Modifier.weight(1f).fillMaxWidth(), edge = 1400)
+        ActionButton(R.drawable.ic_crop, stringResource(R.string.crop_title), !busy && !showOriginal, Modifier.fillMaxWidth(), onCrop)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(showOriginal, onCheckedChange = { showOriginal = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.show_original)) }
             IconButton(enabled = !busy && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }

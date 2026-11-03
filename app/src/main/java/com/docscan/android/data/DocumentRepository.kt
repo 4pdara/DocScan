@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.docscan.android.processing.ImagePipeline
+import com.docscan.android.processing.CropQuad
 import com.docscan.android.processing.ScanFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -67,10 +68,11 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
                 output.fd.sync()
             }
             ImagePipeline.validate(temporary)
+            val crop = try { ImagePipeline.detectCrop(temporary) } catch (_: Exception) { null }
             check(temporary.renameTo(destination)) { "Cannot save original" }
             return database.withTransaction {
                 val position = (dao.pages(documentId).maxOfOrNull { it.position } ?: -1) + 1
-                val page = PageEntity(id, documentId, position, destination.name)
+                val page = PageEntity(id, documentId, position, destination.name, crop = crop?.encode())
                 dao.insertPage(page)
                 dao.touch(documentId, System.currentTimeMillis())
                 page
@@ -88,6 +90,10 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
 
     suspend fun rotate(pageId: String) = updatePage(pageId) { it.copy(rotation = (it.rotation + 90) % 360) }
     suspend fun setFilter(pageId: String, filter: ScanFilter) = updatePage(pageId) { it.copy(filter = filter.name) }
+    suspend fun setCrop(pageId: String, crop: CropQuad?) {
+        require(crop == null || crop.isValid())
+        updatePage(pageId) { it.copy(crop = crop?.encode()) }
+    }
 
     private suspend fun updatePage(id: String, transform: (PageEntity) -> PageEntity) = withContext(Dispatchers.IO) {
         lock.withLock {

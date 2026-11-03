@@ -1,0 +1,141 @@
+package com.docscan.android.ui
+
+import android.graphics.Bitmap
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import com.docscan.android.R
+import com.docscan.android.data.DocumentRepository
+import com.docscan.android.data.PageEntity
+import com.docscan.android.processing.CropPoint
+import com.docscan.android.processing.CropQuad
+import com.docscan.android.processing.ImagePipeline
+import com.docscan.android.processing.ScanFilter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+
+@Composable
+fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
+    onCancel: () -> Unit, onApply: (CropQuad?) -> Unit) {
+    var quad by remember(page.id, page.crop) { mutableStateOf(CropQuad.decode(page.crop) ?: CropQuad.FULL) }
+    var failed by remember(page.id) { mutableStateOf(false) }
+    val bitmap by produceState<Bitmap?>(null, page.id) {
+        value = try { withContext(Dispatchers.Default) { ImagePipeline.render(repository.source(page), 0, ScanFilter.ORIGINAL, 1400) } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { failed = true; null }
+    }
+    var detecting by remember { mutableStateOf(false) }
+    var noBounds by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.crop_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.crop_hint), style = MaterialTheme.typography.bodyMedium)
+        val image = bitmap
+        if (image != null) CropCanvas(image, quad, onChanged = { quad = it; noBounds = false }, Modifier.weight(1f).fillMaxWidth())
+        else Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (failed) Text(stringResource(R.string.preview_failed)) else CircularProgressIndicator()
+        }
+        if (noBounds) Text(stringResource(R.string.crop_not_found), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = image != null && !busy && !detecting, modifier = Modifier.weight(1f), onClick = {
+                detecting = true; noBounds = false
+                scope.launch {
+                    try {
+                        val result = withContext(Dispatchers.Default) { ImagePipeline.detect(requireNotNull(image)) }
+                        if (result == null) noBounds = true else quad = result.quad
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { noBounds = true }
+                    finally { detecting = false }
+                }
+            }) {
+                if (detecting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text(stringResource(R.string.auto_crop))
+            }
+            OutlinedButton(enabled = !busy && !detecting, modifier = Modifier.weight(1f), onClick = { quad = CropQuad.FULL; noBounds = false }) {
+                Text(stringResource(R.string.reset_crop))
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(enabled = !busy, onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+            Button(enabled = image != null && !busy && !detecting && quad.isValid(), modifier = Modifier.weight(1f), onClick = {
+                onApply(quad.takeUnless { it == CropQuad.FULL })
+            }) { Text(stringResource(R.string.apply_crop)) }
+        }
+    }
+}
+
+@Composable
+private fun CropCanvas(bitmap: Bitmap, quad: CropQuad, onChanged: (CropQuad) -> Unit, modifier: Modifier = Modifier) {
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var selected by remember { mutableIntStateOf(-1) }
+    val currentQuad by rememberUpdatedState(quad)
+    val currentOnChanged by rememberUpdatedState(onChanged)
+    val density = LocalDensity.current
+    val radius = with(density) { 48.dp.toPx() }
+    val description = stringResource(R.string.crop_hint)
+    val scale = minOf(canvasSize.width.toFloat() / bitmap.width, canvasSize.height.toFloat() / bitmap.height)
+    val w = bitmap.width * scale; val h = bitmap.height * scale
+    val rect = Rect((canvasSize.width - w) / 2, (canvasSize.height - h) / 2, (canvasSize.width + w) / 2, (canvasSize.height + h) / 2)
+    fun mapped(p: CropPoint) = Offset(rect.left + p.x * rect.width, rect.top + p.y * rect.height)
+    Canvas(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+        .semantics { contentDescription = description }.onSizeChanged { canvasSize = it }
+        .pointerInput(bitmap, canvasSize) {
+            detectDragGestures(
+                onDragStart = { position ->
+                    selected = currentQuad.points.indices.minByOrNull { (mapped(currentQuad.points[it]) - position).getDistance() }
+                        ?.takeIf { (mapped(currentQuad.points[it]) - position).getDistance() <= radius } ?: -1
+                },
+                onDragEnd = { selected = -1 }, onDragCancel = { selected = -1 },
+            ) { change, _ ->
+                if (selected >= 0 && rect.width > 0 && rect.height > 0) {
+                    change.consume()
+                    currentQuad.move(selected, CropPoint((change.position.x - rect.left) / rect.width,
+                        (change.position.y - rect.top) / rect.height))?.let(currentOnChanged)
+                }
+            }
+        }) {
+        if (rect.width <= 0 || rect.height <= 0) return@Canvas
+        drawImage(bitmap.asImageBitmap(), dstOffset = IntOffset(rect.left.roundToInt(), rect.top.roundToInt()),
+            dstSize = IntSize(rect.width.roundToInt().coerceAtLeast(1), rect.height.roundToInt().coerceAtLeast(1)))
+        val points = quad.points.map(::mapped)
+        val polygon = Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) }; close() }
+        val shade = Path().apply { fillType = PathFillType.EvenOdd; addRect(rect); addPath(polygon) }
+        drawPath(shade, Color.Black.copy(alpha = .55f))
+        drawPath(polygon, Color(0xFF50E0C2), style = Stroke(3.dp.toPx()))
+        for (fraction in listOf(1f / 3, 2f / 3)) {
+            drawLine(Color.White.copy(alpha = .5f), points[0] + (points[3] - points[0]) * fraction,
+                points[1] + (points[2] - points[1]) * fraction, 1.dp.toPx())
+            drawLine(Color.White.copy(alpha = .5f), points[0] + (points[1] - points[0]) * fraction,
+                points[3] + (points[2] - points[3]) * fraction, 1.dp.toPx())
+        }
+        points.forEachIndexed { i, point ->
+            drawCircle(Color(0xFF087F70), (if (selected == i) 14 else 11).dp.toPx(), point)
+            drawCircle(Color.White, 6.dp.toPx(), point)
+        }
+    }
+}

@@ -32,8 +32,22 @@
     <string name="no_pages_title">Add your first page</string>
     <string name="no_pages_body">Capture pages one after another, or import images from your device.</string>
     <string name="camera_hint">Align the page and tap to capture</string>
-    <string name="manual_mode">Manual capture</string>
-    <string name="manual_explanation">This prototype captures each page with a tap. Automatic capture is a next milestone.</string>
+    <string name="fast_scan">Fast continuous scan</string>
+    <string name="scan_saving">Saving the page…</string>
+    <string name="scan_paused">Automatic scanning paused</string>
+    <string name="scan_replace_page">Page saved. Replace the sheet</string>
+    <string name="scan_hold_steady">Hold steady — capturing automatically</string>
+    <string name="scan_find_page">Keep all page edges inside the frame</string>
+    <string name="auto_scan_hint">Use a light page on a contrasting surface. Replace the sheet after capture, or tap to capture manually.</string>
+    <string name="manual_scan_hint">Tap to capture. Automatic cropping applies when the page edges are detected.</string>
+    <string name="resume_scan">Resume</string>
+    <string name="pause_scan">Pause</string>
+    <string name="crop_title">Crop and straighten</string>
+    <string name="crop_hint">Drag the four corners to the page edges. The original is preserved.</string>
+    <string name="crop_not_found">No clear page edges found. Drag the corners manually.</string>
+    <string name="auto_crop">Detect edges</string>
+    <string name="reset_crop">Full image</string>
+    <string name="apply_crop">Apply crop</string>
     <string name="capture">Capture page</string>
     <string name="done">Done</string>
     <string name="flashlight">Torch</string>
@@ -55,5 +69,5 @@
     <string name="import_partial">Imported: %1$d / %2$d. Some files are unsupported or exceed 50 MB per image.</string>
     <string name="load_failed">Your documents could not be loaded.</string>
     <string name="preview_failed">Preview unavailable</string>
-    <string name="prototype_label">Development preview 0.1</string>
+    <string name="prototype_label">Development preview 0.2 · Continuous scan and crop</string>
 </resources>
