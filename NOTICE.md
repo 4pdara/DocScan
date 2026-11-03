@@ -6,4 +6,6 @@ Robolectric, JUnit and AndroidX Test are test dependencies. They are not include
 
 No source code, models, logos or image assets from CamScanner or the researched scanner applications have been copied into this milestone. The current launcher graphic is a temporary development icon, not the selected DocScan logo.
 
+The optional Google scanner uses the documented `play-services-mlkit-document-scanner:16.0.0` SDK. Google Play services supplies its scanning UI, logic and models separately. This dependency is subject to Google's [ML Kit terms](https://developers.google.com/ml-kit/terms), rather than the Apache license applicable to AndroidX. The local CameraX scanner does not require this service. No proprietary components extracted from the reference packages are redistributed.
+
 References: [AndroidX](https://android.googlesource.com/platform/frameworks/support/), [Kotlin](https://github.com/JetBrains/kotlin), [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines), [Gradle](https://github.com/gradle/gradle).

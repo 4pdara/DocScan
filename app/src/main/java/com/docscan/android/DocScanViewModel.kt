@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.docscan.android.export.PdfExporter
+import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
 import com.docscan.android.processing.CropQuad
 import kotlinx.coroutines.CancellationException
@@ -42,16 +43,17 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearMessage() { _message.value = null }
     fun cameraError() { _message.value = app.getString(R.string.camera_failed) }
+    fun googleScannerError() { _message.value = app.getString(R.string.google_scan_failed) }
 
     fun create(onCreated: (String) -> Unit) = task { onCreated(repository.create(defaultTitle())) }
 
-    fun importImages(uris: List<Uri>, documentId: String?, onLoaded: (String) -> Unit) {
+    fun importImages(uris: List<Uri>, documentId: String?, detectBounds: Boolean = true, onLoaded: (String) -> Unit) {
         if (uris.isEmpty()) return
         task {
             val id = documentId ?: repository.create(defaultTitle())
             var imported = 0
             for (uri in uris) {
-                try { repository.importImage(id, uri); imported++ }
+                try { repository.importImage(id, uri, detectBounds); imported++ }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { /* Keep successfully published pages. No document contents in logs. */ }
             }
@@ -68,8 +70,15 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun rename(id: String, title: String) = task { repository.rename(id, title) }
+    fun retake(pageId: String, file: File, onSaved: (Boolean) -> Unit) {
+        var saved = false
+        task(finallyAction = { file.delete(); onSaved(saved) }) {
+            repository.replaceImage(pageId, Uri.fromFile(file)); saved = true
+        }
+    }
     fun rotate(id: String) = task { repository.rotate(id) }
     fun filter(id: String, filter: ScanFilter) = task { repository.setFilter(id, filter) }
+    fun filterStrength(id: String, strength: Int) = task { repository.setFilterStrength(id, strength) }
     fun crop(id: String, crop: CropQuad?, onSaved: () -> Unit) = task {
         repository.setCrop(id, crop); onSaved()
     }
@@ -91,6 +100,13 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
                 _message.value = app.getString(R.string.saved_pdf)
             } else { requireNotNull(onShare)(file) }
         } finally { if (destination != null) file.delete() }
+    }
+
+    fun exportImages(documentId: String, folder: Uri) = task {
+        val count = repository.readSnapshot(documentId) { document, pages ->
+            JpegExporter.writeFolder(app, folder, document.title, pages, repository)
+        }
+        _message.value = app.getString(R.string.saved_images, count)
     }
 
     private fun defaultTitle(): String = app.getString(

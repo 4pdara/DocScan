@@ -4,6 +4,10 @@
     <string name="library_title">המסמכים שלי</string>
     <string name="library_subtitle">כל הדפים שלך. במקום אחד.</string>
     <string name="new_scan">סריקה חדשה</string>
+    <string name="scan_google">סריקה עם Google</string>
+    <string name="google_scan_hint">כלי החיתוך והניקוי של Google. נדרשים שירותי Google; בפעם הראשונה ייתכן שתידרש הורדת רכיבים.</string>
+    <string name="google_scan_preparing">מכין את הסורק של Google…</string>
+    <string name="google_scan_failed">לא ניתן לפתוח את הסורק של Google. נדרשים שירותי Google מעודכנים ומכשיר נתמך. אפשר להשתמש בסריקה המקומית באמצעות ״סריקה חדשה״.</string>
     <string name="import_images">ייבוא תמונות</string>
     <string name="empty_title">המסמך הבא מתחיל כאן</string>
     <string name="empty_body">מצלמים כמה דפים או בוחרים תמונות, ושומרים יחד כ־PDF.</string>
@@ -14,6 +18,9 @@
     <string name="back">חזרה</string>
     <string name="add_pages">צילום דפים</string>
     <string name="save_pdf">שמירת PDF</string>
+    <string name="save_images">שמירת JPEG</string>
+    <string name="saved_images">נשמרו %1$d תמונות בתיקייה שבחרת</string>
+    <string name="retake">צילום מחדש</string>
     <string name="share_pdf">שיתוף PDF</string>
     <string name="rename">שינוי שם</string>
     <string name="document_name">שם המסמך</string>
@@ -38,7 +45,7 @@
     <string name="scan_replace_page">העמוד נשמר. אפשר להחליף דף</string>
     <string name="scan_hold_steady">החזק יציב — מצלם אוטומטית</string>
     <string name="scan_find_page">מקם את כל גבולות הדף בתוך התמונה</string>
-    <string name="auto_scan_hint">דף בהיר על רקע מנוגד מזוהה בקלות. לאחר הצילום מחליפים דף; אפשר גם לצלם בלחיצה.</string>
+    <string name="auto_scan_hint">רקע מנוגד עוזר לזיהוי. לאחר חיווי השמירה מחליפים דף; אפשר גם לצלם בלחיצה.</string>
     <string name="manual_scan_hint">צילום בלחיצה. חיתוך אוטומטי יוחל כשגבולות הדף מזוהים.</string>
     <string name="resume_scan">המשך</string>
     <string name="pause_scan">השהיה</string>
@@ -61,13 +68,17 @@
     <string name="enhanced">צבע משופר</string>
     <string name="grayscale">גווני אפור</string>
     <string name="monochrome">שחור־לבן</string>
+    <string name="clean_color">ניקוי רקע</string>
+    <string name="clean_text">טקסט משופר</string>
+    <string name="filter_strength">עוצמת העיבוד</string>
+    <string name="filters_label">מסנני תמונה</string>
     <string name="show_original">הצג מקור</string>
     <string name="original_preserved">המקור נשמר. אפשר לשנות את המסנן בכל זמן.</string>
-    <string name="prototype_filters">אלו מסננים בסיסיים. ניקוי קמטים וכיתוב מהצד השני עדיין בפיתוח.</string>
+    <string name="prototype_filters">ניקוי רקע ושיפור טקסט פועלים מקומית. הסרת קמטים וכיתוב מהצד השני עדיין בפיתוח.</string>
     <string name="saved_pdf">ה־PDF נשמר בהצלחה</string>
     <string name="operation_failed">הפעולה לא הושלמה. בדוק מקום פנוי ונסה שוב.</string>
     <string name="import_partial">נשמרו %1$d מתוך %2$d תמונות. חלק מהקבצים לא נתמכים או חורגים מהמגבלה של 50 MB לתמונה.</string>
     <string name="load_failed">לא ניתן לטעון את המסמכים כרגע.</string>
     <string name="preview_failed">התצוגה המקדימה אינה זמינה</string>
-    <string name="prototype_label">גרסת פיתוח 0.2 · צילום רציף וחיתוך</string>
+    <string name="prototype_label">גרסת פיתוח 0.3 · סריקה ועיבוד תמונה</string>
 </resources>

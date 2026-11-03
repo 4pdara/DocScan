@@ -28,7 +28,7 @@ class CameraFrameAnalyzer(private val onFrame: (CameraFrame) -> Unit) : ImageAna
     override fun analyze(image: ImageProxy) {
         try {
             val now = SystemClock.elapsedRealtime()
-            if (lastAnalysis >= 0 && now - lastAnalysis < 150) return
+            if (lastAnalysis >= 0 && now - lastAnalysis < 100) return
             lastAnalysis = now
             val crop = image.cropRect
             val rotation = image.imageInfo.rotationDegrees

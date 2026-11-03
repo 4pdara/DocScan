@@ -55,10 +55,10 @@ private data class PreviewResult(val bitmap: Bitmap? = null, val failed: Boolean
 
 @Composable
 fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modifier = Modifier, edge: Int = 640) {
-    val preview by produceState(PreviewResult(), page.id, page.rotation, page.filter, page.crop, edge) {
+    val preview by produceState(PreviewResult(), page.id, page.rotation, page.filter, page.crop, page.filterStrength, edge) {
         value = try {
             PreviewResult(withContext(Dispatchers.Default) {
-                ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), edge, CropQuad.decode(page.crop))
+                ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), edge, CropQuad.decode(page.crop), page.filterStrength)
             })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { PreviewResult(failed = true) }
@@ -78,4 +78,6 @@ fun filterLabel(filter: ScanFilter): String = stringResource(when (filter) {
     ScanFilter.ENHANCED -> R.string.enhanced
     ScanFilter.GRAYSCALE -> R.string.grayscale
     ScanFilter.MONOCHROME -> R.string.monochrome
+    ScanFilter.CLEAN_COLOR -> R.string.clean_color
+    ScanFilter.CLEAN_TEXT -> R.string.clean_text
 })

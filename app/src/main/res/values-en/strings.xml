@@ -4,6 +4,10 @@
     <string name="library_title">My documents</string>
     <string name="library_subtitle">Your pages, all together.</string>
     <string name="new_scan">New scan</string>
+    <string name="scan_google">Scan with Google</string>
+    <string name="google_scan_hint">Google cropping and cleanup tools. Requires Google Play services; first use may download components.</string>
+    <string name="google_scan_preparing">Preparing Google scanner…</string>
+    <string name="google_scan_failed">Google scanner could not open. Updated Google Play services and a supported device are required. Use New scan for the local scanner.</string>
     <string name="import_images">Import images</string>
     <string name="empty_title">Your next document starts here</string>
     <string name="empty_body">Capture a few pages or choose images, then save one PDF.</string>
@@ -14,6 +18,9 @@
     <string name="back">Back</string>
     <string name="add_pages">Capture pages</string>
     <string name="save_pdf">Save PDF</string>
+    <string name="save_images">Save JPEG</string>
+    <string name="saved_images">Saved %1$d images in your selected folder</string>
+    <string name="retake">Retake</string>
     <string name="share_pdf">Share PDF</string>
     <string name="rename">Rename</string>
     <string name="document_name">Document name</string>
@@ -38,11 +45,11 @@
     <string name="scan_replace_page">Page saved. Replace the sheet</string>
     <string name="scan_hold_steady">Hold steady — capturing automatically</string>
     <string name="scan_find_page">Keep all page edges inside the frame</string>
-    <string name="auto_scan_hint">Use a light page on a contrasting surface. Replace the sheet after capture, or tap to capture manually.</string>
+    <string name="auto_scan_hint">A contrasting surface helps detection. Replace the sheet after the saved confirmation, or tap to capture manually.</string>
     <string name="manual_scan_hint">Tap to capture. Automatic cropping applies when the page edges are detected.</string>
     <string name="resume_scan">Resume</string>
     <string name="pause_scan">Pause</string>
-    <string name="crop_title">Crop and straighten</string>
+    <string name="crop_title">Crop and align</string>
     <string name="crop_hint">Drag the four corners to the page edges. The original is preserved.</string>
     <string name="crop_not_found">No clear page edges found. Drag the corners manually.</string>
     <string name="auto_crop">Detect edges</string>
@@ -61,13 +68,17 @@
     <string name="enhanced">Enhanced</string>
     <string name="grayscale">Grayscale</string>
     <string name="monochrome">Black &amp; white</string>
+    <string name="clean_color">Clean background</string>
+    <string name="clean_text">Clear text</string>
+    <string name="filter_strength">Processing strength</string>
+    <string name="filters_label">Image filters</string>
     <string name="show_original">Show original</string>
     <string name="original_preserved">Your original is preserved. You can change the filter at any time.</string>
-    <string name="prototype_filters">These are basic filters. Wrinkle and bleed-through cleanup are not available yet.</string>
+    <string name="prototype_filters">Background cleanup and text enhancement work offline. Wrinkle and bleed-through removal are still in development.</string>
     <string name="saved_pdf">PDF saved</string>
     <string name="operation_failed">The operation could not complete. Check free space and try again.</string>
     <string name="import_partial">Imported: %1$d / %2$d. Some files are unsupported or exceed 50 MB per image.</string>
     <string name="load_failed">Your documents could not be loaded.</string>
     <string name="preview_failed">Preview unavailable</string>
-    <string name="prototype_label">Development preview 0.2 · Continuous scan and crop</string>
+    <string name="prototype_label">Development preview 0.3 · Scanning and image cleanup</string>
 </resources>

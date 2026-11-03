@@ -3,6 +3,7 @@ package com.docscan.android
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfRenderer
@@ -13,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.docscan.android.data.DocScanDatabase
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.export.PdfExporter
+import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
 import com.docscan.android.processing.CropPoint
 import com.docscan.android.processing.CropQuad
@@ -26,6 +28,77 @@ import java.util.UUID
 /** Requires an emulator/device; validates the actual Android PDF/bitmap stack. */
 @RunWith(AndroidJUnit4::class)
 class ExportFlowTest {
+    @Test fun jpegExportIncludesCropRotationAndCleanupStrength() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "jpeg-${UUID.randomUUID()}.db"
+        val database = DocScanDatabase.open(context, name)
+        val repository = DocumentRepository(context, database)
+        val input = File(context.cacheDir, "jpeg-${UUID.randomUUID()}.png")
+        val output = File(context.cacheDir, "jpeg-${UUID.randomUUID()}.jpg")
+        var documentId: String? = null
+        try {
+            val image = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
+            image.eraseColor(Color.rgb(160, 160, 160))
+            input.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
+            val original = input.readBytes()
+            val id = repository.create("JPEG").also { documentId = it }
+            val page = repository.importImage(id, Uri.fromFile(input))
+            repository.setCrop(page.id, CropQuad(CropPoint(.2f, .2f), CropPoint(.8f, .2f), CropPoint(.8f, .8f), CropPoint(.2f, .8f)))
+            repository.rotate(page.id); repository.setFilter(page.id, ScanFilter.CLEAN_COLOR); repository.setFilterStrength(page.id, 100)
+            repository.readSnapshot(id) { _, pages -> output.outputStream().use { JpegExporter.write(pages.single(), repository, it) } }
+            val rendered = requireNotNull(BitmapFactory.decodeFile(output.path))
+            try {
+                assertEquals(240, rendered.width); assertEquals(180, rendered.height)
+                assertTrue(Color.red(rendered.getPixel(120, 90)) >= 250)
+            } finally { rendered.recycle() }
+            assertArrayEquals(original, repository.source(page).readBytes())
+        } finally {
+            documentId?.let { repository.deleteDocument(it) }; database.close(); context.deleteDatabase(name)
+            input.delete(); output.delete()
+        }
+    }
+
+    @Test fun cleanupStrengthIsAppliedToTheActualPdf() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "cleanup-export-${UUID.randomUUID()}.db"
+        val database = DocScanDatabase.open(context, name)
+        val repository = DocumentRepository(context, database)
+        val input = File(context.cacheDir, "cleanup-pdf-${UUID.randomUUID()}.png")
+        val output = File(context.cacheDir, "cleanup-pdf-${UUID.randomUUID()}.pdf")
+        var documentId: String? = null
+        fun centerGray(): Int {
+            PdfRenderer(ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_ONLY)).use { pdf ->
+                pdf.openPage(0).use { page ->
+                    val rendered = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                    try {
+                        rendered.eraseColor(Color.WHITE)
+                        page.render(rendered, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        return Color.red(rendered.getPixel(rendered.width / 2, rendered.height / 2))
+                    } finally { rendered.recycle() }
+                }
+            }
+        }
+        try {
+            val image = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
+            image.eraseColor(Color.rgb(160, 160, 160))
+            input.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
+            val original = input.readBytes()
+            val id = repository.create("Cleanup PDF").also { documentId = it }
+            val page = repository.importImage(id, Uri.fromFile(input))
+            repository.setFilter(page.id, ScanFilter.CLEAN_COLOR)
+            repository.setFilterStrength(page.id, 0)
+            repository.readSnapshot(id) { _, pages -> PdfExporter.write(pages, repository, output) }
+            assertTrue(centerGray() in 150..170)
+            repository.setFilterStrength(page.id, 100)
+            repository.readSnapshot(id) { _, pages -> PdfExporter.write(pages, repository, output) }
+            assertTrue(centerGray() >= 250)
+            assertArrayEquals(original, repository.source(page).readBytes())
+        } finally {
+            documentId?.let { repository.deleteDocument(it) }; database.close(); context.deleteDatabase(name)
+            input.delete(); output.delete()
+        }
+    }
+
     @Test fun savedCropIsAppliedToPdfWithoutChangingTheOriginal() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = "crop-export-${UUID.randomUUID()}.db"

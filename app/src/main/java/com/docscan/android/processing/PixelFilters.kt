@@ -1,6 +1,6 @@
 package com.docscan.android.processing
 
-enum class ScanFilter { ORIGINAL, ENHANCED, GRAYSCALE, MONOCHROME }
+enum class ScanFilter { ORIGINAL, ENHANCED, GRAYSCALE, MONOCHROME, CLEAN_COLOR, CLEAN_TEXT }
 
 /** Conservative baseline filters. These do not remove wrinkles or bleed-through. */
 object PixelFilters {
@@ -14,6 +14,7 @@ object PixelFilters {
         fun pack(r: Int, g: Int, b: Int) = (alpha shl 24) or (r shl 16) or (g shl 8) or b
         return when (filter) {
             ScanFilter.ORIGINAL -> pixel
+            ScanFilter.CLEAN_COLOR, ScanFilter.CLEAN_TEXT -> error("Document filters require a complete image")
             ScanFilter.GRAYSCALE -> pack(luminance, luminance, luminance)
             ScanFilter.MONOCHROME -> (if (luminance >= 160) 255 else 0).let { pack(it, it, it) }
             ScanFilter.ENHANCED -> {

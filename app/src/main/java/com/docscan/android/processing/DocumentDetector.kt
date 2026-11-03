@@ -8,13 +8,14 @@ data class GrayImage(val width: Int, val height: Int, val pixels: IntArray) {
 
 data class DocumentDetection(val quad: CropQuad, val confidence: Float)
 
-/** Bounded, offline detector for a light page against a contrasting surface.
+/** Bounded, offline detector using supported page edges, then light-page segmentation.
  * No confident quadrilateral means no automatic crop/capture; never invent edges.
  */
 object DocumentDetector {
     fun detect(image: GrayImage): DocumentDetection? {
         val w = image.width; val h = image.height; val pixels = image.pixels
         if (w < 32 || h < 32 || w * h > 1_000_000) return null
+        EdgeDocumentDetector.detect(image)?.let { return it }
         val histogram = IntArray(256)
         pixels.forEach { histogram[it.coerceIn(0, 255)]++ }
         val total = pixels.size
