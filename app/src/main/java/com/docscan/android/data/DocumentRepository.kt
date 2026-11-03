@@ -6,6 +6,8 @@ import androidx.room.withTransaction
 import com.docscan.android.processing.ImagePipeline
 import com.docscan.android.processing.CropQuad
 import com.docscan.android.processing.ScanFilter
+import com.docscan.android.processing.ImageAdjustments
+import com.docscan.android.processing.PageFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -42,10 +44,10 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         id
     }
 
-    suspend fun importImage(documentId: String, uri: Uri, detectBounds: Boolean = true): PageEntity = withContext(Dispatchers.IO) {
+    suspend fun importImage(documentId: String, uri: Uri, detectBounds: Boolean = true, enhanceCapture: Boolean = false): PageEntity = withContext(Dispatchers.IO) {
         lock.withLock {
             val input = requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Image unavailable" }
-            input.use { publishImage(documentId, it, detectBounds = detectBounds) }
+            input.use { publishImage(documentId, it, detectBounds = detectBounds, enhanceCapture = enhanceCapture) }
         }
     }
 
@@ -56,7 +58,8 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         }
     }
 
-    private suspend fun publishImage(documentId: String, input: InputStream, replacement: PageEntity? = null, detectBounds: Boolean = true): PageEntity {
+    private suspend fun publishImage(documentId: String, input: InputStream, replacement: PageEntity? = null,
+        detectBounds: Boolean = true, enhanceCapture: Boolean = false): PageEntity {
         requireNotNull(dao.document(documentId)) { "Document no longer exists" }
         val id = UUID.randomUUID().toString()
         val temporary = File(staging, "$id.pending")
@@ -80,7 +83,9 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
             database.withTransaction {
                 val position = (dao.pages(documentId).maxOfOrNull { it.position } ?: -1) + 1
                 val page = replacement?.copy(sourceFile = destination.name, rotation = 0, crop = crop?.encode())
-                    ?: PageEntity(id, documentId, position, destination.name, crop = crop?.encode())
+                    ?: PageEntity(id, documentId, position, destination.name, crop = crop?.encode(),
+                        filter = if (enhanceCapture) ScanFilter.CLEAN_COLOR.name else ScanFilter.ORIGINAL.name,
+                        sharpness = if (enhanceCapture) 35 else 0)
                 if (replacement == null) dao.insertPage(page) else dao.updatePage(page)
                 dao.touch(documentId, System.currentTimeMillis())
                 page
@@ -104,6 +109,14 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
     suspend fun setFilterStrength(pageId: String, strength: Int) {
         require(strength in 0..100)
         updatePage(pageId) { it.copy(filterStrength = strength) }
+    }
+    suspend fun setAdjustments(pageId: String, settings: ImageAdjustments) = updatePage(pageId) {
+        it.copy(brightness = settings.brightness, contrast = settings.contrast,
+            saturation = settings.saturation, sharpness = settings.sharpness)
+    }
+    suspend fun setCropAndFormat(pageId: String, crop: CropQuad?, format: PageFormat) {
+        require(crop == null || crop.isValid())
+        updatePage(pageId) { it.copy(crop = crop?.encode(), pageFormat = format.name) }
     }
     suspend fun setCrop(pageId: String, crop: CropQuad?) {
         require(crop == null || crop.isValid())

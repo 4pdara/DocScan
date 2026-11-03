@@ -65,7 +65,7 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
     fun capture(documentId: String, file: File, onSaved: (Boolean) -> Unit) {
         var saved = false
         task(finallyAction = { file.delete(); onSaved(saved) }) {
-            repository.importImage(documentId, Uri.fromFile(file)); saved = true
+            repository.importImage(documentId, Uri.fromFile(file), enhanceCapture = true); saved = true
         }
     }
 
@@ -79,8 +79,9 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
     fun rotate(id: String) = task { repository.rotate(id) }
     fun filter(id: String, filter: ScanFilter) = task { repository.setFilter(id, filter) }
     fun filterStrength(id: String, strength: Int) = task { repository.setFilterStrength(id, strength) }
-    fun crop(id: String, crop: CropQuad?, onSaved: () -> Unit) = task {
-        repository.setCrop(id, crop); onSaved()
+    fun adjustments(id: String, settings: com.docscan.android.processing.ImageAdjustments) = task { repository.setAdjustments(id, settings) }
+    fun crop(id: String, crop: CropQuad?, format: com.docscan.android.processing.PageFormat, onSaved: () -> Unit) = task {
+        repository.setCropAndFormat(id, crop, format); onSaved()
     }
     fun move(id: String, delta: Int) = task { repository.move(id, delta) }
     fun deletePage(id: String) = task { repository.deletePage(id) }
