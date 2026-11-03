@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -49,9 +48,10 @@ class ScanEditingFlowTest {
         }
         val resolver = ui.activity.contentResolver
         val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
-        resolver.openOutputStream(uri).use { output ->
-            ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, requireNotNull(output))
-        }
+        ui.waitForIdle()
+        val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        try { resolver.openOutputStream(uri).use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, requireNotNull(output)) } }
+        finally { bitmap.recycle() }
     }
 
     @Test fun cropCanBeDraggedSavedCancelledAndResetThroughTheRealUi() {
@@ -115,16 +115,20 @@ class ScanEditingFlowTest {
             ui.waitUntil(10_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(title).performScrollTo().performClick()
             ui.onNodeWithText(text(R.string.edit)).performClick()
+            ui.onNodeWithText(text(R.string.open_filters)).performClick()
             ui.onNodeWithContentDescription(text(R.string.filters_label))
                 .performScrollToNode(hasText(text(R.string.clean_color)))
             ui.onNodeWithText(text(R.string.clean_color)).performClick()
             ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.filter_strength)).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithContentDescription(text(R.string.filter_strength)).performSemanticsAction(SemanticsActions.SetProgress) { it(25f) }
             ui.waitUntil(10_000) { runBlocking { app.database.documents().page(page.id)?.filterStrength == 25 } }
+            saveScreenshot("filter-picker.png")
+            ui.onNodeWithText(text(R.string.done)).performClick()
             saveScreenshot("image-cleanup.png")
             ui.onNodeWithContentDescription(text(R.string.back)).performClick()
             ui.onNodeWithText(text(R.string.edit)).performClick()
-            ui.onNodeWithText("25%").assertIsDisplayed()
+            ui.onNodeWithText(text(R.string.open_filters)).performClick()
+            ui.onNodeWithText("25%").performScrollTo().assertIsDisplayed()
             assertEquals("CLEAN_COLOR", runBlocking { app.database.documents().page(page.id)?.filter })
             assertArrayEquals(original, app.repository.source(page).readBytes())
         } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }

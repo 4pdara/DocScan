@@ -3,7 +3,14 @@ package com.docscan.android
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.SavedStateHandleSaveableApi
+import androidx.lifecycle.viewmodel.compose.saveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.docscan.android.data.PageEntity
 import com.docscan.android.export.PdfExporter
 import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
@@ -19,7 +26,30 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-class DocScanViewModel(application: Application) : AndroidViewModel(application) {
+@OptIn(SavedStateHandleSaveableApi::class)
+class DocScanViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
+    // Routes and pending picker targets must survive Activity replacement independently of UI loading.
+    var screen by savedState.saveable { mutableStateOf("home") }
+    var documentId by savedState.saveable { mutableStateOf<String?>(null) }
+    var pageId by savedState.saveable { mutableStateOf<String?>(null) }
+    var retakePageId by savedState.saveable { mutableStateOf<String?>(null) }
+    var returnToCamera by savedState.saveable { mutableStateOf(false) }
+    var importTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var exportTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var imageExportTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var cropPoints by savedState.saveable { mutableStateOf<String?>(null) }
+    var cropFormat by savedState.saveable { mutableStateOf("NATURAL") }
+    var cropRectangle by savedState.saveable { mutableStateOf(false) }
+
+    fun beginCrop(page: PageEntity) {
+        cropPoints = page.crop; cropFormat = page.pageFormat; cropRectangle = false
+        pageId = page.id; documentId = page.documentId; screen = "crop"
+    }
+
+    fun clearCropDraft() {
+        cropPoints = null; cropFormat = "NATURAL"; cropRectangle = false
+    }
+
     val repository = (application as DocScanApplication).repository
     private val app = application
     private val _busy = MutableStateFlow(false)
@@ -65,7 +95,7 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
     fun capture(documentId: String, file: File, onSaved: (Boolean) -> Unit) {
         var saved = false
         task(finallyAction = { file.delete(); onSaved(saved) }) {
-            repository.importImage(documentId, Uri.fromFile(file)); saved = true
+            repository.importImage(documentId, Uri.fromFile(file), enhanceCapture = true); saved = true
         }
     }
 
@@ -79,8 +109,9 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
     fun rotate(id: String) = task { repository.rotate(id) }
     fun filter(id: String, filter: ScanFilter) = task { repository.setFilter(id, filter) }
     fun filterStrength(id: String, strength: Int) = task { repository.setFilterStrength(id, strength) }
-    fun crop(id: String, crop: CropQuad?, onSaved: () -> Unit) = task {
-        repository.setCrop(id, crop); onSaved()
+    fun adjustments(id: String, settings: com.docscan.android.processing.ImageAdjustments) = task { repository.setAdjustments(id, settings) }
+    fun crop(id: String, crop: CropQuad?, format: com.docscan.android.processing.PageFormat, onSaved: () -> Unit) = task {
+        repository.setCropAndFormat(id, crop, format); onSaved()
     }
     fun move(id: String, delta: Int) = task { repository.move(id, delta) }
     fun deletePage(id: String) = task { repository.deletePage(id) }

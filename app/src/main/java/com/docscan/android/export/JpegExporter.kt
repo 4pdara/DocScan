@@ -6,15 +6,12 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
-import com.docscan.android.processing.CropQuad
-import com.docscan.android.processing.ImagePipeline
-import com.docscan.android.processing.ScanFilter
+import com.docscan.android.data.render
 import java.io.OutputStream
 
 object JpegExporter {
     fun write(page: PageEntity, repository: DocumentRepository, output: OutputStream) {
-        val bitmap = ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter),
-            2400, CropQuad.decode(page.crop), page.filterStrength)
+        val bitmap = page.render(repository.source(page), 3200)
         try { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)) { "JPEG encoding failed" } }
         finally { bitmap.recycle() }
     }

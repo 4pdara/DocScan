@@ -34,10 +34,15 @@ import com.docscan.android.R
 import com.docscan.android.data.DocumentEntity
 import com.docscan.android.data.DocumentSummary
 import com.docscan.android.data.PageEntity
+import com.docscan.android.data.withoutEdits
 import com.docscan.android.export.ExportNames
+import com.docscan.android.processing.CropQuad
+import com.docscan.android.processing.PageFormat
 import com.docscan.android.processing.ScanFilter
 import com.docscan.android.processing.AutoCaptureGate
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,22 +54,23 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val documents by vm.documents.collectAsStateWithLifecycle()
     val working by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
-    var screen by rememberSaveable { mutableStateOf("home") }
-    var documentId by rememberSaveable { mutableStateOf<String?>(null) }
-    var pageId by rememberSaveable { mutableStateOf<String?>(null) }
-    var retakePageId by rememberSaveable { mutableStateOf<String?>(null) }
-    var returnToCamera by rememberSaveable { mutableStateOf(false) }
+    var screen by vm::screen
+    var documentId by vm::documentId
+    var pageId by vm::pageId
+    var retakePageId by vm::retakePageId
+    var returnToCamera by vm::returnToCamera
     val captureGate = remember(documentId) { AutoCaptureGate() }
-    var importTarget by rememberSaveable { mutableStateOf<String?>(null) }
-    var exportTarget by rememberSaveable { mutableStateOf<String?>(null) }
-    var imageExportTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var importTarget by vm::importTarget
+    var exportTarget by vm::exportTarget
+    var imageExportTarget by vm::imageExportTarget
     var pendingDeleteDocument by remember { mutableStateOf<DocumentSummary?>(null) }
     var pendingDeletePage by remember { mutableStateOf<PageEntity?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
     val document = documents.firstOrNull { it.document.id == documentId }?.document
-    val pageFlow = remember(documentId) { documentId?.let(vm.repository::observePages) ?: flowOf(emptyList()) }
-    val pages by pageFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val pageFlow: Flow<List<PageEntity>?> = remember(documentId) { documentId?.let(vm.repository::observePages) ?: flowOf(emptyList()) }
+    val loadedPages by key(documentId) { pageFlow.collectAsStateWithLifecycle(initialValue = null) }
+    val pages = loadedPages.orEmpty()
     val snackbar = remember { SnackbarHostState() }
     val googleScan = rememberGoogleScanAction(onPages = { uris ->
         vm.importImages(uris, null, detectBounds = false) { id ->
@@ -87,6 +93,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         imageExportTarget = null
     }
     fun navigateBack() {
+        if (screen == "crop") vm.clearCropDraft()
         screen = when (screen) {
             "crop" -> "editor"
             "camera" -> if (retakePageId != null) { retakePageId = null; "editor" } else "document"
@@ -153,16 +160,37 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     ) }
                     "editor" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) PageEditor(page, vm, busy, onCrop = { screen = "crop" },
+                        if (page != null) PageEditor(page, vm, busy, onCrop = { vm.beginCrop(page) },
                             onRetake = { retakePageId = page.id; screen = "camera" })
-                        else LaunchedEffect(Unit) { screen = "document" }
+                        else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
+                            val selectedPage = pageId
+                            val selectedDocument = documentId
+                            // A cached list can lag behind a saved route. Confirm deletion in Room first.
+                            if (selectedDocument == null || vm.repository.observePages(selectedDocument).first().none { it.id == selectedPage }) {
+                                screen = "document"
+                            }
+                        }
+                        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
                     "crop" -> {
                         val page = pages.firstOrNull { it.id == pageId }
                         if (page != null) CropScreen(page, vm.repository, busy,
-                            onCancel = { screen = "editor" },
-                            onApply = { quad -> vm.crop(page.id, quad) { screen = "editor" } })
-                        else LaunchedEffect(Unit) { screen = "document" }
+                            quad = CropQuad.decode(vm.cropPoints) ?: CropQuad.FULL,
+                            format = PageFormat.fromKey(vm.cropFormat), rectangle = vm.cropRectangle,
+                            onQuadChange = { vm.cropPoints = it.encode() },
+                            onFormatChange = { vm.cropFormat = it.name },
+                            onRectangleChange = { vm.cropRectangle = it },
+                            onCancel = { vm.clearCropDraft(); screen = "editor" },
+                            onApply = { quad, format -> vm.crop(page.id, quad, format) { vm.clearCropDraft(); screen = "editor" } })
+                        else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
+                            val selectedPage = pageId
+                            val selectedDocument = documentId
+                            // A cached list can lag behind a saved route. Confirm deletion in Room first.
+                            if (selectedDocument == null || vm.repository.observePages(selectedDocument).first().none { it.id == selectedPage }) {
+                                screen = "document"
+                            }
+                        }
+                        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
                     else -> DocumentScreen(document, pages, vm, busy,
                         onCamera = { screen = "camera" },
@@ -297,37 +325,31 @@ private fun DocumentScreen(
 @Composable
 private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit, onRetake: () -> Unit) {
     var showOriginal by rememberSaveable(page.id) { mutableStateOf(false) }
-    var strength by remember(page.id, page.filterStrength) { mutableFloatStateOf(page.filterStrength.toFloat()) }
-    val cleanupSelected = page.filter in listOf(ScanFilter.CLEAN_COLOR.name, ScanFilter.CLEAN_TEXT.name)
-    val strengthLabel = stringResource(R.string.filter_strength)
-    val filtersLabel = stringResource(R.string.filters_label)
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PagePreview(if (showOriginal) page.copy(rotation = 0, filter = ScanFilter.ORIGINAL.name, crop = null) else page, vm.repository, Modifier.weight(1f).fillMaxWidth(), edge = 1400)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(R.drawable.ic_crop, stringResource(R.string.crop_title), !busy && !showOriginal, Modifier.weight(1f), onCrop)
-            ActionButton(R.drawable.ic_camera, stringResource(R.string.retake), !busy && !showOriginal, Modifier.weight(1f), onRetake)
+    var filterPicker by remember { mutableStateOf(false) }
+    var adjusting by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        PagePreview(if (showOriginal) page.withoutEdits() else page, vm.repository,
+            Modifier.weight(1f).fillMaxWidth(), edge = 1400, zoomable = true)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            EditorTool(R.drawable.ic_crop, stringResource(R.string.crop_title), !busy && !showOriginal, Modifier.weight(1f), onCrop)
+            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !busy && !showOriginal, Modifier.weight(1f)) { filterPicker = true }
+            EditorTool(R.drawable.ic_tune, stringResource(R.string.image_adjustments), !busy && !showOriginal, Modifier.weight(1f)) { adjusting = true }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Switch(showOriginal, onCheckedChange = { showOriginal = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.show_original)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(showOriginal, onCheckedChange = { showOriginal = it })
+                Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.show_original), style = MaterialTheme.typography.labelMedium)
+            }
+            TextButton(enabled = !busy && !showOriginal, onClick = onRetake) { Text(stringResource(R.string.retake)) }
             IconButton(enabled = !busy && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
         }
-        LazyRow(modifier = Modifier.semantics { contentDescription = filtersLabel }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(ScanFilter.entries) { filter ->
-                FilterChip(selected = page.filter == filter.name, enabled = !busy && !showOriginal, onClick = { vm.filter(page.id, filter) }, label = { Text(filterLabel(filter)) })
-            }
-        }
-        if (cleanupSelected) {
-            Column {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(strengthLabel, style = MaterialTheme.typography.labelLarge)
-                    Text("${strength.roundToInt()}%", style = MaterialTheme.typography.labelLarge)
-                }
-                Slider(value = strength, onValueChange = { strength = it }, valueRange = 0f..100f,
-                    enabled = !busy && !showOriginal, modifier = Modifier.semantics { contentDescription = strengthLabel },
-                    onValueChangeFinished = { vm.filterStrength(page.id, strength.roundToInt()) })
-            }
-        }
+        Text(stringResource(R.string.editor_summary, filterLabel(ScanFilter.valueOf(page.filter)),
+            pageFormatLabel(com.docscan.android.processing.PageFormat.fromKey(page.pageFormat)), page.sharpness),
+            style = MaterialTheme.typography.labelMedium)
         Text(stringResource(R.string.original_preserved), style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.prototype_filters), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    if (filterPicker) FilterPicker(page, vm.repository, busy,
+        onFilter = { vm.filter(page.id, it) }, onStrength = { vm.filterStrength(page.id, it) }, onDismiss = { filterPicker = false })
+    if (adjusting) AdjustmentSheet(page, vm.repository,
+        onApply = { vm.adjustments(page.id, it); adjusting = false }, onDismiss = { adjusting = false })
 }

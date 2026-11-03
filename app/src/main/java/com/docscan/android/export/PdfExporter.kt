@@ -6,9 +6,8 @@ import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
-import com.docscan.android.processing.ImagePipeline
-import com.docscan.android.processing.CropQuad
-import com.docscan.android.processing.ScanFilter
+import com.docscan.android.data.render
+import com.docscan.android.processing.PageFormat
 import java.io.File
 
 object PdfExporter {
@@ -18,15 +17,16 @@ object PdfExporter {
         val pdf = PdfDocument()
         try {
                 pages.forEachIndexed { index, page ->
-                    val bitmap = ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), 2400, CropQuad.decode(page.crop), page.filterStrength)
+                    val bitmap = page.render(repository.source(page), 3200)
                     try {
                         val landscape = bitmap.width > bitmap.height
-                        val width = if (landscape) 842 else 595
-                        val height = if (landscape) 595 else 842
+                        val format = PageFormat.fromKey(page.pageFormat)
+                        val (width, height) = format.pdfSize(landscape)
                         val outputPage = pdf.startPage(PdfDocument.PageInfo.Builder(width, height, index + 1).create())
                         try {
                             outputPage.canvas.drawColor(Color.WHITE)
-                            val scale = minOf((width - 36f) / bitmap.width, (height - 36f) / bitmap.height)
+                            val margin = if (format == PageFormat.NATURAL) 36f else 0f
+                            val scale = minOf((width - margin) / bitmap.width, (height - margin) / bitmap.height)
                             val drawnWidth = bitmap.width * scale
                             val drawnHeight = bitmap.height * scale
                             val left = (width - drawnWidth) / 2f

@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PixelFiltersTest {
+    @Test fun inversionChangesOnlyColorChannelsAndIsReversible() {
+        val source = 0x7F123456
+        val inverted = PixelFilters.apply(source, ScanFilter.INVERT)
+        assertEquals(0x7FEDCBA9, inverted)
+        assertEquals(source, PixelFilters.apply(inverted, ScanFilter.INVERT))
+    }
     @Test fun originalPreservesEveryChannel() {
         val input = 0x7F123456
         assertEquals(input, PixelFilters.apply(input, ScanFilter.ORIGINAL))

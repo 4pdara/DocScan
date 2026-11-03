@@ -19,13 +19,15 @@ object ImagePipeline {
         require(bounds.outWidth.toLong() * bounds.outHeight <= MAX_SOURCE_PIXELS) { "Image dimensions too large" }
     }
 
-    fun render(file: File, rotation: Int, filter: ScanFilter, maxEdge: Int, crop: CropQuad? = null, filterStrength: Int = 70): Bitmap {
+    fun render(file: File, rotation: Int, filter: ScanFilter, maxEdge: Int, crop: CropQuad? = null, filterStrength: Int = 70,
+        adjustments: ImageAdjustments = ImageAdjustments(), format: PageFormat = PageFormat.NATURAL): Bitmap {
         require(maxEdge in 64..4000)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Missing or unsupported image" }
         var sample = 1
         while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxEdge) sample *= 2
+        while ((bounds.outWidth / sample).toLong() * (bounds.outHeight / sample) > 16_000_000L) sample *= 2
         val decoded = requireNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
             inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
         })) { "Cannot decode image" }
@@ -43,8 +45,8 @@ object ImagePipeline {
         matrix.postScale(scale, scale)
         var bitmap = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
         if (bitmap !== decoded) decoded.recycle()
-        if (crop != null) {
-            val cropped = PerspectiveCrop.apply(bitmap, crop, maxEdge)
+        if (crop != null || format != PageFormat.NATURAL) {
+            val cropped = PerspectiveCrop.apply(bitmap, crop ?: CropQuad.FULL, maxEdge, format)
             bitmap.recycle(); bitmap = cropped
         }
         if (rotation % 360 != 0) {
@@ -53,7 +55,7 @@ object ImagePipeline {
             if (rotated !== bitmap) bitmap.recycle()
             bitmap = rotated
         }
-        if (filter != ScanFilter.ORIGINAL) {
+        if (filter != ScanFilter.ORIGINAL || adjustments != ImageAdjustments()) {
             if (!bitmap.isMutable) {
                 val copy = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 bitmap.recycle(); bitmap = copy
@@ -62,9 +64,12 @@ object ImagePipeline {
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             if (filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT) {
                 DocumentFilters.apply(pixels, bitmap.width, bitmap.height, filter, filterStrength)
+            } else if (filter in ProDocumentFilters.supported) {
+                ProDocumentFilters.apply(pixels, bitmap.width, bitmap.height, filter, filterStrength)
             } else {
                 for (index in pixels.indices) pixels[index] = PixelFilters.apply(pixels[index], filter)
             }
+            ImageEnhancer.apply(pixels, bitmap.width, bitmap.height, adjustments)
             bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         }
         return bitmap

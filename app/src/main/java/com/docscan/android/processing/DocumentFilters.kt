@@ -44,33 +44,36 @@ object DocumentFilters {
             background[y * gw + x] = ((integral[y1 * stride + x1] - integral[y0 * stride + x1] -
                 integral[y1 * stride + x0] + integral[y0 * stride + x0]) / ((x1 - x0) * (y1 - y0))).coerceAtLeast(32)
         }
-        for (y in 0 until height) for (x in 0 until width) {
-            val index = y * width + x; val p = pixels[index]
-            val bg = interpolated(background, gw, gh, x.toFloat() / step, y.toFloat() / step)
-            val red = p ushr 16 and 255; val green = p ushr 8 and 255; val blue = p and 255
-            fun mix(original: Int, cleaned: Int) = ((original * (100 - strength) + cleaned * strength + 50) / 100).coerceIn(0, 255)
-            val alpha = p and -0x1000000
-            if (filter == ScanFilter.CLEAN_TEXT) {
-                // Continuous tones retain faint ink; this is deliberately not a hard binary threshold.
-                val luma = luminance(p)
-                val cleaned = (255f - max(0f, bg - luma) * 2.6f).roundToInt().coerceIn(0, 255)
-                val value = mix(luma, cleaned)
-                pixels[index] = alpha or (value shl 16) or (value shl 8) or value
-            } else {
-                fun clean(value: Int) = max(value, (value * 255f / bg).roundToInt()).coerceAtMost(255)
-                pixels[index] = alpha or (mix(red, clean(red)) shl 16) or (mix(green, clean(green)) shl 8) or mix(blue, clean(blue))
+        val columns = IntArray(width) { (it / step).coerceAtMost(gw - 1) }
+        val weights = FloatArray(width) { (it.toFloat() / step - columns[it]).coerceIn(0f, 1f) }
+        for (y in 0 until height) {
+            val row = (y / step).coerceAtMost(gh - 1)
+            val nextRow = min(row + 1, gh - 1)
+            val fy = (y.toFloat() / step - row).coerceIn(0f, 1f)
+            for (x in 0 until width) {
+                val index = y * width + x; val p = pixels[index]
+                val column = columns[x]; val next = min(column + 1, gw - 1); val fx = weights[x]
+                val top = background[row * gw + column] * (1 - fx) + background[row * gw + next] * fx
+                val bottom = background[nextRow * gw + column] * (1 - fx) + background[nextRow * gw + next] * fx
+                val bg = top * (1 - fy) + bottom * fy
+                val red = p ushr 16 and 255; val green = p ushr 8 and 255; val blue = p and 255
+                fun mix(original: Int, cleaned: Int) = ((original * (100 - strength) + cleaned * strength + 50) / 100).coerceIn(0, 255)
+                val alpha = p and -0x1000000
+                if (filter == ScanFilter.CLEAN_TEXT) {
+                    // Continuous tones retain faint ink; this is deliberately not a hard binary threshold.
+                    val luma = luminance(p)
+                    val cleaned = (255f - max(0f, bg - luma) * 2.6f).roundToInt().coerceIn(0, 255)
+                    val value = mix(luma, cleaned)
+                    pixels[index] = alpha or (value shl 16) or (value shl 8) or value
+                } else {
+                    val gain = 255f / bg
+                    fun clean(value: Int) = max(value, (value * gain).roundToInt()).coerceAtMost(255)
+                    pixels[index] = alpha or (mix(red, clean(red)) shl 16) or (mix(green, clean(green)) shl 8) or mix(blue, clean(blue))
+                }
             }
         }
     }
 
     private fun luminance(pixel: Int) = ((pixel ushr 16 and 255) * 77 + (pixel ushr 8 and 255) * 150 + (pixel and 255) * 29) ushr 8
 
-    private fun interpolated(map: IntArray, w: Int, h: Int, x: Float, y: Float): Float {
-        val x0 = x.toInt().coerceIn(0, w - 1); val y0 = y.toInt().coerceIn(0, h - 1)
-        val x1 = min(x0 + 1, w - 1); val y1 = min(y0 + 1, h - 1)
-        val fx = (x - x0).coerceIn(0f, 1f); val fy = (y - y0).coerceIn(0f, 1f)
-        val top = map[y0 * w + x0] * (1 - fx) + map[y0 * w + x1] * fx
-        val bottom = map[y1 * w + x0] * (1 - fx) + map[y1 * w + x1] * fx
-        return top * (1 - fy) + bottom * fy
-    }
 }

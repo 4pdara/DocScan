@@ -32,6 +32,45 @@ data class CropQuad(val topLeft: CropPoint, val topRight: CropPoint, val bottomR
     }
 
     fun maxDistance(other: CropQuad) = points.zip(other.points).maxOf { (a, b) -> a.distance(b) }
+    fun rectangle(): CropQuad = CropQuad(CropPoint(points.minOf { it.x }, points.minOf { it.y }),
+        CropPoint(points.maxOf { it.x }, points.minOf { it.y }),
+        CropPoint(points.maxOf { it.x }, points.maxOf { it.y }),
+        CropPoint(points.minOf { it.x }, points.maxOf { it.y }))
+
+    fun moveRectangleCorner(index: Int, point: CropPoint): CropQuad? {
+        require(index in 0..3)
+        val opposite = points[(index + 2) % 4]
+        val x = if (index == 0 || index == 3) point.x.coerceIn(0f, (opposite.x - .02f).coerceAtLeast(0f))
+            else point.x.coerceIn((opposite.x + .02f).coerceAtMost(1f), 1f)
+        val y = if (index < 2) point.y.coerceIn(0f, (opposite.y - .02f).coerceAtLeast(0f))
+            else point.y.coerceIn((opposite.y + .02f).coerceAtMost(1f), 1f)
+        fun between(point: CropPoint) = from(listOf(CropPoint(minOf(point.x, opposite.x), minOf(point.y, opposite.y)),
+            CropPoint(maxOf(point.x, opposite.x), minOf(point.y, opposite.y)),
+            CropPoint(maxOf(point.x, opposite.x), maxOf(point.y, opposite.y)),
+            CropPoint(minOf(point.x, opposite.x), maxOf(point.y, opposite.y))))
+        val target = CropPoint(x, y)
+        val candidate = between(target)
+        if (candidate.isValid()) return candidate
+        // Stop at the valid area boundary when a finger crosses the opposite corner.
+        var low = 0f; var high = 1f; var best = rectangle()
+        val start = best.points[index]
+        repeat(16) {
+            val t = (low + high) / 2
+            val limited = between(CropPoint(start.x + (target.x - start.x) * t, start.y + (target.y - start.y) * t))
+            if (limited.isValid()) { low = t; best = limited } else high = t
+        }
+        return best.takeIf { it.isValid() }
+    }
+
+    fun moveEdge(index: Int, dx: Float, dy: Float): CropQuad? {
+        require(index in 0..3)
+        val a = points[index]; val b = points[(index + 1) % 4]
+        val x = dx.coerceIn(-minOf(a.x, b.x), 1 - maxOf(a.x, b.x))
+        val y = dy.coerceIn(-minOf(a.y, b.y), 1 - maxOf(a.y, b.y))
+        return from(points.mapIndexed { i, p ->
+            if (i == index || i == (index + 1) % 4) CropPoint(p.x + x, p.y + y) else p
+        }).takeIf { it.isValid() }
+    }
     fun encode() = points.flatMap { listOf(it.x, it.y) }.joinToString(",")
 
     companion object {

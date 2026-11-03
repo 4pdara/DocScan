@@ -31,6 +31,11 @@ data class PageEntity(
     val filter: String = "ORIGINAL",
     val crop: String? = null,
     @ColumnInfo(defaultValue = "70") val filterStrength: Int = 70,
+    @ColumnInfo(defaultValue = "0") val brightness: Int = 0,
+    @ColumnInfo(defaultValue = "0") val contrast: Int = 0,
+    @ColumnInfo(defaultValue = "0") val saturation: Int = 0,
+    @ColumnInfo(defaultValue = "0") val sharpness: Int = 0,
+    @ColumnInfo(defaultValue = "'NATURAL'") val pageFormat: String = "NATURAL",
 )
 
 data class DocumentSummary(@Embedded val document: DocumentEntity, val pageCount: Int)
@@ -75,7 +80,7 @@ interface DocumentDao {
     suspend fun deleteDocument(id: String)
 }
 
-@Database(entities = [DocumentEntity::class, PageEntity::class], version = 3, exportSchema = true)
+@Database(entities = [DocumentEntity::class, PageEntity::class], version = 4, exportSchema = true)
 abstract class DocScanDatabase : RoomDatabase() {
     abstract fun documents(): DocumentDao
 
@@ -90,7 +95,15 @@ abstract class DocScanDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE pages ADD COLUMN filterStrength INTEGER NOT NULL DEFAULT 70")
             }
         }
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (field in listOf("brightness", "contrast", "saturation", "sharpness")) {
+                    db.execSQL("ALTER TABLE pages ADD COLUMN $field INTEGER NOT NULL DEFAULT 0")
+                }
+                db.execSQL("ALTER TABLE pages ADD COLUMN pageFormat TEXT NOT NULL DEFAULT 'NATURAL'")
+            }
+        }
         fun open(context: Context, name: String = "docscan.db"): DocScanDatabase =
-            Room.databaseBuilder(context, DocScanDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+            Room.databaseBuilder(context, DocScanDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }
