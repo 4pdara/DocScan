@@ -11,6 +11,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.docscan.android.data.PageEntity
+import com.docscan.android.export.GalleryExporter
+import com.docscan.android.export.ShareExport
+import com.docscan.android.export.ShareFormat
+import android.content.Intent
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
 import com.docscan.android.export.PdfExporter
 import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
@@ -41,6 +48,23 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var cropFormat by savedState.saveable { mutableStateOf("NATURAL") }
     var cropRectangle by savedState.saveable { mutableStateOf(false) }
 
+    var outputPageIds by savedState.saveable { mutableStateOf<List<String>>(arrayListOf()) }
+    var galleryTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var selectedDocuments by savedState.saveable { mutableStateOf<List<String>>(arrayListOf()) }
+    var selectedPageIds by savedState.saveable { mutableStateOf<List<String>>(arrayListOf()) }
+    var selectingDocuments by savedState.saveable { mutableStateOf(false) }
+    var selectingPages by savedState.saveable { mutableStateOf(false) }
+    var libraryQuery by savedState.saveable { mutableStateOf("") }
+    var librarySort by savedState.saveable { mutableStateOf("UPDATED") }
+    var libraryGrid by savedState.saveable { mutableStateOf(false) }
+
+    fun openDocument(id: String) {
+        documentId = id; screen = "document"; returnToCamera = false
+        selectedPageIds = arrayListOf(); selectingPages = false
+    }
+    fun togglePage(id: String) { selectedPageIds = ArrayList(if (id in selectedPageIds) selectedPageIds - id else selectedPageIds + id) }
+    fun toggleDocument(id: String) { selectedDocuments = ArrayList(if (id in selectedDocuments) selectedDocuments - id else selectedDocuments + id) }
+
     fun beginCrop(page: PageEntity) {
         cropPoints = page.crop; cropFormat = page.pageFormat; cropRectangle = false
         pageId = page.id; documentId = page.documentId; screen = "crop"
@@ -65,7 +89,7 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
             repository.recover()
             withContext(Dispatchers.IO) {
                 val expiration = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
-                File(app.cacheDir, "exports").listFiles()?.filter { it.lastModified() < expiration }?.forEach { it.delete() }
+                File(app.cacheDir, "exports").listFiles()?.filter { it.lastModified() < expiration }?.forEach { it.deleteRecursively() }
                 app.cacheDir.listFiles()?.filter { it.name.startsWith("capture-") && it.lastModified() < expiration }?.forEach { it.delete() }
             }
         }
@@ -90,6 +114,51 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
             onLoaded(id)
             if (imported != uris.size) _message.value = app.getString(R.string.import_partial, imported, uris.size)
         }
+    }
+
+    fun importPdfs(uris: List<Uri>, target: String?, onLoaded: (String) -> Unit) {
+        if (uris.isEmpty()) return
+        task {
+            val id = target ?: repository.create(defaultTitle())
+            var imported = 0
+            try {
+                for (uri in uris) {
+                    try { repository.importPdf(id, uri); imported++ }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { }
+                }
+                if (imported > 0) onLoaded(id)
+                if (imported != uris.size) _message.value = app.getString(R.string.import_pdf_failed, imported, uris.size)
+            } finally {
+                if (target == null && imported == 0) withContext(NonCancellable) { repository.deleteDocument(id) }
+            }
+        }
+    }
+    fun mergeDocuments(ids: List<String>, title: String) = task {
+        val id = repository.mergeDocuments(ids, title.ifBlank { app.getString(R.string.merged_document) })
+        selectedDocuments = arrayListOf(); selectingDocuments = false; openDocument(id)
+    }
+    fun batchFilter(id: String, ids: List<String>, filter: ScanFilter, strength: Int) = task { repository.filterPages(id, ids, filter, strength) }
+    fun batchRotate(id: String, ids: List<String>) = task { repository.rotatePages(id, ids) }
+    fun batchDelete(id: String, ids: List<String>) = task {
+        repository.deletePages(id, ids); selectedPageIds = arrayListOf(); selectingPages = false
+    }
+    fun applyFilterToDocument(pageId: String) = task {
+        val count = repository.copyFilterToDocument(pageId)
+        _message.value = app.getString(R.string.applied_to_pages, count)
+    }
+    fun saveGallery(id: String, ids: List<String>? = null) = task {
+        val coroutine = currentCoroutineContext()
+        val count = repository.readSnapshot(id) { document, pages ->
+            GalleryExporter.write(app, document.title, repository.selectedPages(pages, ids), repository) { coroutine.ensureActive() }.size
+        }
+        _message.value = app.getString(R.string.saved_gallery, count)
+    }
+    fun share(id: String, format: ShareFormat, ids: List<String>? = null, onReady: (Intent) -> Unit) = prepareShare(id, format, ids) { files -> onReady(ShareExport.intent(app, files)) }
+    fun print(id: String, ids: List<String>? = null, onReady: (File) -> Unit) = prepareShare(id, ShareFormat.PDF, ids) { onReady(it.single()) }
+    private fun prepareShare(id: String, format: ShareFormat, ids: List<String>?, onReady: (List<File>) -> Unit) = task {
+        val files = repository.readSnapshot(id) { document, pages -> ShareExport.prepare(app, document.title, repository.selectedPages(pages, ids), repository, format) }
+        try { onReady(files) } catch (failure: Exception) { files.first().parentFile?.deleteRecursively(); throw failure }
     }
 
     fun capture(documentId: String, file: File, onSaved: (Boolean) -> Unit) {
@@ -117,11 +186,11 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     fun deletePage(id: String) = task { repository.deletePage(id) }
     fun deleteDocument(id: String) = task { repository.deleteDocument(id) }
 
-    fun export(documentId: String, destination: Uri? = null, onShare: ((File) -> Unit)? = null) = task {
+    fun export(documentId: String, destination: Uri? = null, onShare: ((File) -> Unit)? = null, ids: List<String>? = null) = task {
         val file = File(app.cacheDir, "exports/${UUID.randomUUID()}.pdf")
         file.parentFile?.mkdirs()
         try {
-            repository.readSnapshot(documentId) { _, pages -> PdfExporter.write(pages, repository, file) }
+            repository.readSnapshot(documentId) { _, pages -> PdfExporter.write(repository.selectedPages(pages, ids), repository, file) }
             if (destination != null) {
                 withContext(Dispatchers.IO) {
                     requireNotNull(app.contentResolver.openOutputStream(destination, "w")).use { output ->
@@ -133,9 +202,9 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
         } finally { if (destination != null) file.delete() }
     }
 
-    fun exportImages(documentId: String, folder: Uri) = task {
+    fun exportImages(documentId: String, folder: Uri, ids: List<String>? = null) = task {
         val count = repository.readSnapshot(documentId) { document, pages ->
-            JpegExporter.writeFolder(app, folder, document.title, pages, repository)
+            JpegExporter.writeFolder(app, folder, document.title, repository.selectedPages(pages, ids), repository)
         }
         _message.value = app.getString(R.string.saved_images, count)
     }

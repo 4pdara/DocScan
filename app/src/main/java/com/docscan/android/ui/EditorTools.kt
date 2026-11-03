@@ -48,7 +48,7 @@ fun EditorTool(icon: Int, label: String, enabled: Boolean, modifier: Modifier, o
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilterPicker(page: PageEntity, repository: DocumentRepository, busy: Boolean,
-    onFilter: (ScanFilter) -> Unit, onStrength: (Int) -> Unit, onDismiss: () -> Unit) {
+    onFilter: (ScanFilter) -> Unit, onStrength: (Int) -> Unit, onDismiss: () -> Unit, onApplyToAll: (() -> Unit)? = null) {
     val filtersLabel = stringResource(R.string.filters_label)
     val thumbnails = rememberLazyListState(initialFirstVisibleItemIndex = ScanFilter.entries.indexOfFirst { it.name == page.filter }.coerceAtLeast(0))
     val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .85f).toDp() }
@@ -81,6 +81,7 @@ fun FilterPicker(page: PageEntity, repository: DocumentRepository, busy: Boolean
                 else -> R.string.original_preserved
             }), style = MaterialTheme.typography.bodySmall)
             }
+            if (onApplyToAll != null) OutlinedButton(onApplyToAll, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.apply_filter_all)) }
             TextButton(onDismiss, Modifier.align(Alignment.End)) { Text(stringResource(R.string.done)) }
         }
     }

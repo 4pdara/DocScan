@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -86,11 +87,14 @@ fun CameraScreen(
         }
         return
     }
-    var automatic by rememberSaveable { mutableStateOf(!manualOnly) }
+    val preferences = remember(context) { context.getSharedPreferences("scan-preferences", android.content.Context.MODE_PRIVATE) }
+    var automatic by rememberSaveable { mutableStateOf(!manualOnly && preferences.getBoolean("automatic", true)) }
+    var highQuality by rememberSaveable { mutableStateOf(manualOnly || preferences.getBoolean("high-quality", false)) }
+    var options by remember { mutableStateOf(false) }
     var paused by rememberSaveable { mutableStateOf(false) }
-    val controller = remember(automatic) { LifecycleCameraController(context).apply {
+    val controller = remember(highQuality) { LifecycleCameraController(context).apply {
         setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
-        imageCaptureMode = if (automatic) ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY else ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
+        imageCaptureMode = if (highQuality) ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY else ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
         imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
     } }
     val previewView = remember(controller) { PreviewView(context).apply {
@@ -197,7 +201,16 @@ fun CameraScreen(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(fastLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             Switch(automatic, modifier = Modifier.semantics { contentDescription = fastLabel }, enabled = !busy && !capturing && !manualOnly,
-                onCheckedChange = { automatic = it; paused = false })
+                onCheckedChange = { automatic = it; paused = false; preferences.edit { putBoolean("automatic", it) } })
+            Box {
+                IconButton(enabled = !busy && !capturing, onClick = { options = true }) { AppIcon(R.drawable.ic_more, stringResource(R.string.more_options)) }
+                DropdownMenu(options, onDismissRequest = { options = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.high_quality_capture)) }, trailingIcon = { Checkbox(highQuality, onCheckedChange = null) }, onClick = {
+                        highQuality = !highQuality; preferences.edit { putBoolean("high-quality", highQuality) }; options = false
+                    })
+                    Text(stringResource(R.string.capture_quality_hint), Modifier.widthIn(max = 260.dp).padding(16.dp), style = MaterialTheme.typography.bodySmall)
+                }
+            }
             Text(stringResource(R.string.page_count, pages.size), style = MaterialTheme.typography.labelLarge)
         }
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color.Black), contentAlignment = Alignment.Center) {

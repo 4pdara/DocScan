@@ -35,6 +35,7 @@ class ScanEditingFlowTest {
     private val app get() = ui.activity.application as DocScanApplication
 
     @Before fun allowCamera() {
+        ui.activity.getSharedPreferences("scan-preferences", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
             ui.activity.packageName, Manifest.permission.CAMERA,
         )
@@ -146,7 +147,7 @@ class ScanEditingFlowTest {
             val page = runBlocking { app.repository.importImage(id, Uri.fromFile(input)) }
             ui.waitUntil(10_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(title).performScrollTo().performClick()
-            ui.onNodeWithText(text(R.string.save_images)).assertIsDisplayed()
+            ui.onNodeWithText(text(R.string.save_gallery)).assertIsDisplayed()
             ui.onNodeWithText(text(R.string.add_pages)).performClick()
             ui.waitUntil(10_000) { ui.onAllNodesWithText(ui.activity.getString(R.string.page_label, 1)).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(ui.activity.getString(R.string.page_label, 1)).performClick()
@@ -166,7 +167,8 @@ class ScanEditingFlowTest {
         assumeFalse(GoogleScanner.isAvailable(ui.activity))
         val before = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() }
         try {
-            ui.onNodeWithText(text(R.string.scan_google)).performScrollTo().performClick()
+            ui.onNodeWithContentDescription(text(R.string.more_options)).performClick()
+            ui.onNodeWithText(text(R.string.scan_google)).performClick()
             ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.google_scan_failed)).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(text(R.string.google_scan_failed)).assertIsDisplayed()
             assertEquals(before, runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() })
