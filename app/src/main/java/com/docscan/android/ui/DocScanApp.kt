@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -37,6 +36,8 @@ import com.docscan.android.data.DocumentSummary
 import com.docscan.android.data.PageEntity
 import com.docscan.android.data.withoutEdits
 import com.docscan.android.export.ExportNames
+import com.docscan.android.processing.CropQuad
+import com.docscan.android.processing.PageFormat
 import com.docscan.android.processing.ScanFilter
 import com.docscan.android.processing.AutoCaptureGate
 import kotlinx.coroutines.flow.flowOf
@@ -62,8 +63,6 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     var importTarget by vm::importTarget
     var exportTarget by vm::exportTarget
     var imageExportTarget by vm::imageExportTarget
-    val cropState = rememberSaveableStateHolder()
-    LaunchedEffect(screen) { if (screen != "crop") cropState.removeState("crop") }
     var pendingDeleteDocument by remember { mutableStateOf<DocumentSummary?>(null) }
     var pendingDeletePage by remember { mutableStateOf<PageEntity?>(null) }
     var renaming by remember { mutableStateOf(false) }
@@ -94,6 +93,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         imageExportTarget = null
     }
     fun navigateBack() {
+        if (screen == "crop") vm.clearCropDraft()
         screen = when (screen) {
             "crop" -> "editor"
             "camera" -> if (retakePageId != null) { retakePageId = null; "editor" } else "document"
@@ -160,7 +160,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     ) }
                     "editor" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) PageEditor(page, vm, busy, onCrop = { screen = "crop" },
+                        if (page != null) PageEditor(page, vm, busy, onCrop = { vm.beginCrop(page) },
                             onRetake = { retakePageId = page.id; screen = "camera" })
                         else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
                             val selectedPage = pageId
@@ -174,12 +174,14 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     }
                     "crop" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) cropState.SaveableStateProvider("crop") {
-                            // Room may load after the first restored composition; keep the draft until then.
-                            CropScreen(page, vm.repository, busy,
-                                onCancel = { screen = "editor" },
-                                onApply = { quad, format -> vm.crop(page.id, quad, format) { screen = "editor" } })
-                        }
+                        if (page != null) CropScreen(page, vm.repository, busy,
+                            quad = CropQuad.decode(vm.cropPoints) ?: CropQuad.FULL,
+                            format = PageFormat.fromKey(vm.cropFormat), rectangle = vm.cropRectangle,
+                            onQuadChange = { vm.cropPoints = it.encode() },
+                            onFormatChange = { vm.cropFormat = it.name },
+                            onRectangleChange = { vm.cropRectangle = it },
+                            onCancel = { vm.clearCropDraft(); screen = "editor" },
+                            onApply = { quad, format -> vm.crop(page.id, quad, format) { vm.clearCropDraft(); screen = "editor" } })
                         else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
                             val selectedPage = pageId
                             val selectedDocument = documentId

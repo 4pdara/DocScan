@@ -102,6 +102,8 @@ class ProfessionalEditingFlowTest {
         assertEquals("NATURAL", runBlocking { app.database.documents().page(id)?.pageFormat })
         ui.onNodeWithText(text(R.string.crop_title)).performClick()
         ui.onNodeWithText(text(R.string.crop_options)).performClick()
+        ui.onNodeWithText(text(R.string.format_natural)).assertIsSelected()
+        ui.onNodeWithText(text(R.string.crop_perspective)).assertIsSelected()
         ui.onNodeWithText(text(R.string.crop_rectangle)).performClick()
         ui.onNodeWithText(text(R.string.format_letter)).performClick()
         ui.onNodeWithText(text(R.string.done)).performClick()
@@ -134,6 +136,7 @@ class ProfessionalEditingFlowTest {
         }
         ui.onNodeWithText(text(R.string.crop_options)).performClick()
         ui.onNodeWithText(text(R.string.format_letter)).assertIsSelected()
+        ui.onNodeWithText(text(R.string.crop_rectangle)).assertIsSelected()
         ui.onNodeWithText(text(R.string.done)).performClick()
         ui.onNodeWithText(text(R.string.apply_crop)).performClick()
         ui.waitUntil(10_000) { runBlocking { app.database.documents().page(id)?.pageFormat == "LETTER" } }

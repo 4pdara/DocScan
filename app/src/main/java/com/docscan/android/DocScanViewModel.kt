@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.compose.saveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.docscan.android.data.PageEntity
 import com.docscan.android.export.PdfExporter
 import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
@@ -36,6 +37,18 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var importTarget by savedState.saveable { mutableStateOf<String?>(null) }
     var exportTarget by savedState.saveable { mutableStateOf<String?>(null) }
     var imageExportTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var cropPoints by savedState.saveable { mutableStateOf<String?>(null) }
+    var cropFormat by savedState.saveable { mutableStateOf("NATURAL") }
+    var cropRectangle by savedState.saveable { mutableStateOf(false) }
+
+    fun beginCrop(page: PageEntity) {
+        cropPoints = page.crop; cropFormat = page.pageFormat; cropRectangle = false
+        pageId = page.id; documentId = page.documentId; screen = "crop"
+    }
+
+    fun clearCropDraft() {
+        cropPoints = null; cropFormat = "NATURAL"; cropRectangle = false
+    }
 
     val repository = (application as DocScanApplication).repository
     private val app = application

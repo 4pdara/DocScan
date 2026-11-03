@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.Modifier
@@ -44,15 +42,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-private val cropSaver = Saver<CropQuad, String>(save = { it.encode() }, restore = { CropQuad.decode(it) ?: CropQuad.FULL })
-
 @Composable
 fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
+    quad: CropQuad, format: PageFormat, rectangle: Boolean,
+    onQuadChange: (CropQuad) -> Unit, onFormatChange: (PageFormat) -> Unit, onRectangleChange: (Boolean) -> Unit,
     onCancel: () -> Unit, onApply: (CropQuad?, PageFormat) -> Unit) {
-    var quad by rememberSaveable(page.id, page.crop, stateSaver = cropSaver) { mutableStateOf(CropQuad.decode(page.crop) ?: CropQuad.FULL) }
-    var formatName by rememberSaveable(page.id, page.pageFormat) { mutableStateOf(page.pageFormat) }
-    val format = PageFormat.fromKey(formatName)
-    var rectangle by rememberSaveable(page.id) { mutableStateOf(false) }
     var options by remember { mutableStateOf(false) }
     var failed by remember(page.id) { mutableStateOf(false) }
     val bitmap by produceState<Bitmap?>(null, page.id) {
@@ -70,7 +64,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
         }
         Text(stringResource(R.string.crop_hint), style = MaterialTheme.typography.bodyMedium)
         val image = bitmap
-        if (image != null) CropCanvas(image, quad, rectangle, onChanged = { quad = it; noBounds = false }, Modifier.weight(1f).fillMaxWidth())
+        if (image != null) CropCanvas(image, quad, rectangle, onChanged = { onQuadChange(it); noBounds = false }, Modifier.weight(1f).fillMaxWidth())
         else Box(Modifier.weight(1f).fillMaxWidth()) {
             if (failed) Text(stringResource(R.string.preview_failed)) else CircularProgressIndicator()
         }
@@ -81,7 +75,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
                 scope.launch {
                     try {
                         val result = withContext(Dispatchers.Default) { ImagePipeline.detect(requireNotNull(image)) }
-                        if (result == null) noBounds = true else quad = if (rectangle) result.quad.rectangle() else result.quad
+                        if (result == null) noBounds = true else onQuadChange(if (rectangle) result.quad.rectangle() else result.quad)
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { noBounds = true }
                     finally { detecting = false }
@@ -90,7 +84,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
                 if (detecting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Text(stringResource(R.string.auto_crop))
             }
-            OutlinedButton(enabled = !busy && !detecting, modifier = Modifier.weight(1f), onClick = { quad = CropQuad.FULL; noBounds = false }) {
+            OutlinedButton(enabled = !busy && !detecting, modifier = Modifier.weight(1f), onClick = { onQuadChange(CropQuad.FULL); noBounds = false }) {
                 Text(stringResource(R.string.reset_crop))
             }
         }
@@ -102,9 +96,9 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
         }
     }
     if (options) CropOptions(rectangle, format, onRectangle = {
-        rectangle = it
-        if (it) quad = quad.rectangle()
-    }, onFormat = { formatName = it.name }, onDismiss = { options = false })
+        onRectangleChange(it)
+        if (it) onQuadChange(quad.rectangle())
+    }, onFormat = onFormatChange, onDismiss = { options = false })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
