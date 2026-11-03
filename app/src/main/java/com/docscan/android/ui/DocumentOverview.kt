@@ -50,14 +50,14 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
                 IconButton(enabled = canOutput, onClick = { batchFilter = true }) { AppIcon(R.drawable.ic_tune, stringResource(R.string.batch_filters)) }
                 IconButton(enabled = canOutput, onClick = { document?.let { vm.batchRotate(it.id, ids) } }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
                 IconButton(enabled = canOutput, onClick = { batchDelete = true }) { AppIcon(R.drawable.ic_delete, stringResource(R.string.delete)) }
-                TextButton(onClick = { vm.selectedPageIds = arrayListOf(); vm.selectingPages = false }) { Text(stringResource(R.string.cancel)) }
+                IconButton(onClick = { vm.selectedPageIds = arrayListOf(); vm.selectingPages = false }) { AppIcon(R.drawable.ic_back, stringResource(R.string.cancel)) }
             }
         } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionButton(R.drawable.ic_camera, stringResource(R.string.add_pages), !busy, Modifier.weight(1f), onCamera)
             ActionButton(R.drawable.ic_image, stringResource(R.string.import_files), !busy, Modifier.weight(1f), onImport)
         }
         if (pages.isEmpty()) EmptyState(stringResource(R.string.no_pages_title), stringResource(R.string.no_pages_body), Modifier.weight(1f))
-        else LazyVerticalGrid(GridCells.Adaptive(140.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        else LazyVerticalGrid(GridCells.Adaptive(132.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
                 OutlinedCard(shape = RoundedCornerShape(18.dp)) {
@@ -85,9 +85,10 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
             }
         }
         Row(Modifier.fillMaxWidth().navigationBarsPadding(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(R.drawable.ic_pdf, stringResource(R.string.save_pdf), canOutput, Modifier.weight(1f), onExport)
-            ActionButton(R.drawable.ic_image, stringResource(R.string.save_gallery), canOutput, Modifier.weight(1f), onGallery)
-            IconButton(enabled = canOutput, onClick = onShare) { AppIcon(R.drawable.ic_share, stringResource(R.string.share_options)) }
+            EditorTool(R.drawable.ic_pdf, stringResource(R.string.save_pdf), canOutput, Modifier.weight(1f), onExport)
+            EditorTool(R.drawable.ic_image, stringResource(R.string.save_gallery), canOutput, Modifier.weight(1f), onGallery)
+            val shareLabel = stringResource(R.string.share_options)
+            EditorTool(R.drawable.ic_share, shareLabel, canOutput, Modifier.weight(1f).semantics { contentDescription = shareLabel }, onShare)
         }
     }
     if (batchFilter) BatchFilterSheet(onApply = { filter, strength ->

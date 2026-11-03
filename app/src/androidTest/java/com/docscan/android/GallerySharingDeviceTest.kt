@@ -3,6 +3,8 @@ package com.docscan.android
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Environment
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -38,7 +40,11 @@ class GallerySharingDeviceTest {
     private val databaseName = "output-${UUID.randomUUID()}.db"
     @Before fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        if (Build.VERSION.SDK_INT <= 28) InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        if (Build.VERSION.SDK_INT <= 28) {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            assertEquals(PackageManager.PERMISSION_GRANTED, context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE))
+            assertEquals(Environment.MEDIA_MOUNTED, Environment.getExternalStorageState())
+        }
         database = DocScanDatabase.open(context, databaseName); repository = DocumentRepository(context, database)
         directory = File(context.cacheDir, "output-test-${UUID.randomUUID()}").apply { mkdirs() }
     }
