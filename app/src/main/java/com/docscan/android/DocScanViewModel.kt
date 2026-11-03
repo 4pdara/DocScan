@@ -3,7 +3,13 @@ package com.docscan.android
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.SavedStateHandleSaveableApi
+import androidx.lifecycle.viewmodel.compose.saveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.docscan.android.export.PdfExporter
 import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
@@ -19,7 +25,18 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-class DocScanViewModel(application: Application) : AndroidViewModel(application) {
+@OptIn(SavedStateHandleSaveableApi::class)
+class DocScanViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
+    // Routes and pending picker targets must survive Activity replacement independently of UI loading.
+    var screen by savedState.saveable { mutableStateOf("home") }
+    var documentId by savedState.saveable { mutableStateOf<String?>(null) }
+    var pageId by savedState.saveable { mutableStateOf<String?>(null) }
+    var retakePageId by savedState.saveable { mutableStateOf<String?>(null) }
+    var returnToCamera by savedState.saveable { mutableStateOf(false) }
+    var importTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var exportTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var imageExportTarget by savedState.saveable { mutableStateOf<String?>(null) }
+
     val repository = (application as DocScanApplication).repository
     private val app = application
     private val _busy = MutableStateFlow(false)

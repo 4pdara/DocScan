@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -49,9 +48,10 @@ class ScanEditingFlowTest {
         }
         val resolver = ui.activity.contentResolver
         val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
-        resolver.openOutputStream(uri).use { output ->
-            ui.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, requireNotNull(output))
-        }
+        ui.waitForIdle()
+        val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        try { resolver.openOutputStream(uri).use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, requireNotNull(output)) } }
+        finally { bitmap.recycle() }
     }
 
     @Test fun cropCanBeDraggedSavedCancelledAndResetThroughTheRealUi() {

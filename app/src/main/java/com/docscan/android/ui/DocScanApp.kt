@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -51,15 +52,17 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val documents by vm.documents.collectAsStateWithLifecycle()
     val working by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
-    var screen by rememberSaveable { mutableStateOf("home") }
-    var documentId by rememberSaveable { mutableStateOf<String?>(null) }
-    var pageId by rememberSaveable { mutableStateOf<String?>(null) }
-    var retakePageId by rememberSaveable { mutableStateOf<String?>(null) }
-    var returnToCamera by rememberSaveable { mutableStateOf(false) }
+    var screen by vm::screen
+    var documentId by vm::documentId
+    var pageId by vm::pageId
+    var retakePageId by vm::retakePageId
+    var returnToCamera by vm::returnToCamera
     val captureGate = remember(documentId) { AutoCaptureGate() }
-    var importTarget by rememberSaveable { mutableStateOf<String?>(null) }
-    var exportTarget by rememberSaveable { mutableStateOf<String?>(null) }
-    var imageExportTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var importTarget by vm::importTarget
+    var exportTarget by vm::exportTarget
+    var imageExportTarget by vm::imageExportTarget
+    val cropState = rememberSaveableStateHolder()
+    LaunchedEffect(screen) { if (screen != "crop") cropState.removeState("crop") }
     var pendingDeleteDocument by remember { mutableStateOf<DocumentSummary?>(null) }
     var pendingDeletePage by remember { mutableStateOf<PageEntity?>(null) }
     var renaming by remember { mutableStateOf(false) }
@@ -163,9 +166,12 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     }
                     "crop" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) CropScreen(page, vm.repository, busy,
-                            onCancel = { screen = "editor" },
-                            onApply = { quad, format -> vm.crop(page.id, quad, format) { screen = "editor" } })
+                        if (page != null) cropState.SaveableStateProvider("crop") {
+                            // Room may load after the first restored composition; keep the draft until then.
+                            CropScreen(page, vm.repository, busy,
+                                onCancel = { screen = "editor" },
+                                onApply = { quad, format -> vm.crop(page.id, quad, format) { screen = "editor" } })
+                        }
                         else if (loadedPages != null) LaunchedEffect(Unit) { screen = "document" }
                         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
