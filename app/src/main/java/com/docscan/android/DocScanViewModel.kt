@@ -43,16 +43,17 @@ class DocScanViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearMessage() { _message.value = null }
     fun cameraError() { _message.value = app.getString(R.string.camera_failed) }
+    fun googleScannerError() { _message.value = app.getString(R.string.google_scan_failed) }
 
     fun create(onCreated: (String) -> Unit) = task { onCreated(repository.create(defaultTitle())) }
 
-    fun importImages(uris: List<Uri>, documentId: String?, onLoaded: (String) -> Unit) {
+    fun importImages(uris: List<Uri>, documentId: String?, detectBounds: Boolean = true, onLoaded: (String) -> Unit) {
         if (uris.isEmpty()) return
         task {
             val id = documentId ?: repository.create(defaultTitle())
             var imported = 0
             for (uri in uris) {
-                try { repository.importImage(id, uri); imported++ }
+                try { repository.importImage(id, uri, detectBounds); imported++ }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { /* Keep successfully published pages. No document contents in logs. */ }
             }

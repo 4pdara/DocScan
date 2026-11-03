@@ -8,7 +8,7 @@ data class GrayImage(val width: Int, val height: Int, val pixels: IntArray) {
 
 data class DocumentDetection(val quad: CropQuad, val confidence: Float)
 
-/** Bounded, offline detector for a light page against a contrasting surface.
+/** Bounded, offline detector using supported page edges, then light-page segmentation.
  * No confident quadrilateral means no automatic crop/capture; never invent edges.
  */
 object DocumentDetector {

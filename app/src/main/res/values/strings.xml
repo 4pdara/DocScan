@@ -4,6 +4,10 @@
     <string name="library_title">המסמכים שלי</string>
     <string name="library_subtitle">כל הדפים שלך. במקום אחד.</string>
     <string name="new_scan">סריקה חדשה</string>
+    <string name="scan_google">סריקה עם Google</string>
+    <string name="google_scan_hint">כלי החיתוך והניקוי של Google. נדרשים שירותי Google; בפעם הראשונה ייתכן שתידרש הורדת רכיבים.</string>
+    <string name="google_scan_preparing">מכין את הסורק של Google…</string>
+    <string name="google_scan_failed">לא ניתן לפתוח את הסורק של Google. נדרשים שירותי Google מעודכנים ומכשיר נתמך. אפשר להשתמש בסריקה המקומית באמצעות ״סריקה חדשה״.</string>
     <string name="import_images">ייבוא תמונות</string>
     <string name="empty_title">המסמך הבא מתחיל כאן</string>
     <string name="empty_body">מצלמים כמה דפים או בוחרים תמונות, ושומרים יחד כ־PDF.</string>

@@ -47,7 +47,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val configuration = LocalConfiguration.current
     val direction = if (configuration.locales[0].language == "en") LayoutDirection.Ltr else LayoutDirection.Rtl
     val documents by vm.documents.collectAsStateWithLifecycle()
-    val busy by vm.busy.collectAsStateWithLifecycle()
+    val working by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf("home") }
     var documentId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -66,6 +66,12 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val pageFlow = remember(documentId) { documentId?.let(vm.repository::observePages) ?: flowOf(emptyList()) }
     val pages by pageFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val snackbar = remember { SnackbarHostState() }
+    val googleScan = rememberGoogleScanAction(onPages = { uris ->
+        vm.importImages(uris, null, detectBounds = false) { id ->
+            documentId = id; returnToCamera = false; screen = "document"
+        }
+    }, onError = vm::googleScannerError)
+    val busy = working || googleScan.preparing
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it, withDismissAction = true); vm.clearMessage() } }
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         vm.importImages(uris, importTarget) { id -> documentId = id; screen = "document" }
@@ -126,6 +132,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (screen) {
                     "home" -> HomeScreen(documents, busy,
+                        googlePreparing = googleScan.preparing, onGoogleScan = googleScan.launch, onCancelGoogle = googleScan.cancel,
                         onOpen = { documentId = it; screen = "document" },
                         onImport = { importTarget = null; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         onDelete = { pendingDeleteDocument = it },
@@ -204,7 +211,9 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
 }
 
 @Composable
-private fun HomeScreen(documents: List<DocumentSummary>, busy: Boolean, onOpen: (String) -> Unit, onImport: () -> Unit, onDelete: (DocumentSummary) -> Unit) {
+private fun HomeScreen(documents: List<DocumentSummary>, busy: Boolean, googlePreparing: Boolean,
+    onGoogleScan: () -> Unit, onCancelGoogle: () -> Unit,
+    onOpen: (String) -> Unit, onImport: () -> Unit, onDelete: (DocumentSummary) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineLarge)
@@ -214,6 +223,12 @@ private fun HomeScreen(documents: List<DocumentSummary>, busy: Boolean, onOpen: 
                     Text(stringResource(R.string.local_badge), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.prototype_label), style = MaterialTheme.typography.bodySmall)
                     ActionButton(R.drawable.ic_image, stringResource(R.string.import_images), !busy, onClick = onImport)
+                    ActionButton(R.drawable.ic_camera, stringResource(R.string.scan_google), !busy, Modifier.fillMaxWidth(), onGoogleScan)
+                    Text(stringResource(R.string.google_scan_hint), style = MaterialTheme.typography.bodySmall)
+                    if (googlePreparing) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.google_scan_preparing), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = onCancelGoogle) { Text(stringResource(R.string.cancel)) }
+                    }
                 }
             }
         }

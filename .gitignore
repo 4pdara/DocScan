@@ -7,3 +7,9 @@ local.properties
 *.hprof
 .idea/
 captures/
+*.apk
+*.apks
+*.apkm
+*.xapk
+decompiled/
+analysis/

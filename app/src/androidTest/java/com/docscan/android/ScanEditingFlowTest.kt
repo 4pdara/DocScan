@@ -18,10 +18,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.docscan.android.processing.CropQuad
+import com.docscan.android.scanning.GoogleScanner
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -154,6 +156,23 @@ class ScanEditingFlowTest {
             assertEquals(1, runBlocking { app.database.documents().pages(id).size })
             assertArrayEquals(original, app.repository.source(page).readBytes())
         } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }
+    }
+
+    @Test fun googleScannerUnavailableKeepsLocalScannerUsable() {
+        assumeFalse(GoogleScanner.isAvailable(ui.activity))
+        val before = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() }
+        try {
+            ui.onNodeWithText(text(R.string.scan_google)).performScrollTo().performClick()
+            ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.google_scan_failed)).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithText(text(R.string.google_scan_failed)).assertIsDisplayed()
+            assertEquals(before, runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() })
+            ui.onNodeWithText(text(R.string.new_scan)).performClick()
+            ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.fast_scan)).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithContentDescription(text(R.string.fast_scan)).assertIsOn()
+        } finally {
+            val created = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.filter { it !in before } }
+            runBlocking { created.forEach { app.repository.deleteDocument(it) } }
+        }
     }
 
     @Test fun fastScanAndPauseAreVisibleAndManualModeRemainsAvailable() {

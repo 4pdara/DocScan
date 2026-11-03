@@ -63,4 +63,39 @@ class FasterScanningTest {
         assertTrue(a.distance(b) < .1f)
         assertFalse(a.differsFrom(b))
     }
+
+    @Test fun finePrintAndCornerJitterStillCaptureOnceWithoutAFalseNewPage() {
+        val w = 288; val h = 216; val random = Random(3)
+        val pixels = IntArray(w * h) { 210 }
+        for (row in 30..190 step 9) for (column in 50..235 step 7) {
+            if (random.nextBoolean()) for (y in row..row + 2) for (x in column..column + 3) pixels[y * w + x] = 35
+        }
+        val image = GrayImage(w, h, pixels)
+        val bounds = CropQuad(CropPoint(.1f, .08f), CropPoint(.9f, .08f), CropPoint(.9f, .94f), CropPoint(.1f, .94f))
+        val gate = AutoCaptureGate()
+        var captures = 0
+        for (frame in 0..30) {
+            val offset = if (frame % 2 == 0) -.01f else .01f
+            val jitter = CropQuad.from(bounds.points.map { CropPoint(it.x + offset, it.y + offset) })
+            if (gate.update(jitter, frame * 100L, fingerprint = PageFingerprint.from(image, jitter)).capture) captures++
+        }
+        assertEquals(1, captures)
+    }
+
+    @Test fun spatialAveragingStillRecognizesDifferentPrintedContent() {
+        val w = 288; val h = 216
+        fun printed(vertical: Boolean) = GrayImage(w, h, IntArray(w * h) { i ->
+            val position = if (vertical) i % w else i / w
+            if (position % 60 < 22) 40 else 215
+        })
+        val first = PageFingerprint.from(printed(false), CropQuad.FULL)
+        val next = PageFingerprint.from(printed(true), CropQuad.FULL)
+        assertTrue(first.differsFrom(next))
+        val gate = AutoCaptureGate()
+        var captures = 0
+        for (frame in 0..20) {
+            if (gate.update(page, frame * 100L, fingerprint = if (frame < 10) first else next).capture) captures++
+        }
+        assertEquals(2, captures)
+    }
 }

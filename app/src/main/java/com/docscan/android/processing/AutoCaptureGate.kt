@@ -58,7 +58,7 @@ class AutoCaptureGate(private val stableMillis: Long = 450, private val removalM
         if (missingSince >= 0 && stableSince >= 0) stableSince += now - missingSince
         missingSince = -1
         if (anchor == null || quad.maxDistance(requireNotNull(anchor)) > .032f ||
-            (stableFingerprint != null && fingerprint != null && fingerprint.distance(requireNotNull(stableFingerprint)) > 7f)) {
+            (stableFingerprint != null && fingerprint != null && fingerprint.distance(requireNotNull(stableFingerprint)) > PageFingerprint.CONTENT_DISTANCE)) {
             anchor = quad; stableSince = now; stableFingerprint = fingerprint
         }
         val progress = ((now - stableSince).toFloat() / stableMillis).coerceIn(0f, 1f)

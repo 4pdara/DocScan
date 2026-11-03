@@ -92,6 +92,24 @@ class DocumentRepositoryTest {
         repository.deleteDocument(id); broken.delete()
     }
 
+    @Test fun processedScannerOutputIsImportedWithoutASecondCropOrFilter() = runBlocking {
+        val id = repository.create("Processed scanner output")
+        val file = File(context.cacheDir, "processed-${UUID.randomUUID()}.png")
+        val bitmap = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.DKGRAY)
+        android.graphics.Canvas(bitmap).drawRect(40f, 40f, 260f, 360f,
+            android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val bytes = file.readBytes()
+        val normal = repository.importImage(id, Uri.fromFile(file))
+        val processed = repository.importImage(id, Uri.fromFile(file), detectBounds = false)
+        assertNotNull(normal.crop)
+        assertNull(processed.crop); assertEquals("ORIGINAL", processed.filter)
+        assertArrayEquals(bytes, repository.source(processed).readBytes())
+        repository.deleteDocument(id); file.delete()
+        Unit
+    }
+
     @Test fun invalidInputDoesNotPublishAPage() = runBlocking {
         val id = repository.create("Draft")
         val broken = File(context.cacheDir, "invalid.png").apply { writeText("not an image") }

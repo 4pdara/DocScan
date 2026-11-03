@@ -4,6 +4,10 @@
     <string name="library_title">My documents</string>
     <string name="library_subtitle">Your pages, all together.</string>
     <string name="new_scan">New scan</string>
+    <string name="scan_google">Scan with Google</string>
+    <string name="google_scan_hint">Google cropping and cleanup tools. Requires Google Play services; first use may download components.</string>
+    <string name="google_scan_preparing">Preparing Google scanner…</string>
+    <string name="google_scan_failed">Google scanner could not open. Updated Google Play services and a supported device are required. Use New scan for the local scanner.</string>
     <string name="import_images">Import images</string>
     <string name="empty_title">Your next document starts here</string>
     <string name="empty_body">Capture a few pages or choose images, then save one PDF.</string>
@@ -45,7 +49,7 @@
     <string name="manual_scan_hint">Tap to capture. Automatic cropping applies when the page edges are detected.</string>
     <string name="resume_scan">Resume</string>
     <string name="pause_scan">Pause</string>
-    <string name="crop_title">Crop and straighten</string>
+    <string name="crop_title">Crop and align</string>
     <string name="crop_hint">Drag the four corners to the page edges. The original is preserved.</string>
     <string name="crop_not_found">No clear page edges found. Drag the corners manually.</string>
     <string name="auto_crop">Detect edges</string>

@@ -42,10 +42,10 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         id
     }
 
-    suspend fun importImage(documentId: String, uri: Uri): PageEntity = withContext(Dispatchers.IO) {
+    suspend fun importImage(documentId: String, uri: Uri, detectBounds: Boolean = true): PageEntity = withContext(Dispatchers.IO) {
         lock.withLock {
             val input = requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Image unavailable" }
-            input.use { publishImage(documentId, it) }
+            input.use { publishImage(documentId, it, detectBounds = detectBounds) }
         }
     }
 
@@ -56,7 +56,7 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         }
     }
 
-    private suspend fun publishImage(documentId: String, input: InputStream, replacement: PageEntity? = null): PageEntity {
+    private suspend fun publishImage(documentId: String, input: InputStream, replacement: PageEntity? = null, detectBounds: Boolean = true): PageEntity {
         requireNotNull(dao.document(documentId)) { "Document no longer exists" }
         val id = UUID.randomUUID().toString()
         val temporary = File(staging, "$id.pending")
@@ -75,7 +75,7 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
                 output.fd.sync()
             }
             ImagePipeline.validate(temporary)
-            val crop = try { ImagePipeline.detectCrop(temporary) } catch (_: Exception) { null }
+            val crop = if (detectBounds) try { ImagePipeline.detectCrop(temporary) } catch (_: Exception) { null } else null
             check(temporary.renameTo(destination)) { "Cannot save original" }
             database.withTransaction {
                 val position = (dao.pages(documentId).maxOfOrNull { it.position } ?: -1) + 1
