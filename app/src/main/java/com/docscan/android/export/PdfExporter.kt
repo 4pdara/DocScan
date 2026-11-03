@@ -7,6 +7,7 @@ import android.graphics.pdf.PdfDocument
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
 import com.docscan.android.processing.ImagePipeline
+import com.docscan.android.processing.CropQuad
 import com.docscan.android.processing.ScanFilter
 import java.io.File
 
@@ -17,7 +18,7 @@ object PdfExporter {
         val pdf = PdfDocument()
         try {
                 pages.forEachIndexed { index, page ->
-                    val bitmap = ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), 2400)
+                    val bitmap = ImagePipeline.render(repository.source(page), page.rotation, ScanFilter.valueOf(page.filter), 2400, CropQuad.decode(page.crop))
                     try {
                         val landscape = bitmap.width > bitmap.height
                         val width = if (landscape) 842 else 595

@@ -2,6 +2,8 @@ package com.docscan.android.data
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "documents")
@@ -27,6 +29,7 @@ data class PageEntity(
     val sourceFile: String,
     val rotation: Int = 0,
     val filter: String = "ORIGINAL",
+    val crop: String? = null,
 )
 
 data class DocumentSummary(@Embedded val document: DocumentEntity, val pageCount: Int)
@@ -71,12 +74,17 @@ interface DocumentDao {
     suspend fun deleteDocument(id: String)
 }
 
-@Database(entities = [DocumentEntity::class, PageEntity::class], version = 1, exportSchema = true)
+@Database(entities = [DocumentEntity::class, PageEntity::class], version = 2, exportSchema = true)
 abstract class DocScanDatabase : RoomDatabase() {
     abstract fun documents(): DocumentDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pages ADD COLUMN crop TEXT")
+            }
+        }
         fun open(context: Context, name: String = "docscan.db"): DocScanDatabase =
-            Room.databaseBuilder(context, DocScanDatabase::class.java, name).build()
+            Room.databaseBuilder(context, DocScanDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
     }
 }

@@ -32,8 +32,22 @@
     <string name="no_pages_title">מוסיפים את הדף הראשון</string>
     <string name="no_pages_body">אפשר לצלם דפים בזה אחר זה או לייבא תמונות מהמכשיר.</string>
     <string name="camera_hint">מיישרים את הדף ולוחצים לצילום</string>
-    <string name="manual_mode">צילום ידני</string>
-    <string name="manual_explanation">בגרסת הניסוי מצלמים בלחיצה לכל דף. צילום אוטומטי יתווסף בשלב הבא.</string>
+    <string name="fast_scan">סריקה רציפה מהירה</string>
+    <string name="scan_saving">שומר את העמוד…</string>
+    <string name="scan_paused">הסריקה האוטומטית מושהית</string>
+    <string name="scan_replace_page">העמוד נשמר. אפשר להחליף דף</string>
+    <string name="scan_hold_steady">החזק יציב — מצלם אוטומטית</string>
+    <string name="scan_find_page">מקם את כל גבולות הדף בתוך התמונה</string>
+    <string name="auto_scan_hint">דף בהיר על רקע מנוגד מזוהה בקלות. לאחר הצילום מחליפים דף; אפשר גם לצלם בלחיצה.</string>
+    <string name="manual_scan_hint">צילום בלחיצה. חיתוך אוטומטי יוחל כשגבולות הדף מזוהים.</string>
+    <string name="resume_scan">המשך</string>
+    <string name="pause_scan">השהיה</string>
+    <string name="crop_title">חיתוך ויישור</string>
+    <string name="crop_hint">גרור את ארבע הפינות אל גבולות הדף. המקור נשמר.</string>
+    <string name="crop_not_found">לא זוהו גבולות ברורים. אפשר לגרור את הפינות ידנית.</string>
+    <string name="auto_crop">זיהוי אוטומטי</string>
+    <string name="reset_crop">כל התמונה</string>
+    <string name="apply_crop">החל חיתוך</string>
     <string name="capture">צילום עמוד</string>
     <string name="done">סיום</string>
     <string name="flashlight">פנס</string>
@@ -55,5 +69,5 @@
     <string name="import_partial">נשמרו %1$d מתוך %2$d תמונות. חלק מהקבצים לא נתמכים או חורגים מהמגבלה של 50 MB לתמונה.</string>
     <string name="load_failed">לא ניתן לטעון את המסמכים כרגע.</string>
     <string name="preview_failed">התצוגה המקדימה אינה זמינה</string>
-    <string name="prototype_label">גרסת פיתוח 0.1</string>
+    <string name="prototype_label">גרסת פיתוח 0.2 · צילום רציף וחיתוך</string>
 </resources>

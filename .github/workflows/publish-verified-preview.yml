@@ -1,0 +1,88 @@
+name: Publish verified DocScan preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Android checks and APK run on main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-docscan-preview
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - name: Verify the tested source build
+        id: verify
+        run: |
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN_ID" > build-run.json
+          python3 - <<'PY'
+          import json, os, re
+          run = json.load(open('build-run.json'))
+          assert os.environ['GH_REPO'] == '4pdara/DocScan'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['path'] == '.github/workflows/android.yml'
+          assert run['head_branch'] == 'main' and run['event'] == 'push'
+          assert run['repository']['full_name'] == os.environ['GH_REPO']
+          assert re.fullmatch(r'[0-9a-f]{40}', run['head_sha'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('source_commit=' + run['head_sha'] + '\n')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.verify.outputs.source_commit }}
+          persist-credentials: false
+      - name: Read the verified version
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          source = pathlib.Path('app/build.gradle.kts').read_text()
+          version = re.search(r'^\s*versionName = "(\d+\.\d+\.\d+)"\s*$', source, re.M).group(1)
+          assert pathlib.Path(f'docs/RELEASE_{version}_HE.md').is_file()
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('VERSION=' + version + '\n')
+          PY
+      - name: Download the verified APK
+        run: |
+          gh run download "$BUILD_RUN_ID" --repo "$GH_REPO" --name DocScan-debug --dir build-apk
+          test -f build-apk/app-debug.apk
+          unzip -t build-apk/app-debug.apk > /dev/null
+          mkdir release-assets
+          cp build-apk/app-debug.apk "release-assets/DocScan-$VERSION-debug.apk"
+          cd release-assets
+          sha256sum "DocScan-$VERSION-debug.apk" > SHA256SUMS.txt
+      - name: Publish the development pre-release
+        env:
+          SOURCE_COMMIT: ${{ steps.verify.outputs.source_commit }}
+        run: |
+          cp "docs/RELEASE_${VERSION}_HE.md" release-notes.md
+          python3 - <<'PY'
+          import os
+          with open('release-notes.md', 'a') as out:
+              repo, run = os.environ['GH_REPO'], os.environ['BUILD_RUN_ID']
+              out.write(f'\n\n[ריצת הבדיקות והבנייה](https://github.com/{repo}/actions/runs/{run})\n')
+              out.write(f'\nSource commit: `{os.environ["SOURCE_COMMIT"]}`\n')
+          PY
+          gh release create "v$VERSION" \
+            --repo "$GH_REPO" \
+            --target "$SOURCE_COMMIT" \
+            --title "DocScan v$VERSION — גרסת ניסוי" \
+            --prerelease \
+            --notes-file release-notes.md \
+            "release-assets/DocScan-$VERSION-debug.apk" release-assets/SHA256SUMS.txt

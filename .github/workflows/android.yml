@@ -60,7 +60,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Enable hardware acceleration
         run: sudo chmod a+rw /dev/kvm
-      - name: Test PDF export on Android and capture the home screen
+      - name: Test crop, scanning controls and PDF export on Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -71,6 +71,7 @@ jobs:
             ./gradlew connectedDebugAndroidTest --console=plain
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p app/build/reports/screenshots
+            adb pull /sdcard/Pictures/DocScanTest app/build/reports/screenshots/
             adb logcat -c
             adb shell am start -W -n io.github.user4pdara.docscan.debug/com.docscan.android.MainActivity
             adb shell input keyevent 82
