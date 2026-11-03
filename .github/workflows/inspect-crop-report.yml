@@ -1,0 +1,37 @@
+name: Inspect crop restoration report
+
+on:
+  push:
+    branches: [diagnostics/04-crop-restore]
+    paths: [.github/workflows/inspect-crop-report.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Read the failed emulator report
+        run: |
+          gh run download 41668126244 --repo "$GH_REPO" --name Android-device-reports --dir reports
+          python3 - <<'PY'
+          import pathlib, re, html, base64
+          root = pathlib.Path('reports')
+          for file in root.rglob('com.docscan.android.ProfessionalEditingFlowTest.html'):
+              source = file.read_text()
+              for match in re.findall(r'<pre>(.*?)</pre>', source, re.S):
+                  print(html.unescape(re.sub('<[^>]+>', '', match))[:16000])
+          for file in root.rglob('logcat.txt'):
+              lines = file.read_text().splitlines()
+              selected = [line for line in lines if 'I System.out:' in line or 'E TestRunner:' in line]
+              print('\n'.join(selected[-280:]))
+          for name in ['crop-restore-failure.png', 'crop-loupe.png', 'he-filters.png', 'he-adjustments.png', 'he-crop-options.png']:
+              for file in root.rglob(name):
+                  print('DOCSCAN_IMAGE ' + name + ' ' + base64.b64encode(file.read_bytes()).decode())
+          PY
