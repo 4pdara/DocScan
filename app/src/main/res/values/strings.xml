@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="filter_auto_document">אוטומטי למסמך</string>
+    <string name="auto_document_hint">נרמול גוון הנייר והתאורה והדגשת הכתב. בדוק גם כתב חלש וחותמות; ניתן לשנות עוצמה או לחזור למקור.</string>
     <string name="swipe_pages">החלק ימינה או שמאלה למעבר בין עמודים</string>
     <string name="edit_page_desc">עריכת עמוד %1$d</string>
     <string name="continuous_pages">תצוגה רציפה</string>

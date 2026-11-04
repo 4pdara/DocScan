@@ -13,6 +13,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.nio.ByteBuffer
 import java.util.Base64
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -22,6 +23,20 @@ class PhonePhotoDetectionTest {
     private fun fixture() = requireNotNull(javaClass.getResourceAsStream("/book-angle.jpg.b64")).use {
         val bytes = Base64.getMimeDecoder().decode(it.readBytes())
         requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+    }
+    @Test fun savedPhotoRefinementKeepsTheKnownPhoneBookCornersAndSource() {
+        val image = fixture()
+        val file = File.createTempFile("book-refinement-", ".png")
+        try {
+            file.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val bytes = file.readBytes()
+            for (mode in DetectionMode.entries) {
+                val quad = requireNotNull(ImagePipeline.detectCrop(file, mode))
+                assertTrue("Saved-photo refinement must keep the outer book boundary in $mode: $quad",
+                    quad.maxDistance(expected) < .055f)
+            }
+            assertArrayEquals(bytes, file.readBytes())
+        } finally { image.recycle(); file.delete() }
     }
     @Test fun coloredPrintedColumnsDoNotReplaceTheOuterPageBoundary() {
         for (ink in listOf(Color.BLUE, Color.RED, Color.GREEN)) {

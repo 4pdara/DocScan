@@ -69,6 +69,35 @@ class OriginalExportTest {
         image.width to image.height
     }
 
+    @Test fun autoDocumentFilterExportsAtSourceResolutionAndSurvivesBackup(): Unit = runBlocking {
+        val input = file("png")
+        val bitmap = Bitmap.createBitmap(3600, 700, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.rgb(215, 195, 160))
+        for (y in 300..303) for (x in 300..3300) bitmap.setPixel(x, y, Color.rgb(65, 55, 40))
+        input.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val page = page(input); val original = repository.source(page).readBytes()
+        repository.setFilter(page.id, ScanFilter.AUTO_DOCUMENT); repository.setFilterStrength(page.id, 100)
+        val edited = database.documents().page(page.id)!!
+        val result = jpeg(edited)
+        assertEquals(3600 to 700, dimensions(result))
+        val decoded = requireNotNull(BitmapFactory.decodeByteArray(result, 0, result.size))
+        try {
+            val paper = decoded.getPixel(1800, 200)
+            assertTrue(Color.blue(paper) > 245)
+            assertTrue(kotlin.math.abs(Color.red(paper) - Color.blue(paper)) < 8)
+            assertTrue(Color.red(decoded.getPixel(1800, 301)) < 100)
+        } finally { decoded.recycle() }
+        val pdf = file("pdf"); PdfExporter.write(listOf(edited), repository, pdf)
+        assertEquals(3600 to 700, pdfImage(pdf))
+        val archive = ByteArrayOutputStream().also { repository.backup(it) }.toByteArray()
+        repository.restore(archive.inputStream())
+        val restored = database.documents().allDocuments().single { it.id != page.documentId }.id
+        val copy = database.documents().pages(restored).single()
+        assertEquals("AUTO_DOCUMENT", copy.filter); assertEquals(100, copy.filterStrength)
+        assertArrayEquals(original, repository.source(copy).readBytes())
+        assertArrayEquals(original, repository.source(edited).readBytes())
+    }
+
     @Test fun defaultJpegPdfAndSharedImagesKeepNativeGridBeyond3200(): Unit = runBlocking {
         val page = page(input(4500, 1100)); val original = repository.source(page).readBytes()
         assertEquals(4500 to 1100, dimensions(jpeg(page)))

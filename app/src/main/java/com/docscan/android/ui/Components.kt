@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.docscan.android.R
 import com.docscan.android.data.DocumentRepository
@@ -94,6 +95,10 @@ fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modi
     fun transform(center: Offset, movement: Offset, factor: Float) {
         val bitmap = preview.bitmap ?: return
         if (viewport.width <= 0 || viewport.height <= 0) return
+        // calculateCentroid() is unspecified when the last pointer is released.
+        // Never let NaN reach a graphics layer: even a later reset may leave it blank.
+        if (!center.x.isFinite() || !center.y.isFinite() || !movement.x.isFinite() ||
+            !movement.y.isFinite() || !factor.isFinite() || factor <= 0f) return
         val next = (zoom * factor).coerceIn(1f, 5f)
         val focus = center - Offset(viewport.width / 2f, viewport.height / 2f)
         val ratio = next / zoom
@@ -114,7 +119,8 @@ fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modi
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     // A single finger at fit size belongs to the parent page pager.
                     // Pinching and panning a magnified page stay inside this preview.
-                    if (event.changes.count { it.pressed } > 1 || zoom > 1.01f) {
+                    if (event.changes.any { it.pressed && it.previousPressed } &&
+                        (event.changes.count { it.pressed } > 1 || zoom > 1.01f)) {
                         transform(event.calculateCentroid(), event.calculatePan(), event.calculateZoom())
                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                     }
@@ -126,12 +132,18 @@ fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modi
             })
         } else Modifier
     val pageSize = if (fitPage) Modifier.aspectRatio(preview.bitmap?.let { it.width.toFloat() / it.height } ?: .707f) else Modifier
-    Box(modifier.then(pageSize).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant).then(gestures), contentAlignment = Alignment.Center) {
-        when {
-            preview.bitmap != null -> Image(requireNotNull(preview.bitmap).asImageBitmap(), null,
-                Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, contentScale = ContentScale.Fit)
-            preview.failed -> Text(stringResource(R.string.preview_failed), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-            else -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+    Box(modifier.then(pageSize).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        // Keep image gestures below the zoom button, so releasing a button press
+        // cannot also pan or scale the image underneath it.
+        Box(Modifier.fillMaxSize().then(gestures), contentAlignment = Alignment.Center) {
+            when {
+                preview.bitmap != null -> Image(requireNotNull(preview.bitmap).asImageBitmap(), null,
+                    Modifier.fillMaxSize().testTag("preview-image-${page.id}").graphicsLayer {
+                        scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y
+                    }, contentScale = ContentScale.Fit)
+                preview.failed -> Text(stringResource(R.string.preview_failed), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                else -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
         }
         if (zoomable && preview.bitmap != null) Surface(Modifier.align(Alignment.TopEnd).padding(8.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = .92f), shape = RoundedCornerShape(20.dp)) {
@@ -146,6 +158,7 @@ fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modi
 @Composable
 fun filterLabel(filter: ScanFilter): String = stringResource(when (filter) {
     ScanFilter.ORIGINAL -> R.string.original
+    ScanFilter.AUTO_DOCUMENT -> R.string.filter_auto_document
     ScanFilter.ENHANCED -> R.string.enhanced
     ScanFilter.GRAYSCALE -> R.string.grayscale
     ScanFilter.MONOCHROME -> R.string.monochrome
