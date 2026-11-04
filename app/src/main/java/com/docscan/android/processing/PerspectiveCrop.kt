@@ -31,6 +31,8 @@ object PerspectiveCrop {
                 drawColor(Color.WHITE)
                 drawBitmap(source, matrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
             }
+            // The white backing makes every output pixel opaque, including originally transparent input.
+            result.setHasAlpha(false)
         }
     }
 }

@@ -1,5 +1,8 @@
 package com.docscan.android.export
 
+import android.graphics.Bitmap
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
 import com.docscan.android.data.adjustments
@@ -41,7 +44,11 @@ object PdfExporter {
                             val margin = if (format == PageFormat.NATURAL) 36f else 0f
                             val scale = minOf((width - margin) / bitmap.width, (height - margin) / bitmap.height)
                             val w = bitmap.width * scale; val h = bitmap.height * scale
-                            val image = JPEGFactory.createFromImage(pdf, bitmap, .95f)
+                            // Embed the same opaque JPEG encoding used by image export, without a soft mask.
+                            val encoded = ByteArrayOutputStream().apply {
+                                check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, this)) { "JPEG encoding failed" }
+                            }.toByteArray()
+                            val image = ByteArrayInputStream(encoded).use { JPEGFactory.createFromStream(pdf, it) }
                             PDPageContentStream(pdf, output).use { stream -> stream.drawImage(image, (width - w) / 2, (height - h) / 2, w, h) }
                         } finally { bitmap.recycle() }
                     }

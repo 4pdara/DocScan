@@ -140,6 +140,26 @@ class GallerySharingDeviceTest {
         assertTrue(Color.green(pixel) > 230 && Color.blue(pixel) > 230 && Color.red(pixel) < 25); bitmap.recycle()
         assertArrayEquals(original, input.readBytes())
     }
+    @Suppress("DEPRECATION")
+    private fun recordFixture(bitmap: Bitmap, name: String) {
+        val filename = "$name-${UUID.randomUUID()}.png"
+        val values = android.content.ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            if (Build.VERSION.SDK_INT >= 29) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/DocScanTest")
+            } else {
+                val folder = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "DocScanTest")
+                check(folder.isDirectory || folder.mkdirs())
+                put(MediaStore.Images.Media.DATA, File(folder, filename).absolutePath)
+            }
+        }
+        val uri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+        requireNotNull(context.contentResolver.openOutputStream(uri)).use {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+    }
+
     @Test fun angledPageIsSavedAndExportedAsStraightPageWithoutTheDesk(): Unit = runBlocking {
         val id = document(); val input = File(directory, "angled.png")
         val bitmap = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
@@ -150,6 +170,7 @@ class GallerySharingDeviceTest {
         val canvas = android.graphics.Canvas(bitmap)
         canvas.drawPath(path, android.graphics.Paint().apply { color = Color.WHITE })
         canvas.drawRect(265f, 360f, 340f, 440f, android.graphics.Paint().apply { color = Color.RED })
+        recordFixture(bitmap, "workflow-angle-input")
         input.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
         val bytes = input.readBytes()
         val page = repository.importImage(id, Uri.fromFile(input), detectionMode = DetectionMode.ANGLED_DISTANCE)
@@ -157,19 +178,24 @@ class GallerySharingDeviceTest {
         val jpeg = File(directory, "straight.jpg")
         jpeg.outputStream().use { JpegExporter.write(page, repository, it) }
         val output = requireNotNull(BitmapFactory.decodeFile(jpeg.path))
+        recordFixture(output, "workflow-angle-jpeg")
         try {
             val pixels = IntArray(output.width * output.height)
             output.getPixels(pixels, 0, output.width, 0, 0, output.width, output.height)
-            assertTrue("Only the page should remain", pixels.count { Color.red(it) < 100 } < pixels.size * .01f)
+            assertTrue("Only the page should remain; crop=${page.crop}", pixels.count { Color.red(it) < 100 } < pixels.size * .01f)
+            val red = pixels.count { Color.red(it) > 200 && Color.green(it) < 80 }
+            assertTrue("JPEG lost printed content: red=$red crop=${page.crop} size=${output.width}x${output.height}", red > 1000)
             assertTrue(output.width < 570 && output.height < 700)
         } finally { output.recycle() }
         val pdf = File(directory, "straight.pdf")
         PdfExporter.write(listOf(page), repository, pdf)
         val rendered = PdfSources.render(pdf, 700)
+        recordFixture(rendered, "workflow-angle-pdf")
         try {
             val pixels = IntArray(rendered.width * rendered.height)
             rendered.getPixels(pixels, 0, rendered.width, 0, 0, rendered.width, rendered.height)
-            assertTrue(pixels.count { Color.red(it) > 200 && Color.green(it) < 80 } > 500)
+            val red = pixels.count { Color.red(it) > 200 && Color.green(it) < 80 }
+            assertTrue("PDF lost printed content: red=$red crop=${page.crop}", red > 500)
             assertTrue(pixels.count { Color.red(it) < 100 } < pixels.size * .01f)
         } finally { rendered.recycle() }
         assertArrayEquals(bytes, repository.source(page).readBytes())
