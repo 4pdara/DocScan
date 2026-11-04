@@ -21,6 +21,7 @@ import kotlinx.coroutines.NonCancellable
 import com.docscan.android.export.PdfExporter
 import com.docscan.android.export.JpegExporter
 import com.docscan.android.processing.ScanFilter
+import com.docscan.android.processing.DetectionMode
 import com.docscan.android.processing.CropQuad
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -161,18 +162,22 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
         try { onReady(files) } catch (failure: Exception) { files.first().parentFile?.deleteRecursively(); throw failure }
     }
 
-    fun capture(documentId: String, file: File, onSaved: (Boolean) -> Unit) {
+    fun capture(documentId: String, file: File, detectionMode: DetectionMode = DetectionMode.STANDARD, onSaved: (Boolean) -> Unit) {
         var saved = false
         task(finallyAction = { file.delete(); onSaved(saved) }) {
-            repository.importImage(documentId, Uri.fromFile(file), enhanceCapture = true); saved = true
+            val page = repository.importImage(documentId, Uri.fromFile(file), enhanceCapture = true, detectionMode = detectionMode)
+            saved = true
+            if (page.crop == null) _message.value = app.getString(R.string.capture_crop_review)
         }
     }
 
     fun rename(id: String, title: String) = task { repository.rename(id, title) }
-    fun retake(pageId: String, file: File, onSaved: (Boolean) -> Unit) {
+    fun retake(pageId: String, file: File, detectionMode: DetectionMode = DetectionMode.STANDARD, onSaved: (Boolean) -> Unit) {
         var saved = false
         task(finallyAction = { file.delete(); onSaved(saved) }) {
-            repository.replaceImage(pageId, Uri.fromFile(file)); saved = true
+            val page = repository.replaceImage(pageId, Uri.fromFile(file), detectionMode)
+            saved = true
+            if (page.crop == null) _message.value = app.getString(R.string.capture_crop_review)
         }
     }
     fun rotate(id: String) = task { repository.rotate(id) }

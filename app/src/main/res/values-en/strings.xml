@@ -50,8 +50,8 @@
     <string name="resume_scan">Resume</string>
     <string name="pause_scan">Pause</string>
     <string name="crop_title">Crop and align</string>
-    <string name="crop_hint">Drag corners or edges to the page boundary. A magnified view appears while dragging.</string>
-    <string name="crop_not_found">No clear page edges found. Drag the corners manually.</string>
+    <string name="crop_hint">Drag the four corners or the handles at the middle of each edge inward or outward to the page boundary. A magnified view appears while dragging.</string>
+    <string name="crop_not_found">No clear page edges found. Adjust the corners or the edge handles to the page boundary.</string>
     <string name="auto_crop">Detect edges</string>
     <string name="reset_crop">Full image</string>
     <string name="apply_crop">Apply crop</string>
@@ -150,4 +150,7 @@
     <string name="high_quality_capture">High quality capture</string>
     <string name="capture_quality_hint">High quality capture may take longer. Fast capture is the default.</string>
     <string name="apply">Apply</string>
+    <string name="angle_distance_detection">Angled and distant pages</string>
+    <string name="angle_distance_hint">Find smaller pages or pages viewed from the side. Keep all four page edges visible and hold steady.</string>
+    <string name="capture_crop_review">The photo was saved without automatic cropping because the boundaries were unclear. After scanning, open Crop and straighten to adjust the page edges.</string>
 </resources>

@@ -74,7 +74,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
                 detecting = true; noBounds = false
                 scope.launch {
                     try {
-                        val result = withContext(Dispatchers.Default) { ImagePipeline.detect(requireNotNull(image)) }
+                        val result = withContext(Dispatchers.Default) { ImagePipeline.detect(requireNotNull(image), com.docscan.android.processing.DetectionMode.ANGLED_DISTANCE) }
                         if (result == null) noBounds = true else onQuadChange(if (rectangle) result.quad.rectangle() else result.quad)
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { noBounds = true }
@@ -132,7 +132,7 @@ private fun CropCanvas(bitmap: Bitmap, quad: CropQuad, rectangle: Boolean, onCha
     val currentRectangle by rememberUpdatedState(rectangle)
     val currentOnChanged by rememberUpdatedState(onChanged)
     val density = LocalDensity.current
-    val radius = with(density) { 48.dp.toPx() }
+    val radius = with(density) { 32.dp.toPx() }
     val description = stringResource(R.string.crop_hint)
     val scale = minOf(canvasSize.width.toFloat() / bitmap.width, canvasSize.height.toFloat() / bitmap.height)
     val w = bitmap.width * scale; val h = bitmap.height * scale
@@ -158,8 +158,8 @@ private fun CropCanvas(bitmap: Bitmap, quad: CropQuad, rectangle: Boolean, onCha
                     val changed = when {
                         selected >= 4 -> {
                             val edge = selected - 4
-                            currentQuad.moveEdge(edge, if (currentRectangle && edge % 2 == 0) 0f else amount.x / rect.width,
-                                if (currentRectangle && edge % 2 == 1) 0f else amount.y / rect.height)
+                            currentQuad.moveEdgeNormal(edge, amount.x / rect.width, amount.y / rect.height,
+                                rect.width / rect.height)
                         }
                         currentRectangle -> currentQuad.moveRectangleCorner(selected, target)
                         else -> currentQuad.move(selected, target)
@@ -188,7 +188,11 @@ private fun CropCanvas(bitmap: Bitmap, quad: CropQuad, rectangle: Boolean, onCha
         }
         val allHandles = handles(quad)
         allHandles.drop(4).forEachIndexed { i, point ->
-            drawCircle(Color.White, (if (selected == i + 4) 7 else 5).dp.toPx(), point)
+            val a = points[i]; val b = points[(i + 1) % 4]
+            val direction = (b - a) / (b - a).getDistance()
+            drawCircle(Color(0xFF087F70), (if (selected == i + 4) 14 else 12).dp.toPx(), point)
+            drawLine(Color.White, point - direction * 6.dp.toPx(), point + direction * 6.dp.toPx(),
+                strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
         }
         if (selected in allHandles.indices) {
             val focus = allHandles[selected]

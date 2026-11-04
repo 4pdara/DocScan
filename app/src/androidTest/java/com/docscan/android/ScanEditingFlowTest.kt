@@ -181,6 +181,27 @@ class ScanEditingFlowTest {
         }
     }
 
+    @Test fun angledDetectionOptionPersistsAcrossActivityReplacement() {
+        val before = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() }
+        try {
+            ui.onNodeWithText(text(R.string.new_scan)).performClick()
+            ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.fast_scan)).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithContentDescription(text(R.string.fast_scan)).performClick()
+            ui.onNodeWithContentDescription(text(R.string.more_options)).performClick()
+            ui.onNodeWithContentDescription(text(R.string.angle_distance_detection)).assertIsOff().performClick()
+            ui.onNodeWithContentDescription(text(R.string.fast_scan)).assertIsOff()
+            assertTrue(ui.activity.getSharedPreferences("scan-preferences", android.content.Context.MODE_PRIVATE).getBoolean("angled-distance", false))
+            ui.activityRule.scenario.recreate()
+            ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.fast_scan)).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithContentDescription(text(R.string.more_options)).performClick()
+            ui.onNodeWithContentDescription(text(R.string.angle_distance_detection)).assertIsOn()
+            saveScreenshot("workflow-angled-detection.png")
+        } finally {
+            val created = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.filter { it !in before } }
+            runBlocking { created.forEach { app.repository.deleteDocument(it) } }
+        }
+    }
+
     @Test fun fastScanAndPauseAreVisibleAndManualModeRemainsAvailable() {
         val before = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() }
         try {

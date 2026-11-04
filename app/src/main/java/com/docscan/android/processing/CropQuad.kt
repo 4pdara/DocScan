@@ -62,6 +62,26 @@ data class CropQuad(val topLeft: CropPoint, val topRight: CropPoint, val bottomR
         return best.takeIf { it.isValid() }
     }
 
+    /** Drag an edge only perpendicular to itself, measured in the displayed image's aspect. */
+    fun moveEdgeNormal(index: Int, dx: Float, dy: Float, imageAspect: Float): CropQuad? {
+        require(index in 0..3 && imageAspect.isFinite() && imageAspect > 0)
+        val a = points[index]; val b = points[(index + 1) % 4]
+        val ex = (b.x - a.x) * imageAspect; val ey = b.y - a.y
+        val length = hypot(ex, ey)
+        val nx = -ey / length; val ny = ex / length
+        val vx = nx / imageAspect; val vy = ny
+        var low = Float.NEGATIVE_INFINITY; var high = Float.POSITIVE_INFINITY
+        for (p in listOf(a, b)) {
+            for ((position, velocity) in listOf(p.x to vx, p.y to vy)) {
+                if (kotlin.math.abs(velocity) < .000001f) continue
+                val first = -position / velocity; val second = (1 - position) / velocity
+                low = maxOf(low, minOf(first, second)); high = minOf(high, maxOf(first, second))
+            }
+        }
+        val distance = (dx * imageAspect * nx + dy * ny).coerceIn(low, high)
+        return moveEdge(index, vx * distance, vy * distance)
+    }
+
     fun moveEdge(index: Int, dx: Float, dy: Float): CropQuad? {
         require(index in 0..3)
         val a = points[index]; val b = points[(index + 1) % 4]

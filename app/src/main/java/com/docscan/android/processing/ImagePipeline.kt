@@ -80,13 +80,13 @@ object ImagePipeline {
         return bitmap
     }
 
-    fun detectCrop(file: File): CropQuad? {
-        val bitmap = render(file, 0, ScanFilter.ORIGINAL, 480)
-        return try { detect(bitmap)?.quad } finally { bitmap.recycle() }
+    fun detectCrop(file: File, mode: DetectionMode = DetectionMode.STANDARD): CropQuad? {
+        val bitmap = render(file, 0, ScanFilter.ORIGINAL, maxOf(480, mode.stillEdge))
+        return try { detect(bitmap, mode)?.quad } finally { bitmap.recycle() }
     }
 
-    fun detect(bitmap: Bitmap): DocumentDetection? {
-        val scale = minOf(1f, 360f / max(bitmap.width, bitmap.height))
+    fun detect(bitmap: Bitmap, mode: DetectionMode = DetectionMode.STANDARD): DocumentDetection? {
+        val scale = minOf(1f, mode.stillEdge.toFloat() / max(bitmap.width, bitmap.height))
         val resized = if (scale < 1f) Bitmap.createScaledBitmap(bitmap,
             (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true) else bitmap
         return try {
@@ -96,7 +96,7 @@ object ImagePipeline {
                 val p = pixels[i]
                 pixels[i] = ((p ushr 16 and 255) * 77 + (p ushr 8 and 255) * 150 + (p and 255) * 29) ushr 8
             }
-            DocumentDetector.detect(GrayImage(resized.width, resized.height, pixels))
+            DocumentDetector.detect(GrayImage(resized.width, resized.height, pixels), mode)
         } finally { if (resized !== bitmap) resized.recycle() }
     }
 }

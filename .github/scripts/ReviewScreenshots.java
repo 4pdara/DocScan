@@ -13,7 +13,7 @@ class ReviewScreenshots {
         Path directory = Path.of(args[0]);
         if (!Files.isDirectory(directory)) return;
         try (var paths = Files.walk(directory)) {
-            for (Path path : paths.filter(p -> p.getFileName().toString().startsWith("workflow-") && p.toString().endsWith(".png")).sorted().toList()) {
+            for (Path path : paths.filter(p -> (p.getFileName().toString().startsWith("workflow-") || p.getFileName().toString().startsWith("he-")) && p.toString().endsWith(".png")).sorted().toList()) {
                 BufferedImage source = ImageIO.read(path.toFile());
                 if (source == null) continue;
                 int width = Math.min(360, source.getWidth());

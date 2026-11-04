@@ -25,14 +25,6 @@ PY
 trap collect_device_reports EXIT
 mkdir -p app/build/reports/screenshots
 
-# Legacy storage permissions must be granted before the test app process starts,
-# so Android mounts its external storage with the corresponding access.
-device_api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
-if [[ "$device_api" =~ ^[0-9]+$ ]] && (( device_api <= 28 )); then
-  ./gradlew assembleDebug assembleDebugAndroidTest --console=plain
-  adb install -r -g app/build/outputs/apk/debug/app-debug.apk
-fi
-
 test_args=()
 if [[ -n "${DOCSCAN_DEVICE_TEST_CLASS:-}" ]]; then
   test_args+=("-Pandroid.testInstrumentationRunnerArguments.class=$DOCSCAN_DEVICE_TEST_CLASS")

@@ -93,7 +93,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         vm.importPdfs(uris, importTarget) { id -> vm.openDocument(id) }
     }
-    val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        val granted = grants[Manifest.permission.WRITE_EXTERNAL_STORAGE] == true && grants[Manifest.permission.READ_EXTERNAL_STORAGE] == true
         val id = vm.galleryTarget
         val ids = vm.outputPageIds.takeIf { it.isNotEmpty() }?.toList()
         vm.galleryTarget = null; vm.outputPageIds = arrayListOf()
@@ -174,10 +175,10 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         CameraScreen(
                         pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = { navigateBack() },
                         onReview = { pageId = it; returnToCamera = true; screen = "editor" },
-                        onCapture = { file, onSaved ->
-                            if (target == null) vm.capture(id, file, onSaved)
+                        onCapture = { file, detectionMode, onSaved ->
+                            if (target == null) vm.capture(id, file, detectionMode, onSaved)
                             else if (screen != "camera" || retakePageId != target) { file.delete(); onSaved(false) }
-                            else vm.retake(target, file) { saved ->
+                            else vm.retake(target, file, detectionMode) { saved ->
                                 onSaved(saved)
                                 if (saved) { retakePageId = null; screen = "editor" }
                             }
@@ -228,9 +229,11 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         onGallery = {
                             documentId?.let { id ->
                                 val ids = outputIds()
-                                if (Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                                if (Build.VERSION.SDK_INT <= 28 && listOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE).any {
+                                    ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                                }) {
                                     vm.galleryTarget = id; vm.outputPageIds = ArrayList(ids.orEmpty())
-                                    galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    galleryPermission.launch(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE))
                                 } else vm.saveGallery(id, ids)
                             }
                         },

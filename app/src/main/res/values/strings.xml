@@ -50,8 +50,8 @@
     <string name="resume_scan">המשך</string>
     <string name="pause_scan">השהיה</string>
     <string name="crop_title">חיתוך ויישור</string>
-    <string name="crop_hint">גרור פינות או צלעות אל שולי הדף. בזמן הגרירה תופיע תצוגה מוגדלת.</string>
-    <string name="crop_not_found">לא זוהו גבולות ברורים. אפשר לגרור את הפינות ידנית.</string>
+    <string name="crop_hint">גרור את ארבע הפינות או את הידיות שבאמצע הצלעות פנימה והחוצה עד שולי הדף. בזמן הגרירה תופיע תצוגה מוגדלת.</string>
+    <string name="crop_not_found">לא נמצאו גבולות ברורים. התאם את הפינות או את ידיות הצלעות לשולי הדף.</string>
     <string name="auto_crop">זיהוי אוטומטי</string>
     <string name="reset_crop">כל התמונה</string>
     <string name="apply_crop">החל חיתוך</string>
@@ -150,4 +150,7 @@
     <string name="high_quality_capture">צילום באיכות גבוהה</string>
     <string name="capture_quality_hint">צילום באיכות גבוהה עשוי להימשך יותר זמן. צילום מהיר הוא ברירת המחדל.</string>
     <string name="apply">החל</string>
+    <string name="angle_distance_detection">זיהוי בזווית וממרחק</string>
+    <string name="angle_distance_hint">לצילום דף קטן יותר בתמונה או מהצד. יש להציג את כל ארבעת שולי הדף ולהחזיק יציב.</string>
+    <string name="capture_crop_review">הצילום נשמר ללא חיתוך אוטומטי כי הגבולות לא היו ברורים. בסיום פתח חיתוך ויישור והתאם את שולי הדף.</string>
 </resources>

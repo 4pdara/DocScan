@@ -12,10 +12,11 @@ data class DocumentDetection(val quad: CropQuad, val confidence: Float)
  * No confident quadrilateral means no automatic crop/capture; never invent edges.
  */
 object DocumentDetector {
-    fun detect(image: GrayImage): DocumentDetection? {
+    fun detect(image: GrayImage, mode: DetectionMode = DetectionMode.STANDARD): DocumentDetection? {
+        val wider = mode == DetectionMode.ANGLED_DISTANCE
         val w = image.width; val h = image.height; val pixels = image.pixels
         if (w < 32 || h < 32 || w * h > 1_000_000) return null
-        EdgeDocumentDetector.detect(image)?.let { return it }
+        val edge = EdgeDocumentDetector.detect(image, mode)
         val histogram = IntArray(256)
         pixels.forEach { histogram[it.coerceIn(0, 255)]++ }
         val total = pixels.size
@@ -30,66 +31,81 @@ object DocumentDetector {
             val variance = background.toDouble() * foreground * difference * difference
             if (variance > bestVariance) { bestVariance = variance; threshold = i }
         }
-        if (bestVariance / total / total < 90) return null
+        if (bestVariance / total / total < 90) return edge?.let { it.copy(quad = PageBoundary.refine(image, it.quad)) }
         var best: DocumentDetection? = null
-        for (level in listOf(threshold + 1, threshold + 20, threshold - 16).map { it.coerceIn(20, 235) }.distinct()) {
-            val visited = BooleanArray(total)
-            val queue = IntArray(total)
-            for (start in pixels.indices) {
-                if (visited[start] || pixels[start] < level) continue
-                var head = 0; var tail = 1
-                queue[0] = start; visited[start] = true
-                var touchesBorder = false
-                val boundary = ArrayList<CropPoint>()
-                while (head < tail) {
-                    val index = queue[head++]; val x = index % w; val y = index / w
-                    var isBoundary = false
-                    if (x == 0 || y == 0 || x == w - 1 || y == h - 1) touchesBorder = true
-                    for (direction in 0..3) {
-                        val nx = x + if (direction == 0) -1 else if (direction == 1) 1 else 0
-                        val ny = y + if (direction == 2) -1 else if (direction == 3) 1 else 0
-                        if (nx !in 0 until w || ny !in 0 until h) { isBoundary = true; continue }
-                        val next = ny * w + nx
-                        if (pixels[next] < level) { isBoundary = true; continue }
-                        if (!visited[next]) { visited[next] = true; queue[tail++] = next }
+        for (bright in if (wider) listOf(true, false) else listOf(true)) {
+            for (level in listOf(threshold + 1, threshold + 20, threshold - 16).map { it.coerceIn(20, 235) }.distinct()) {
+                var strongAtLevel = false
+                val visited = BooleanArray(total)
+                val queue = IntArray(total)
+                for (start in pixels.indices) {
+                    if (visited[start] || (if (bright) pixels[start] < level else pixels[start] > level)) continue
+                    var head = 0; var tail = 1
+                    queue[0] = start; visited[start] = true
+                    var touchesBorder = false
+                    val boundary = ArrayList<CropPoint>()
+                    while (head < tail) {
+                        val index = queue[head++]; val x = index % w; val y = index / w
+                        var isBoundary = false
+                        if (x == 0 || y == 0 || x == w - 1 || y == h - 1) touchesBorder = true
+                        for (direction in 0..3) {
+                            val nx = x + if (direction == 0) -1 else if (direction == 1) 1 else 0
+                            val ny = y + if (direction == 2) -1 else if (direction == 3) 1 else 0
+                            if (nx !in 0 until w || ny !in 0 until h) { isBoundary = true; continue }
+                            val next = ny * w + nx
+                            if ((if (bright) pixels[next] < level else pixels[next] > level)) { isBoundary = true; continue }
+                            if (!visited[next]) { visited[next] = true; queue[tail++] = next }
+                        }
+                        if (isBoundary) boundary.add(CropPoint(x.toFloat(), y.toFloat()))
                     }
-                    if (isBoundary) boundary.add(CropPoint(x.toFloat(), y.toFloat()))
-                }
-                if (touchesBorder || tail < total * .16f || tail > total * .94f) continue
-                val hull = convexHull(boundary)
-                if (hull.size < 4) continue
-                val reduced = hull.toMutableList()
-                while (reduced.size > 4) {
-                    val remove = reduced.indices.minBy { i ->
-                        abs(cross(reduced[(i + reduced.size - 1) % reduced.size], reduced[i], reduced[(i + 1) % reduced.size]))
+                    if (touchesBorder || tail < total * (if (wider) .035f else .16f) || tail > total * .94f) continue
+                    val hull = convexHull(boundary)
+                    if (hull.size < 4) continue
+                    val reduced = hull.toMutableList()
+                    while (reduced.size > 4) {
+                        val remove = reduced.indices.minBy { i ->
+                            abs(cross(reduced[(i + reduced.size - 1) % reduced.size], reduced[i], reduced[(i + 1) % reduced.size]))
+                        }
+                        reduced.removeAt(remove)
                     }
-                    reduced.removeAt(remove)
+                    val polygonArea = polygonArea(reduced)
+                    val hullArea = polygonArea(hull)
+                    if (polygonArea < total * (if (wider) .04f else .18f) || polygonArea > total * .92f || polygonArea / hullArea < .94f) continue
+                    if (tail / polygonArea < .70f) continue
+                    val startCorner = reduced.indices.minBy { reduced[it].x + reduced[it].y }
+                    val corners = List(4) { reduced[(it + startCorner) % 4] }
+                    val sides = corners.indices.map { corners[it].distance(corners[(it + 1) % 4]) }
+                    if (sides.min() < min(w, h) * (if (wider) .07f else .16f) || sides.max() / sides.min() > (if (wider) 7f else 4.5f)) continue
+                    val normalized = CropQuad.from(corners.map { CropPoint(it.x / (w - 1), it.y / (h - 1)) })
+                    if (!normalized.isValid()) continue
+                    val contrast = edgeContrast(image, corners) * (if (bright) 1 else -1)
+                    if (contrast < 15f) continue
+                    val confidence = ((if (wider) .9f else polygonArea / total) * (polygonArea / hullArea) * min(contrast / 45f, 1f)).coerceIn(0f, 1f)
+                    val score = confidence * (if (wider) sqrt(normalized.area) else 1f)
+                    val previous = best
+                    val previousScore = previous?.let { it.confidence * (if (wider) sqrt(it.quad.area) else 1f) } ?: -1f
+                    if (score > previousScore) best = DocumentDetection(normalized, confidence)
+                    if (confidence >= .8f) strongAtLevel = true
                 }
-                val polygonArea = polygonArea(reduced)
-                val hullArea = polygonArea(hull)
-                if (polygonArea < total * .18f || polygonArea > total * .92f || polygonArea / hullArea < .94f) continue
-                if (tail / polygonArea < .70f) continue
-                val startCorner = reduced.indices.minBy { reduced[it].x + reduced[it].y }
-                val corners = List(4) { reduced[(it + startCorner) % 4] }
-                val sides = corners.indices.map { corners[it].distance(corners[(it + 1) % 4]) }
-                if (sides.min() < min(w, h) * .16f || sides.max() / sides.min() > 4.5f) continue
-                val normalized = CropQuad.from(corners.map { CropPoint(it.x / (w - 1), it.y / (h - 1)) })
-                if (!normalized.isValid()) continue
-                val contrast = edgeContrast(image, corners)
-                if (contrast < 15f) continue
-                val confidence = (polygonArea / total * (polygonArea / hullArea) * min(contrast / 45f, 1f)).coerceIn(0f, 1f)
-                // Include the outer edge rather than cutting into letters close to the margin.
-                val centerX = corners.sumOf { it.x.toDouble() }.toFloat() / 4
-                val centerY = corners.sumOf { it.y.toDouble() }.toFloat() / 4
-                val expanded = CropQuad.from(corners.map {
-                    val dx = it.x - centerX; val dy = it.y - centerY; val length = hypot(dx, dy)
-                    CropPoint(((it.x + dx / length * 1.5f) / (w - 1)).coerceIn(0f, 1f),
-                        ((it.y + dy / length * 1.5f) / (h - 1)).coerceIn(0f, 1f))
-                })
-                if (expanded.isValid() && (best == null || confidence > best.confidence)) best = DocumentDetection(expanded, confidence)
+                if (wider && strongAtLevel) break
             }
         }
-        return best
+        val segment = best
+        val selected = when {
+            segment == null -> edge
+            edge == null -> segment
+            else -> {
+                val ratio = segment.quad.area / edge.quad.area
+                val quality = segment.confidence / (if (wider) .9f else segment.quad.area)
+                // Prefer the actual light page inside a larger cover/frame when its closed boundary is strong.
+                val contained = segment.quad.points.all { point -> edge.quad.points.indices.all { i ->
+                    cross(edge.quad.points[i], edge.quad.points[(i + 1) % 4], point) >= -.003f
+                } }
+                if (contained && quality >= .6f && ratio in (if (wider) .35f else .55f)..1.2f) segment else edge
+            }
+        }
+        return selected?.takeIf { !wider || it.confidence >= .45f }
+            ?.let { it.copy(quad = PageBoundary.refine(image, it.quad)) }
     }
 
     private fun edgeContrast(image: GrayImage, corners: List<CropPoint>): Float {
