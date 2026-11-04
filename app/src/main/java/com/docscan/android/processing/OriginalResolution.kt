@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.RectF
 import java.io.File
-import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 class OriginalResolutionUnavailable : Exception("Original-resolution processing exceeds device resources")
@@ -16,8 +15,7 @@ object OriginalResolution {
         try {
             val pdf = PdfSources.isPdf(file)
             val dimensions = if (pdf) {
-                val (width, height) = PdfSources.dimensions(file)
-                ceil(width * 300.0 / 72).toInt() to ceil(height * 300.0 / 72).toInt()
+                PdfSources.dimensionsAtDpi(file, 300)
             } else {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(file.path, bounds)

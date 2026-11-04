@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.content.edit
@@ -43,6 +44,8 @@ class OriginalResolutionDeviceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
     private val prefix = "Resolution-${UUID.randomUUID().toString().take(8)}"
     private val files = mutableListOf<File>()
+    private var originalActivityConfiguration: Configuration? = null
+    private var originalAppConfiguration: Configuration? = null
     private val app get() = ui.activity.application as DocScanApplication
     private val model get() = ViewModelProvider(ui.activity)[DocScanViewModel::class.java]
     private fun text(id: Int) = ui.activity.getString(id)
@@ -63,11 +66,16 @@ class OriginalResolutionDeviceTest {
         ui.waitUntil(15_000) { !model.busy.value }
         ui.runOnUiThread { model.chooseExportQuality(ExportQuality.ORIGINAL) }
     }
+    @Suppress("DEPRECATION")
     @After fun cleanup(): Unit = runBlocking {
         galleryFiles().forEach { ui.activity.contentResolver.delete(it, null, null) }
         app.database.documents().allDocuments().filter { it.title == prefix }.forEach { app.repository.deleteDocument(it.id) }
         files.forEach { it.delete() }
         app.getSharedPreferences("output-preferences", 0).edit { remove("quality") }
+        ui.runOnUiThread {
+            originalActivityConfiguration?.let { ui.activity.resources.updateConfiguration(it, ui.activity.resources.displayMetrics) }
+            originalAppConfiguration?.let { app.resources.updateConfiguration(it, app.resources.displayMetrics) }
+        }
         Unit
     }
     private suspend fun create(width: Int = 4500, height: Int = 1100): PageEntity {
@@ -117,7 +125,10 @@ class OriginalResolutionDeviceTest {
         app.repository.setFilter(imported.id, ScanFilter.GRAYSCALE)
         val edited = file("pdf")
         PdfExporter.write(listOf(app.database.documents().page(imported.id)!!), app.repository, edited)
-        assertEquals(2480 to 3509, pdfImage(edited))
+        assertEquals(2480 to 3508, pdfImage(edited))
+        val rotated = file("pdf")
+        PDDocument.load(vector).use { document -> document.getPage(0).rotation = 90; document.save(rotated) }
+        assertEquals(3508 to 2480, com.docscan.android.processing.PdfSources.dimensionsAtDpi(rotated, 300))
     }
 
     @Test fun selectedQualitySurvivesRecreationAndActuallyChangesGalleryOutput() {
@@ -127,7 +138,10 @@ class OriginalResolutionDeviceTest {
         ui.onNodeWithText(text(R.string.apply)).performScrollTo().performClick()
         ui.activityRule.scenario.recreate()
         ui.waitUntil(15_000) { ui.onAllNodesWithText(qualityText(R.string.quality_high)).fetchSemanticsNodes().isNotEmpty() }
-        ui.onNodeWithText(text(R.string.save_gallery)).performClick()
+        ui.waitUntil(15_000) {
+            ui.onAllNodes(hasText(text(R.string.save_gallery)) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText(text(R.string.save_gallery)).assertIsEnabled().performClick()
         ui.waitUntil(30_000) { !model.busy.value && galleryFiles().size == 1 }
         assertEquals(3200, bounds(galleryFiles().single()).first)
         ui.onNodeWithText(qualityText(R.string.quality_high)).performClick()
@@ -138,18 +152,25 @@ class OriginalResolutionDeviceTest {
         assertEquals(setOf(3200, 4500), galleryFiles().map { bounds(it).first }.toSet())
     }
 
+    @Suppress("DEPRECATION")
     @Test fun hebrewQualityAndExplicitUneditedSourceExportHaveClearControls() {
         runBlocking { create(800, 600) }
         val activity = ui.activity
         val configuration = Configuration(activity.resources.configuration).apply { setLocale(Locale.forLanguageTag("he")) }
-        val context = activity.createConfigurationContext(configuration)
         val vm = model
-        ui.runOnUiThread { activity.setContent {
-            CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides configuration) {
-                DocScanTheme { DocScanApp(vm) }
+        ui.runOnUiThread {
+            originalActivityConfiguration = Configuration(activity.resources.configuration)
+            originalAppConfiguration = Configuration(app.resources.configuration)
+            activity.resources.updateConfiguration(configuration, activity.resources.displayMetrics)
+            app.resources.updateConfiguration(configuration, app.resources.displayMetrics)
+            activity.setContent {
+                CompositionLocalProvider(LocalActivityResultRegistryOwner provides activity,
+                    LocalContext provides activity, LocalConfiguration provides configuration) {
+                    DocScanTheme { DocScanApp(vm) }
+                }
             }
-        } }
-        val he = context.resources
+        }
+        val he = activity.resources
         openDocument(he.getString(R.string.page_label, 1))
         ui.onNodeWithText(he.getString(R.string.export_quality_current, he.getString(R.string.quality_original))).performClick()
         ui.onNodeWithText(he.getString(R.string.quality_original_hint)).assertExists()

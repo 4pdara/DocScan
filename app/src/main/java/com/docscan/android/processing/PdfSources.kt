@@ -10,6 +10,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.File
 import java.io.InputStream
 import java.util.UUID
+import kotlin.math.roundToInt
 
 object PdfSources {
     const val MAX_BYTES = 50L * 1024 * 1024
@@ -63,6 +64,18 @@ object PdfSources {
 
     fun dimensions(file: File): Pair<Int, Int> = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
         PdfRenderer(descriptor).use { renderer -> renderer.openPage(0).use { it.width to it.height } }
+    }
+
+    /** PdfRenderer exposes whole points; use the PDF box to avoid losing pixels at export DPI. */
+    fun dimensionsAtDpi(file: File, dpi: Int): Pair<Int, Int> {
+        require(dpi in 72..600)
+        return PDDocument.load(file, memory(requireNotNull(file.parentFile))).use { document ->
+            val page = document.getPage(0)
+            val box = page.cropBox
+            val width = (box.width.toDouble() * dpi / 72).roundToInt().coerceAtLeast(1)
+            val height = (box.height.toDouble() * dpi / 72).roundToInt().coerceAtLeast(1)
+            if ((page.rotation % 180 + 180) % 180 == 90) height to width else width to height
+        }
     }
 
     fun render(file: File, maxEdge: Int): Bitmap = renderPage(file) { width, height ->

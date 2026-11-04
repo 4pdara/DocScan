@@ -173,7 +173,11 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 )
             },
-            snackbarHost = { SnackbarHost(snackbar) },
+            snackbarHost = {
+                // Document output controls live in the content; keep feedback above their touch targets.
+                SnackbarHost(snackbar, if (screen == "document")
+                    Modifier.navigationBarsPadding().padding(bottom = 88.dp) else Modifier)
+            },
             bottomBar = {
                 if (screen == "home") Surface(tonalElevation = 1.dp) {
                     Row(
