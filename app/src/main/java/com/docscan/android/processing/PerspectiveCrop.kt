@@ -12,13 +12,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 object PerspectiveCrop {
-    fun apply(source: Bitmap, quad: CropQuad, maxEdge: Int, format: PageFormat = PageFormat.NATURAL): Bitmap {
+    fun dimensions(sourceWidth: Int, sourceHeight: Int, quad: CropQuad, maxEdge: Int,
+        format: PageFormat = PageFormat.NATURAL): Pair<Int, Int> {
         require(quad.isValid())
-        val p = quad.points.map { CropPoint(it.x * source.width, it.y * source.height) }
+        val p = quad.points.map { CropPoint(it.x * sourceWidth, it.y * sourceHeight) }
         fun distance(a: Int, b: Int) = hypot(p[a].x - p[b].x, p[a].y - p[b].y)
         var width = max(distance(0, 1), distance(3, 2))
         var height = max(distance(0, 3), distance(1, 2))
-        val inferred = PerspectiveAspect.estimate(source.width, source.height, quad)
+        val inferred = PerspectiveAspect.estimate(sourceWidth, sourceHeight, quad)
         val aspect = if (format == PageFormat.NATURAL) inferred else format.aspect((inferred ?: (width / height)) > 1f)
         aspect?.let { aspect ->
             // Fit the chosen ratio inside the measured dimensions; never add invented resolution.
@@ -27,6 +28,12 @@ object PerspectiveCrop {
         val scale = minOf(1f, maxEdge / max(width, height))
         val w = (width * scale).roundToInt().coerceAtLeast(1)
         val h = (height * scale).roundToInt().coerceAtLeast(1)
+        return w to h
+    }
+
+    fun apply(source: Bitmap, quad: CropQuad, maxEdge: Int, format: PageFormat = PageFormat.NATURAL): Bitmap {
+        val (w, h) = dimensions(source.width, source.height, quad, maxEdge, format)
+        val p = quad.points.map { CropPoint(it.x * source.width, it.y * source.height) }
         val matrix = Matrix()
         check(matrix.setPolyToPoly(p.flatMap { listOf(it.x, it.y) }.toFloatArray(), 0,
             floatArrayOf(0f, 0f, w.toFloat(), 0f, w.toFloat(), h.toFloat(), 0f, h.toFloat()), 0, 4))

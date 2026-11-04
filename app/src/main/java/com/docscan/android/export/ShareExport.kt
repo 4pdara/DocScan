@@ -13,18 +13,18 @@ enum class ShareFormat { PDF, IMAGES, BOTH }
 
 object ShareExport {
     fun prepare(context: Context, title: String, pages: List<PageEntity>, repository: DocumentRepository,
-        format: ShareFormat): List<File> {
+        format: ShareFormat, quality: ExportQuality = ExportQuality.ORIGINAL): List<File> {
         require(pages.isNotEmpty())
         val directory = File(context.cacheDir, "exports/${UUID.randomUUID()}").apply { check(mkdirs()) }
         val files = mutableListOf<File>()
         try {
             val name = ExportNames.pdf(title)
             if (format != ShareFormat.IMAGES) File(directory, name).also {
-                PdfExporter.write(pages, repository, it); files.add(it)
+                PdfExporter.write(pages, repository, it, quality); files.add(it)
             }
             if (format != ShareFormat.PDF) pages.forEachIndexed { index, page ->
                 File(directory, name.removeSuffix(".pdf") + "-${(index + 1).toString().padStart(3, '0')}.jpg").also {
-                    it.outputStream().use { output -> JpegExporter.write(page, repository, output) }; files.add(it)
+                    it.outputStream().use { output -> JpegExporter.write(page, repository, output, quality) }; files.add(it)
                 }
             }
             return files

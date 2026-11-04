@@ -10,6 +10,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.File
 import java.io.InputStream
 import java.util.UUID
+import kotlin.math.roundToInt
 
 object PdfSources {
     const val MAX_BYTES = 50L * 1024 * 1024
@@ -61,13 +62,35 @@ object PdfSources {
         } catch (failure: Exception) { created.forEach { it.delete() }; throw failure }
     }
 
-    fun render(file: File, maxEdge: Int): Bitmap {
+    fun dimensions(file: File): Pair<Int, Int> = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+        PdfRenderer(descriptor).use { renderer -> renderer.openPage(0).use { it.width to it.height } }
+    }
+
+    /** PdfRenderer exposes whole points; use the PDF box to avoid losing pixels at export DPI. */
+    fun dimensionsAtDpi(file: File, dpi: Int): Pair<Int, Int> {
+        require(dpi in 72..600)
+        return PDDocument.load(file, memory(requireNotNull(file.parentFile))).use { document ->
+            val page = document.getPage(0)
+            val box = page.cropBox
+            val width = (box.width.toDouble() * dpi / 72).roundToInt().coerceAtLeast(1)
+            val height = (box.height.toDouble() * dpi / 72).roundToInt().coerceAtLeast(1)
+            if ((page.rotation % 180 + 180) % 180 == 90) height to width else width to height
+        }
+    }
+
+    fun render(file: File, maxEdge: Int): Bitmap = renderPage(file) { width, height ->
+        val scale = maxEdge.toFloat() / maxOf(width, height)
+        (width * scale).toInt().coerceAtLeast(1) to (height * scale).toInt().coerceAtLeast(1)
+    }
+
+    fun renderSized(file: File, width: Int, height: Int): Bitmap = renderPage(file) { _, _ -> width to height }
+
+    private fun renderPage(file: File, size: (Int, Int) -> Pair<Int, Int>): Bitmap {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
             PdfRenderer(descriptor).use { renderer ->
                 renderer.openPage(0).use { page ->
-                    val scale = maxEdge.toFloat() / maxOf(page.width, page.height)
-                    val bitmap = Bitmap.createBitmap((page.width * scale).toInt().coerceAtLeast(1),
-                        (page.height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                    val (width, height) = size(page.width, page.height)
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                     try {
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)

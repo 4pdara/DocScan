@@ -22,7 +22,15 @@ object ImagePipeline {
     fun render(file: File, rotation: Int, filter: ScanFilter, maxEdge: Int, crop: CropQuad? = null, filterStrength: Int = 70,
         adjustments: ImageAdjustments = ImageAdjustments(), format: PageFormat = PageFormat.NATURAL): Bitmap {
         require(maxEdge in 64..4000)
-        var bitmap = if (PdfSources.isPdf(file)) PdfSources.render(file, maxEdge) else decodeImage(file, maxEdge)
+        val bitmap = if (PdfSources.isPdf(file)) PdfSources.render(file, maxEdge) else decodeImage(file, maxEdge)
+        return renderDecoded(bitmap, rotation, filter, maxEdge, crop, filterStrength, adjustments, format)
+    }
+
+    /** Takes ownership, including cleanup if a transform or allocation fails. */
+    internal fun renderDecoded(initial: Bitmap, rotation: Int, filter: ScanFilter, maxEdge: Int, crop: CropQuad?,
+        filterStrength: Int, adjustments: ImageAdjustments, format: PageFormat): Bitmap {
+        var bitmap = initial
+        try {
         if (crop != null || format != PageFormat.NATURAL) {
             val cropped = PerspectiveCrop.apply(bitmap, crop ?: CropQuad.FULL, maxEdge, format)
             bitmap.recycle(); bitmap = cropped
@@ -51,6 +59,7 @@ object ImagePipeline {
             bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         }
         return bitmap
+        } catch (failure: Throwable) { bitmap.recycle(); throw failure }
     }
 
     private fun decodeImage(file: File, maxEdge: Int): Bitmap {
@@ -63,8 +72,19 @@ object ImagePipeline {
         val decoded = requireNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
             inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
         })) { "Cannot decode image" }
+        val matrix = orientationMatrix(file)
+        val scale = minOf(1f, maxEdge.toFloat() / max(decoded.width, decoded.height))
+        matrix.postScale(scale, scale)
+        val bitmap = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+        if (bitmap !== decoded) decoded.recycle()
+        return bitmap
+    }
+
+    internal fun orientationMatrix(file: File): Matrix {
         val matrix = Matrix()
-        when (ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+        val orientation = try { ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) }
+            catch (_: java.io.IOException) { ExifInterface.ORIENTATION_NORMAL }
+        when (orientation) {
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
             ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
             ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
@@ -73,11 +93,7 @@ object ImagePipeline {
             ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
         }
-        val scale = minOf(1f, maxEdge.toFloat() / max(decoded.width, decoded.height))
-        matrix.postScale(scale, scale)
-        val bitmap = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
-        if (bitmap !== decoded) decoded.recycle()
-        return bitmap
+        return matrix
     }
 
     fun detectCrop(file: File, mode: DetectionMode = DetectionMode.STANDARD): CropQuad? {

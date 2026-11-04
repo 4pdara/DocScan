@@ -1,6 +1,12 @@
 package com.docscan.android.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
+import com.docscan.android.export.ExportQuality
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -35,10 +41,11 @@ fun ImportSheet(onImages: () -> Unit, onPdf: () -> Unit, onDismiss: () -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShareSheet(onShare: (ShareFormat) -> Unit, onPrint: () -> Unit, onDismiss: () -> Unit) {
+fun ShareSheet(onShare: (ShareFormat) -> Unit, onPrint: () -> Unit, onDismiss: () -> Unit, quality: ExportQuality = ExportQuality.ORIGINAL) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.share_options), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.export_quality_current, exportQualityLabel(quality)), style = MaterialTheme.typography.bodySmall)
             for ((format, label) in listOf(ShareFormat.PDF to R.string.share_pdf, ShareFormat.IMAGES to R.string.share_images, ShareFormat.BOTH to R.string.share_both)) {
                 ActionButton(R.drawable.ic_share, stringResource(label), true, Modifier.fillMaxWidth()) { onShare(format) }
             }
@@ -97,4 +104,38 @@ fun MergeDialog(documents: List<DocumentSummary>, onConfirm: (List<String>, Stri
         }
     }, confirmButton = { TextButton(onClick = { onConfirm(order, title) }) { Text(stringResource(R.string.create_merged)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+}
+
+@Composable
+fun exportQualityLabel(quality: ExportQuality): String = stringResource(when (quality) {
+    ExportQuality.ORIGINAL -> R.string.quality_original
+    ExportQuality.HIGH -> R.string.quality_high
+    ExportQuality.COMPACT -> R.string.quality_compact
+})
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExportQualitySheet(quality: ExportQuality, onApply: (ExportQuality) -> Unit, onDismiss: () -> Unit) {
+    var chosen by rememberSaveable { mutableStateOf(quality.name) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).selectableGroup().padding(20.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.export_quality), style = MaterialTheme.typography.titleLarge)
+            for (option in ExportQuality.entries) {
+                Row(Modifier.fillMaxWidth().selectable(chosen == option.name, role = Role.RadioButton, onClick = { chosen = option.name }),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(chosen == option.name, onClick = null)
+                    Column(Modifier.weight(1f)) {
+                        Text(exportQualityLabel(option))
+                        Text(stringResource(when (option) {
+                            ExportQuality.ORIGINAL -> R.string.quality_original_hint
+                            ExportQuality.HIGH -> R.string.quality_high_hint
+                            ExportQuality.COMPACT -> R.string.quality_compact_hint
+                        }), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Button(onClick = { onApply(ExportQuality.valueOf(chosen)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.apply)) }
+        }
+    }
 }

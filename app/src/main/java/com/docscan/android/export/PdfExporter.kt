@@ -1,12 +1,8 @@
 package com.docscan.android.export
 
-import android.graphics.Bitmap
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
 import com.docscan.android.data.adjustments
-import com.docscan.android.data.render
 import com.docscan.android.processing.ImageAdjustments
 import com.docscan.android.processing.PageFormat
 import com.docscan.android.processing.PdfSources
@@ -20,7 +16,8 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import java.io.File
 
 object PdfExporter {
-    fun write(pages: List<PageEntity>, repository: DocumentRepository, destination: File) {
+    fun write(pages: List<PageEntity>, repository: DocumentRepository, destination: File,
+        quality: ExportQuality = ExportQuality.ORIGINAL) {
         require(pages.isNotEmpty())
         val directory = requireNotNull(destination.parentFile).apply { mkdirs() }
         try {
@@ -35,22 +32,19 @@ object PdfExporter {
                             added.rotation = (added.rotation + page.rotation) % 360
                         }
                     } else {
-                        val bitmap = page.render(source, 3200)
+                        val temporary = File.createTempFile("docscan-page-", ".jpg", directory)
                         try {
+                            temporary.outputStream().use { JpegExporter.write(page, repository, it, quality) }
+                            val image = temporary.inputStream().use { JPEGFactory.createFromStream(pdf, it) }
                             val format = PageFormat.fromKey(page.pageFormat)
-                            val (width, height) = format.pdfSize(bitmap.width > bitmap.height)
+                            val (width, height) = format.pdfSize(image.width > image.height)
                             val output = PDPage(PDRectangle(width.toFloat(), height.toFloat()))
                             pdf.addPage(output)
                             val margin = if (format == PageFormat.NATURAL) 36f else 0f
-                            val scale = minOf((width - margin) / bitmap.width, (height - margin) / bitmap.height)
-                            val w = bitmap.width * scale; val h = bitmap.height * scale
-                            // Embed the same opaque JPEG encoding used by image export, without a soft mask.
-                            val encoded = ByteArrayOutputStream().apply {
-                                check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, this)) { "JPEG encoding failed" }
-                            }.toByteArray()
-                            val image = ByteArrayInputStream(encoded).use { JPEGFactory.createFromStream(pdf, it) }
+                            val scale = minOf((width - margin) / image.width, (height - margin) / image.height)
+                            val w = image.width * scale; val h = image.height * scale
                             PDPageContentStream(pdf, output).use { stream -> stream.drawImage(image, (width - w) / 2, (height - h) / 2, w, h) }
-                        } finally { bitmap.recycle() }
+                        } finally { temporary.delete() }
                     }
                 }
                 pdf.save(destination)

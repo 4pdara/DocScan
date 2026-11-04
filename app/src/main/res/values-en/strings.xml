@@ -174,4 +174,17 @@
     <string name="archive_cancelled">Operation cancelled</string>
     <string name="archive_backup_failed">Backup did not complete. Check free space and the destination. The backup limit is 2 GB of original data.</string>
     <string name="archive_restore_failed">Unable to complete restore. Check that this is a valid DocScan backup from a supported version and that the device has enough free space.</string>
+    <string name="export_quality">Export quality</string>
+    <string name="export_quality_current">Quality: %1$s</string>
+    <string name="quality_original">Original</string>
+    <string name="quality_high">High</string>
+    <string name="quality_compact">Compact</string>
+    <string name="quality_original_hint">Original photo detail after cropping and straightening, without automatic downsizing. Maximum JPEG quality. The unedited original is stored separately. Edited PDF images are rendered at 300 DPI.</string>
+    <string name="quality_high_hint">Up to 3,200 pixels on the longest edge, for a smaller file.</string>
+    <string name="quality_compact_hint">Up to 1,600 pixels on the longest edge, for storage savings and quick sharing.</string>
+    <string name="original_resolution_unavailable">The full original is preserved. Device resources are insufficient to process this size. Choose High or Compact export quality, or save the original page files without processing.</string>
+    <string name="save_sources">Save original page files</string>
+    <string name="save_sources_hint">Save full original files without cropping, filters or quality changes, including existing photo metadata. Choose a destination folder. Document edits remain in the app and the full backup.</string>
+    <string name="saved_sources">Original files saved: %1$d</string>
+    <string name="choose_folder">Choose folder</string>
 </resources>
