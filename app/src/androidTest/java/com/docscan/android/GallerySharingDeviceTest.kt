@@ -219,6 +219,7 @@ class GallerySharingDeviceTest {
         assertTrue("Actual phone photograph: $quad", quad.maxDistance(expected) < .055f)
         val image = page.render(repository.source(page), 1200)
         try {
+            assertTrue("The rectified portrait book must keep a portrait shape",image.height>image.width)
             recordFixture(image, "workflow-phone-book-crop")
             val pixels = IntArray(image.width*image.height)
             image.getPixels(pixels,0,image.width,0,0,image.width,image.height)

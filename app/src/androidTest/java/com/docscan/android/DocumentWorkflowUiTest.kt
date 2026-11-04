@@ -149,6 +149,7 @@ class DocumentWorkflowUiTest {
         ui.onNodeWithContentDescription(text(R.string.rotate)).performClick()
         ui.waitUntil(10_000) { runBlocking { app.database.documents().page(pages[1].id)?.rotation == 90 } }
         assertEquals(0, runBlocking { app.database.documents().page(pages[0].id)?.rotation })
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.zoom_in)).fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText(text(R.string.zoom_in)).performClick()
         ui.onNodeWithText(text(R.string.zoom_reset)).assertIsDisplayed()
         pager.performTouchInput { swipeLeft() }
@@ -164,12 +165,20 @@ class DocumentWorkflowUiTest {
         assertEquals(3, runBlocking { app.database.documents().pages(id).size })
     }
 
+    @Suppress("DEPRECATION")
     @Test fun hebrewPageSwipesUseRtlDirection() {
-        val configuration = Configuration(ui.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag("he")) }
-        val localized = ui.activity.createConfigurationContext(configuration); labels = localized.resources
-        ui.activityRule.scenario.onActivity { activity -> activity.setContent {
-            CompositionLocalProvider(LocalConfiguration provides configuration, LocalContext provides localized) { DocScanTheme { DocScanApp() } }
-        } }
+        val original = Configuration(ui.activity.resources.configuration)
+        val originalApp = Configuration(app.resources.configuration)
+        val configuration = Configuration(original).apply { setLocale(Locale.forLanguageTag("he")) }
+        ui.runOnUiThread {
+            ui.activity.resources.updateConfiguration(configuration,ui.activity.resources.displayMetrics)
+            app.resources.updateConfiguration(configuration,app.resources.displayMetrics)
+            ui.activity.setContent {
+                CompositionLocalProvider(LocalConfiguration provides configuration, LocalContext provides ui.activity) { DocScanTheme { DocScanApp() } }
+            }
+        }
+        labels = ui.activity.resources
+        try {
         create("RTL", 2); open("RTL")
         ui.onNodeWithContentDescription(text(R.string.edit_page_desc, 1)).performClick()
         ui.onNodeWithTag("page-pager").performTouchInput { swipeRight() }
@@ -177,6 +186,10 @@ class DocumentWorkflowUiTest {
         screenshot("he-swipe-editor.png")
         ui.onNodeWithTag("page-pager").performTouchInput { swipeLeft() }
         ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 1, 2)).fetchSemanticsNodes().isNotEmpty() }
+        } finally { ui.runOnUiThread {
+            ui.activity.resources.updateConfiguration(original,ui.activity.resources.displayMetrics)
+            app.resources.updateConfiguration(originalApp,app.resources.displayMetrics)
+        } }
     }
 
     @Test fun importedScannerResultCanBeRefinedWithoutChangingItUntilConfirmation() {

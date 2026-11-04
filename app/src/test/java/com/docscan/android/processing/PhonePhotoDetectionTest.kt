@@ -44,6 +44,8 @@ class PhonePhotoDetectionTest {
                 val found = requireNotNull(ImagePipeline.detect(image, mode)) { "Missing phone photograph in $mode" }
                 assertTrue("Wrong phone-photo corners in $mode: ${found.quad}", found.quad.maxDistance(expected) < .055f)
                 assertTrue(found.confidence >= mode.liveConfidence)
+                val aspect = requireNotNull(PerspectiveAspect.estimate(image.width,image.height,found.quad))
+                assertTrue("The portrait book must not become a flattened landscape page",aspect in .6f.. .95f)
             }
         } finally { image.recycle() }
     }

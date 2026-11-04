@@ -18,7 +18,9 @@ object PerspectiveCrop {
         fun distance(a: Int, b: Int) = hypot(p[a].x - p[b].x, p[a].y - p[b].y)
         var width = max(distance(0, 1), distance(3, 2))
         var height = max(distance(0, 3), distance(1, 2))
-        format.aspect(width > height)?.let { aspect ->
+        val inferred = PerspectiveAspect.estimate(source.width, source.height, quad)
+        val aspect = if (format == PageFormat.NATURAL) inferred else format.aspect((inferred ?: (width / height)) > 1f)
+        aspect?.let { aspect ->
             // Fit the chosen ratio inside the measured dimensions; never add invented resolution.
             if (width / height > aspect) width = height * aspect else height = width / aspect
         }
