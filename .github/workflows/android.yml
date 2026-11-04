@@ -95,7 +95,7 @@ jobs:
           target: default
           arch: x86_64
           disable-animations: true
-          script: DOCSCAN_DEVICE_TEST_CLASS=com.docscan.android.GallerySharingDeviceTest bash .github/scripts/test-on-emulator.sh
+          script: DOCSCAN_DEVICE_TEST_CLASS=com.docscan.android.GallerySharingDeviceTest,com.docscan.android.ArchiveWorkflowDeviceTest bash .github/scripts/test-on-emulator.sh
       - name: Upload legacy reports
         if: always()
         uses: actions/upload-artifact@v4

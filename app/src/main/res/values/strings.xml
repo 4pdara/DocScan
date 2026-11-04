@@ -159,4 +159,19 @@
     <string name="angle_distance_detection">זיהוי בזווית וממרחק</string>
     <string name="angle_distance_hint">לצילום דף קטן יותר בתמונה או מהצד. יש להציג את כל ארבעת שולי הדף ולהחזיק יציב.</string>
     <string name="capture_crop_review">הצילום נשמר ללא חיתוך אוטומטי כי הגבולות לא היו ברורים. בסיום פתח חיתוך ויישור והתאם את שולי הדף.</string>
+    <string name="archive_backup">גיבוי כל המסמכים</string>
+    <string name="archive_restore">שחזור מגיבוי</string>
+    <string name="archive_backup_hint">הגיבוי כולל את כל המסמכים, קובצי המקור, סדר העמודים והעריכות. בחר מקום מחוץ לאחסון הפרטי של האפליקציה, כדי שהקובץ יישאר זמין גם לאחר הסרתה.\n\nהקובץ אינו מוצפן ועשוי להכיל מידע אישי. אין העלאה אוטומטית לענן.</string>
+    <string name="archive_restore_hint">בחר קובץ גיבוי ZIP שנוצר ב־DocScan. לאחר בדיקת התקינות, המסמכים יתווספו כעותקים חדשים עם המקורות והעריכות. המסמכים הקיימים יישמרו. שחזור נוסף של אותו גיבוי ייצור עותקים נוספים.</string>
+    <string name="archive_choose_destination">בחירת מיקום ושמירה</string>
+    <string name="archive_choose_file">בחירת קובץ גיבוי</string>
+    <string name="archive_creating">יוצר ושומר את הגיבוי… השאר את האפליקציה פתוחה.</string>
+    <string name="archive_checking">בודק את הגיבוי ומכין את המסמכים לשחזור…</string>
+    <string name="archive_finishing">מסיים לשמור את המסמכים…</string>
+    <string name="archive_cancelling">מבטל את הפעולה…</string>
+    <string name="archive_saved">הגיבוי נשמר: %1$d מסמכים, %2$d עמודים</string>
+    <string name="archive_restored">השחזור הושלם: %1$d מסמכים, %2$d עמודים נוספו</string>
+    <string name="archive_cancelled">הפעולה בוטלה</string>
+    <string name="archive_backup_failed">הגיבוי לא הושלם. בדוק מקום פנוי וזמינות של מיקום השמירה. מגבלת הגיבוי היא 2 GB של נתוני מקור.</string>
+    <string name="archive_restore_failed">לא ניתן להשלים את השחזור. בדוק שזהו גיבוי DocScan תקין מגרסה נתמכת ושיש מקום פנוי במכשיר.</string>
 </resources>

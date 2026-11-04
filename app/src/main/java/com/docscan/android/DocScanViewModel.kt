@@ -17,6 +17,8 @@ import com.docscan.android.export.ShareFormat
 import android.content.Intent
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import com.docscan.android.export.PdfExporter
 import com.docscan.android.export.JpegExporter
@@ -33,6 +35,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.io.FileOutputStream
+import android.provider.DocumentsContract
+import com.docscan.android.data.ArchiveProgress
 
 @OptIn(SavedStateHandleSaveableApi::class)
 class DocScanViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
@@ -85,16 +91,25 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     val busy = _busy.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
+    private val _archiveOperation = MutableStateFlow<String?>(null)
+    val archiveOperation = _archiveOperation.asStateFlow()
+    private val _archiveProgress = MutableStateFlow(ArchiveProgress())
+    val archiveProgress = _archiveProgress.asStateFlow()
+    private val archiveCancellation = AtomicBoolean(false)
+    private val _archiveCancelling = MutableStateFlow(false)
+    val archiveCancelling = _archiveCancelling.asStateFlow()
+    private val initialized = CompletableDeferred<Unit>()
     val documents = repository.observeDocuments().catch {
         _message.value = app.getString(R.string.load_failed); emit(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
-        task {
+        task(finallyAction = { initialized.complete(Unit) }) {
             repository.recover()
             withContext(Dispatchers.IO) {
                 val expiration = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
                 File(app.cacheDir, "exports").listFiles()?.filter { it.lastModified() < expiration }?.forEach { it.deleteRecursively() }
+                File(app.cacheDir, "archive-work").listFiles()?.filter { it.lastModified() < expiration }?.forEach { it.delete() }
                 app.cacheDir.listFiles()?.filter { it.name.startsWith("capture-") && it.lastModified() < expiration }?.forEach { it.delete() }
             }
         }
@@ -103,6 +118,77 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     fun clearMessage() { _message.value = null }
     fun cameraError() { _message.value = app.getString(R.string.camera_failed) }
     fun googleScannerError() { _message.value = app.getString(R.string.google_scan_failed) }
+
+    fun cancelArchive() {
+        if (!_archiveProgress.value.finishing) { archiveCancellation.set(true); _archiveCancelling.value = true }
+    }
+
+    fun backupArchive(destination: Uri) = archiveTask("backup") { checkpoint ->
+        val file = File(app.cacheDir, "archive-work/${UUID.randomUUID()}.zip")
+        try {
+            file.parentFile?.mkdirs()
+            val summary = withContext(Dispatchers.IO) {
+                val count = FileOutputStream(file).use { output ->
+                    repository.backup(output, checkpoint) { _archiveProgress.value = it }.also { output.fd.sync() }
+                }
+                _archiveProgress.value = ArchiveProgress()
+                checkpoint()
+                requireNotNull(app.contentResolver.openOutputStream(destination, "wt")).use { output ->
+                    file.inputStream().use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            checkpoint(); val size = input.read(buffer); if (size < 0) break
+                            output.write(buffer, 0, size)
+                        }
+                    }
+                }
+                count
+            }
+            _message.value = app.getString(R.string.archive_saved, summary.documents, summary.pages)
+        } catch (failure: Exception) {
+            // CreateDocument returns a new document; remove a partial export when the provider permits it.
+            withContext(Dispatchers.IO + NonCancellable) {
+                runCatching {
+                    if (DocumentsContract.isDocumentUri(app, destination)) DocumentsContract.deleteDocument(app.contentResolver, destination)
+                    else app.contentResolver.delete(destination, null, null)
+                }
+            }
+            throw failure
+        } finally { file.delete() }
+    }
+
+    fun restoreArchive(source: Uri) = archiveTask("restore") { checkpoint ->
+        val summary = withContext(Dispatchers.IO) {
+            requireNotNull(app.contentResolver.openInputStream(source)).use { input ->
+                repository.restore(input, checkpoint) { _archiveProgress.value = it }
+            }
+        }
+        _message.value = app.getString(R.string.archive_restored, summary.documents, summary.pages)
+        selectedDocuments = arrayListOf(); selectingDocuments = false; libraryQuery = ""; screen = "home"
+    }
+
+    private fun archiveTask(operation: String, block: suspend (() -> Unit) -> Unit) {
+        if (!initialized.isCompleted) {
+            viewModelScope.launch { initialized.await(); archiveTask(operation, block) }
+            return
+        }
+        if (_busy.value) return
+        archiveCancellation.set(false); _archiveCancelling.value = false
+        _archiveProgress.value = ArchiveProgress(); _archiveOperation.value = operation; _busy.value = true
+        viewModelScope.launch {
+            val coroutine = currentCoroutineContext()
+            try {
+                block { coroutine.ensureActive(); if (archiveCancellation.get()) throw CancellationException("Archive cancelled") }
+            } catch (cancelled: CancellationException) {
+                if (!coroutine.isActive) throw cancelled
+                _message.value = app.getString(R.string.archive_cancelled)
+            } catch (_: Exception) {
+                _message.value = app.getString(if (operation == "backup") R.string.archive_backup_failed else R.string.archive_restore_failed)
+            } finally {
+                _archiveOperation.value = null; _archiveCancelling.value = false; _busy.value = false
+            }
+        }
+    }
 
     fun create(onCreated: (String) -> Unit) = task { onCreated(repository.create(defaultTitle())) }
 

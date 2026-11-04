@@ -42,6 +42,9 @@ data class DocumentSummary(@Embedded val document: DocumentEntity, val pageCount
 
 @Dao
 interface DocumentDao {
+    @Query("SELECT * FROM documents ORDER BY createdAt, id")
+    suspend fun allDocuments(): List<DocumentEntity>
+
     @Query("SELECT d.*, COUNT(p.id) AS pageCount FROM documents d LEFT JOIN pages p ON p.documentId = d.id GROUP BY d.id ORDER BY d.updatedAt DESC")
     fun observeDocuments(): Flow<List<DocumentSummary>>
 
