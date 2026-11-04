@@ -26,7 +26,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.docscan.android.ui.DocScanApp
 import com.docscan.android.ui.DocScanTheme
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.Assert.*
@@ -40,6 +39,8 @@ class ArchiveWorkflowDeviceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
     private val prefix = "Archive-${UUID.randomUUID().toString().take(8)} ספר"
     private val files = mutableListOf<File>()
+    private var originalActivityConfiguration: Configuration? = null
+    private var originalAppConfiguration: Configuration? = null
     private val app get() = ui.activity.application as DocScanApplication
     private fun text(id: Int) = ui.activity.getString(id)
     private fun documents() = runBlocking { app.database.documents().allDocuments().filter { it.title == prefix } }
@@ -63,16 +64,22 @@ class ArchiveWorkflowDeviceTest {
             dispatchResult(requestCode, if (cancelled) Activity.RESULT_CANCELED else Activity.RESULT_OK, Intent().setData(uri))
         }
     }
+    @Suppress("DEPRECATION")
     private fun installRegistry(registry: ActivityResultRegistry, hebrew: Boolean = false): DocScanViewModel {
         val vm = ViewModelProvider(ui.activity)[DocScanViewModel::class.java]
         val activity = ui.activity
         val configuration = Configuration(activity.resources.configuration).apply { if (hebrew) setLocale(Locale.forLanguageTag("he")) }
-        val context = activity.createConfigurationContext(configuration)
         ui.runOnUiThread {
+            if (hebrew) {
+                originalActivityConfiguration = Configuration(activity.resources.configuration)
+                originalAppConfiguration = Configuration(app.resources.configuration)
+                activity.resources.updateConfiguration(configuration, activity.resources.displayMetrics)
+                app.resources.updateConfiguration(configuration, app.resources.displayMetrics)
+            }
             activity.setContent {
                 CompositionLocalProvider(LocalActivityResultRegistryOwner provides object : ActivityResultRegistryOwner {
                     override val activityResultRegistry = registry
-                }, LocalContext provides context, LocalConfiguration provides configuration) {
+                }, LocalContext provides activity, LocalConfiguration provides configuration) {
                     DocScanTheme { DocScanApp(vm) }
                 }
             }
@@ -95,8 +102,13 @@ class ArchiveWorkflowDeviceTest {
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()!!
         resolver.openOutputStream(uri)!!.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
     }
+    @Suppress("DEPRECATION")
     @After fun cleanup(): Unit = runBlocking {
-        documents().forEach { app.repository.deleteDocument(it.id) }; files.forEach { it.delete() }; Unit
+        documents().forEach { app.repository.deleteDocument(it.id) }; files.forEach { it.delete() }
+        ui.runOnUiThread {
+            originalActivityConfiguration?.let { ui.activity.resources.updateConfiguration(it, ui.activity.resources.displayMetrics) }
+            originalAppConfiguration?.let { app.resources.updateConfiguration(it, app.resources.displayMetrics) }
+        }; Unit
     }
 
     @Test fun hebrewBackupAndRestoreUseDocumentContractsAndKeepEdits() {
