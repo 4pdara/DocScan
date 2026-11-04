@@ -40,6 +40,7 @@ OCR, יישור קימורי ספר, מחיקת עצמים, פיצול שני ע
 
 ## תיעוד
 
+- [בדיקת פערי היכולות מול CamScanner לפי קוד 0.6](docs/CAMSCANNER_FEATURE_AUDIT_HE.md)
 - [המחקר, האפיון ותוכנית הפיתוח](docs/PRODUCT_SPEC_HE.md)
 - [היקף המימוש הראשון ובדיקות ההתנסות](docs/MILESTONE_1_HE.md)
 - [צילום רציף וחיתוך: מימוש, מגבלות ובדיקות](docs/MILESTONE_2_HE.md)
