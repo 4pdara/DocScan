@@ -136,14 +136,14 @@ fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modi
         // Keep image gestures below the zoom button, so releasing a button press
         // cannot also pan or scale the image underneath it.
         Box(Modifier.fillMaxSize().then(gestures), contentAlignment = Alignment.Center) {
-        when {
-            preview.bitmap != null -> Image(requireNotNull(preview.bitmap).asImageBitmap(), null,
-                Modifier.fillMaxSize().testTag("preview-image-${page.id}").graphicsLayer {
-                    scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y
-                }, contentScale = ContentScale.Fit)
-            preview.failed -> Text(stringResource(R.string.preview_failed), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-            else -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-        }
+            when {
+                preview.bitmap != null -> Image(requireNotNull(preview.bitmap).asImageBitmap(), null,
+                    Modifier.fillMaxSize().testTag("preview-image-${page.id}").graphicsLayer {
+                        scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y
+                    }, contentScale = ContentScale.Fit)
+                preview.failed -> Text(stringResource(R.string.preview_failed), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                else -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
         }
         if (zoomable && preview.bitmap != null) Surface(Modifier.align(Alignment.TopEnd).padding(8.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = .92f), shape = RoundedCornerShape(20.dp)) {
