@@ -149,6 +149,30 @@ class ProfessionalEditingFlowTest {
         ui.onNodeWithText(text(R.string.format_letter)).assertIsSelected()
     }
 
+    @Test fun perspectiveSideHandlesPullBothCornersAndKeepTheOppositeSide() = editingPage { id, _ ->
+        ui.onNodeWithText(text(R.string.crop_title)).performClick()
+        val canvas = ui.onNodeWithContentDescription(text(R.string.crop_hint))
+        ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.crop_hint)).fetchSemanticsNodes().isNotEmpty() }
+        val size = canvas.fetchSemanticsNode().size
+        val scale = minOf(size.width / 300f, size.height / 400f)
+        val right = (size.width + 300 * scale) / 2f
+        val centerY = size.height / 2f
+        val slop = android.view.ViewConfiguration.get(ui.activity).scaledTouchSlop.toFloat()
+        canvas.performTouchInput {
+            down(androidx.compose.ui.geometry.Offset(right - 2f, centerY))
+            moveTo(androidx.compose.ui.geometry.Offset(right - slop - 4f, centerY), 100)
+            moveTo(androidx.compose.ui.geometry.Offset(right - slop - 300 * scale * .18f, centerY + 25f), 200)
+            up()
+        }
+        screenshot("workflow-side-handles.png")
+        ui.onNodeWithText(text(R.string.apply_crop)).performClick()
+        ui.waitUntil(10_000) { runBlocking { app.database.documents().page(id)?.crop != null } }
+        val saved = CropQuad.decode(runBlocking { app.database.documents().page(id)?.crop })!!
+        assertTrue(saved.topRight.x < .9f); assertEquals(saved.topRight.x, saved.bottomRight.x, .001f)
+        assertEquals(0f, saved.topLeft.x, .001f); assertEquals(0f, saved.bottomLeft.x, .001f)
+        assertEquals(0f, saved.topRight.y, .001f); assertEquals(1f, saved.bottomRight.y, .001f)
+    }
+
     @Suppress("DEPRECATION")
     @Test fun hebrewEditorFiltersAdjustmentsAndCropOptionsRemainUsable() {
         val original = Configuration(ui.activity.resources.configuration)

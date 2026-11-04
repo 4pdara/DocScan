@@ -9,3 +9,7 @@ No source code, models, logos or image assets from CamScanner or the researched 
 The optional Google scanner uses the documented `play-services-mlkit-document-scanner:16.0.0` SDK. Google Play services supplies its scanning UI, logic and models separately. This dependency is subject to Google's [ML Kit terms](https://developers.google.com/ml-kit/terms), rather than the Apache license applicable to AndroidX. The local CameraX scanner does not require this service. No proprietary components extracted from the reference packages are redistributed.
 
 References: [AndroidX](https://android.googlesource.com/platform/frameworks/support/), [Kotlin](https://github.com/JetBrains/kotlin), [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines), [Gradle](https://github.com/gradle/gradle).
+
+## PDFBox-Android
+
+PDF import, text-preserving export, merging and print ranges use the public PDFBox-Android API, version 2.0.27.0, under Apache-2.0. Source: https://github.com/TomRoush/PdfBox-Android. Its license and notices are bundled in app assets/licenses, with the Liberation Sans SIL Open Font License and Bouncy Castle license. No CamScanner or Drive code, models or assets are included.

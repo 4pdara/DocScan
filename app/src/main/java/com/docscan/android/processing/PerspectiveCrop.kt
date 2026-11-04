@@ -1,10 +1,12 @@
 package com.docscan.android.processing
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Shader
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -26,11 +28,20 @@ object PerspectiveCrop {
         val matrix = Matrix()
         check(matrix.setPolyToPoly(p.flatMap { listOf(it.x, it.y) }.toFloatArray(), 0,
             floatArrayOf(0f, 0f, w.toFloat(), 0f, w.toFloat(), h.toFloat(), 0f, h.toFloat()), 0, 4))
+        // Sample the source into the destination. Older Android can cull a whole transformed
+        // bitmap whose bounds cross the projective horizon, even when the page stays visible.
+        val bitmapShader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+            setLocalMatrix(matrix)
+        }
         return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { result ->
             Canvas(result).apply {
                 drawColor(Color.WHITE)
-                drawBitmap(source, matrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+                drawRect(0f, 0f, w.toFloat(), h.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                    shader = bitmapShader
+                })
             }
+            // The white backing makes every output pixel opaque, including originally transparent input.
+            result.setHasAlpha(false)
         }
     }
 }

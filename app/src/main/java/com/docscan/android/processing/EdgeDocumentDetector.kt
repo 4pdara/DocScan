@@ -10,7 +10,8 @@ internal object EdgeDocumentDetector {
     private data class Line(val angle: Int, val rho: Float, val votes: Int)
     private data class PairOfLines(val a: Line, val b: Line)
 
-    fun detect(image: GrayImage): DocumentDetection? {
+    fun detect(image: GrayImage, mode: DetectionMode = DetectionMode.STANDARD): DocumentDetection? {
+        val wider = mode == DetectionMode.ANGLED_DISTANCE
         val w = image.width; val h = image.height
         val diagonal = ceil(hypot(w.toDouble(), h.toDouble())).toInt()
         val bins = diagonal * 2 + 1
@@ -20,8 +21,8 @@ internal object EdgeDocumentDetector {
         // A sparse, orientation-guided vote avoids scanning every angle for every edge pixel.
         for (y in 2 until h - 2) for (x in 2 until w - 2) {
             val i = y * w + x
-            val gx = image.pixels[i + 1] - image.pixels[i - 1]
-            val gy = image.pixels[i + w] - image.pixels[i - w]
+            val gx = gradientX(image.pixels, i, w, wider)
+            val gy = gradientY(image.pixels, i, w, wider)
             val strength = abs(gx) + abs(gy)
             magnitude[i] = strength
             histogram[strength]++
@@ -33,17 +34,18 @@ internal object EdgeDocumentDetector {
         for (y in 2 until h - 2) for (x in 2 until w - 2) {
             val i = y * w + x
             if (magnitude[i] < threshold) continue
-            val gx = image.pixels[i + 1] - image.pixels[i - 1]
-            val gy = image.pixels[i + w] - image.pixels[i - w]
+            val gx = gradientX(image.pixels, i, w, wider)
+            val gy = gradientY(image.pixels, i, w, wider)
             val angle = ((atan2(gy.toDouble(), gx.toDouble()) * ANGLES / PI).roundToInt() + ANGLES) % ANGLES
-            for (delta in -1..1) {
+            val spread = if (wider) 2 else 1
+            for (delta in -spread..spread) {
                 val a = (angle + delta + ANGLES) % ANGLES
                 val rho = (x * cosines[a] + y * sines[a]).roundToInt() + diagonal
                 votes[a * bins + rho]++
             }
         }
         val peaks = ArrayList<Line>()
-        val minimumVotes = max(12, min(w, h) / 7)
+        val minimumVotes = max(12, min(w, h) / (if (wider) 14 else 7))
         for (a in 0 until ANGLES) for (r in 2 until bins - 2) {
             val v = votes[a * bins + r]
             if (v < minimumVotes || v < votes[a * bins + r - 1] || v <= votes[a * bins + r + 1]) continue
@@ -54,15 +56,16 @@ internal object EdgeDocumentDetector {
             if (lines.none { angularDistance(it.angle, candidate.angle) <= 2 &&
                     abs(it.rho - if (abs(it.angle - candidate.angle) > ANGLES / 2) -candidate.rho else candidate.rho) < 7 }) {
                 lines.add(candidate)
-                if (lines.size == 16) break
+                if (lines.size == (if (wider) 18 else 16)) break
             }
         }
         val pairs = ArrayList<PairOfLines>()
         for (i in lines.indices) for (j in i + 1 until lines.size) {
             val a = lines[i]; val b = lines[j]
-            if (angularDistance(a.angle, b.angle) > 10) continue
+            val difference = angularDistance(a.angle, b.angle)
+            if (difference > (if (wider) 24 else 10)) continue
             val alignedRho = if (abs(a.angle - b.angle) > ANGLES / 2) -b.rho else b.rho
-            if (abs(a.rho - alignedRho) < min(w, h) * .25f) continue
+            if ((!wider || difference <= 5) && abs(a.rho - alignedRho) < min(w, h) * (if (wider) .10f else .25f)) continue
             pairs.add(PairOfLines(a, b))
         }
         var best: DocumentDetection? = null
@@ -70,7 +73,7 @@ internal object EdgeDocumentDetector {
         for (i in pairs.indices) for (j in i + 1 until pairs.size) {
             val a = pairs[i]; val b = pairs[j]
             if (listOf(a.a, a.b, b.a, b.b).distinct().size != 4) continue
-            if (angularDistance(a.a.angle, b.a.angle) !in 15..30) continue
+            if (angularDistance(a.a.angle, b.a.angle) !in (if (wider) 8 else 15)..30) continue
             val points = listOf(intersect(a.a, b.a), intersect(a.a, b.b), intersect(a.b, b.a), intersect(a.b, b.b))
             if (points.any { it == null }) continue
             val corners = points.filterNotNull()
@@ -81,9 +84,9 @@ internal object EdgeDocumentDetector {
             val first = ordered.indices.minBy { ordered[it].x + ordered[it].y }
             val pixelCorners = List(4) { ordered[(it + first) % 4] }
             val quad = CropQuad.from(pixelCorners.map { CropPoint(it.x / (w - 1), it.y / (h - 1)) })
-            if (!quad.isValid() || quad.area !in .15f.. .92f) continue
+            if (!quad.isValid() || quad.area !in (if (wider) .04f else .15f).. .92f) continue
             val lengths = pixelCorners.indices.map { pixelCorners[it].distance(pixelCorners[(it + 1) % 4]) }
-            if (lengths.min() < min(w, h) * .18f || lengths.max() / lengths.min() > 4.5f) continue
+            if (lengths.min() < min(w, h) * (if (wider) .07f else .18f) || lengths.max() / lengths.min() > (if (wider) 7f else 4.5f)) continue
             val support = pixelCorners.indices.map { edgeSupport(magnitude, w, h, pixelCorners[it], pixelCorners[(it + 1) % 4], threshold) }
             // Each whole side needs evidence; a circle's four tangent lines must not become a page.
             if (support.min() < .60f || support.average() < .78) continue
@@ -93,6 +96,12 @@ internal object EdgeDocumentDetector {
         }
         return best
     }
+
+    // Sobel orientation stabilizes diagonal edges after camera sampling, including dark paper.
+    private fun gradientX(p: IntArray, i: Int, w: Int, smooth: Boolean): Int = if (!smooth) p[i + 1] - p[i - 1] else
+        (p[i - w + 1] + 2 * p[i + 1] + p[i + w + 1] - p[i - w - 1] - 2 * p[i - 1] - p[i + w - 1]) / 4
+    private fun gradientY(p: IntArray, i: Int, w: Int, smooth: Boolean): Int = if (!smooth) p[i + w] - p[i - w] else
+        (p[i + w - 1] + 2 * p[i + w] + p[i + w + 1] - p[i - w - 1] - 2 * p[i - w] - p[i - w + 1]) / 4
 
     private fun angularDistance(a: Int, b: Int) = min(abs(a - b), ANGLES - abs(a - b))
 

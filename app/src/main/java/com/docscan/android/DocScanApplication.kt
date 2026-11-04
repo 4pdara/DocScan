@@ -5,6 +5,10 @@ import com.docscan.android.data.DocScanDatabase
 import com.docscan.android.data.DocumentRepository
 
 class DocScanApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
+    }
     val database by lazy { DocScanDatabase.open(this) }
     val repository by lazy { DocumentRepository(this, database) }
 }

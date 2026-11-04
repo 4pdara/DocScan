@@ -4,11 +4,15 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.docscan.android.processing.ImagePipeline
+import com.docscan.android.processing.DetectionMode
 import com.docscan.android.processing.CropQuad
 import com.docscan.android.processing.ScanFilter
 import com.docscan.android.processing.ImageAdjustments
 import com.docscan.android.processing.PageFormat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import com.docscan.android.processing.PdfSources
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -31,7 +35,7 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
 
     suspend fun recover() = withContext(Dispatchers.IO) {
         lock.withLock {
-            staging.listFiles()?.forEach { it.delete() }
+            staging.listFiles()?.forEach { it.deleteRecursively() }
             val retained = dao.sourceFiles().toSet()
             originals.listFiles()?.filter { it.name !in retained }?.forEach { it.delete() }
         }
@@ -44,22 +48,22 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         id
     }
 
-    suspend fun importImage(documentId: String, uri: Uri, detectBounds: Boolean = true, enhanceCapture: Boolean = false): PageEntity = withContext(Dispatchers.IO) {
+    suspend fun importImage(documentId: String, uri: Uri, detectBounds: Boolean = true, enhanceCapture: Boolean = false, detectionMode: DetectionMode = DetectionMode.STANDARD): PageEntity = withContext(Dispatchers.IO) {
         lock.withLock {
             val input = requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Image unavailable" }
-            input.use { publishImage(documentId, it, detectBounds = detectBounds, enhanceCapture = enhanceCapture) }
+            input.use { publishImage(documentId, it, detectBounds = detectBounds, enhanceCapture = enhanceCapture, detectionMode = detectionMode) }
         }
     }
 
-    suspend fun replaceImage(pageId: String, uri: Uri): PageEntity = withContext(Dispatchers.IO) {
+    suspend fun replaceImage(pageId: String, uri: Uri, detectionMode: DetectionMode = DetectionMode.STANDARD): PageEntity = withContext(Dispatchers.IO) {
         lock.withLock {
             val page = requireNotNull(dao.page(pageId))
-            requireNotNull(appContext.contentResolver.openInputStream(uri)).use { publishImage(page.documentId, it, page) }
+            requireNotNull(appContext.contentResolver.openInputStream(uri)).use { publishImage(page.documentId, it, page, detectionMode = detectionMode) }
         }
     }
 
     private suspend fun publishImage(documentId: String, input: InputStream, replacement: PageEntity? = null,
-        detectBounds: Boolean = true, enhanceCapture: Boolean = false): PageEntity {
+        detectBounds: Boolean = true, enhanceCapture: Boolean = false, detectionMode: DetectionMode = DetectionMode.STANDARD): PageEntity {
         requireNotNull(dao.document(documentId)) { "Document no longer exists" }
         val id = UUID.randomUUID().toString()
         val temporary = File(staging, "$id.pending")
@@ -78,7 +82,7 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
                 output.fd.sync()
             }
             ImagePipeline.validate(temporary)
-            val crop = if (detectBounds) try { ImagePipeline.detectCrop(temporary) } catch (_: Exception) { null } else null
+            val crop = if (detectBounds) try { ImagePipeline.detectCrop(temporary, detectionMode) } catch (_: Exception) { null } else null
             check(temporary.renameTo(destination)) { "Cannot save original" }
             database.withTransaction {
                 val position = (dao.pages(documentId).maxOfOrNull { it.position } ?: -1) + 1
@@ -97,6 +101,110 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
         // The old source remains available until both the new file and database update succeed.
         if (replacement != null) runCatching { source(replacement).delete() }
         return published
+    }
+
+    suspend fun importPdf(documentId: String, uri: Uri): Int = withContext(Dispatchers.IO) {
+        lock.withLock {
+            requireNotNull(dao.document(documentId))
+            val coroutine = currentCoroutineContext()
+            val directory = File(staging, UUID.randomUUID().toString()).apply { check(mkdirs()) }
+            val published = mutableListOf<File>()
+            try {
+                val input = File(directory, "input.pdf")
+                requireNotNull(appContext.contentResolver.openInputStream(uri)).use {
+                    PdfSources.copyBounded(it, input) { coroutine.ensureActive() }
+                }
+                val pieces = PdfSources.split(input, directory) { coroutine.ensureActive() }
+                val position = (dao.pages(documentId).maxOfOrNull { it.position } ?: -1) + 1
+                val pages = pieces.mapIndexed { index, piece ->
+                    coroutine.ensureActive()
+                    FileOutputStream(piece, true).use { it.fd.sync() }
+                    val id = UUID.randomUUID().toString()
+                    val target = File(originals, "$id.pdf")
+                    check(piece.renameTo(target)); published.add(target)
+                    PageEntity(id, documentId, position + index, target.name)
+                }
+                database.withTransaction {
+                    pages.forEach { dao.insertPage(it) }
+                    dao.touch(documentId, System.currentTimeMillis())
+                }
+                pages.size
+            } catch (failure: Exception) { published.forEach { it.delete() }; throw failure }
+            finally { directory.deleteRecursively() }
+        }
+    }
+
+    suspend fun mergeDocuments(ids: List<String>, title: String): String = withContext(Dispatchers.IO) {
+        require(ids.size >= 2 && ids.distinct().size == ids.size)
+        require(title.isNotBlank())
+        lock.withLock {
+            ids.forEach { requireNotNull(dao.document(it)) }
+            val pages = ids.flatMap { dao.pages(it) }
+            require(pages.isNotEmpty() && pages.size <= 1000)
+            val id = UUID.randomUUID().toString()
+            val copies = mutableListOf<File>()
+            try {
+                val newPages = pages.mapIndexed { index, page ->
+                    currentCoroutineContext().ensureActive()
+                    val pageId = UUID.randomUUID().toString()
+                    val target = File(originals, "$pageId.${source(page).extension}")
+                    copies.add(target)
+                    source(page).inputStream().use { input -> FileOutputStream(target).use { output -> input.copyTo(output); output.fd.sync() } }
+                    page.copy(id = pageId, documentId = id, position = index, sourceFile = target.name)
+                }
+                database.withTransaction {
+                    val now = System.currentTimeMillis()
+                    dao.insertDocument(DocumentEntity(id, title.trim().take(120), now, now))
+                    newPages.forEach { dao.insertPage(it) }
+                }
+                id
+            } catch (failure: Exception) { copies.forEach { it.delete() }; throw failure }
+        }
+    }
+
+    fun selectedPages(pages: List<PageEntity>, ids: List<String>?): List<PageEntity> {
+        if (ids == null) return pages
+        require(ids.isNotEmpty() && ids.distinct().size == ids.size)
+        val selected = pages.filter { it.id in ids }
+        require(selected.size == ids.size) { "Selection is no longer available" }
+        return selected
+    }
+
+    private suspend fun updatePages(documentId: String, ids: List<String>, transform: (PageEntity) -> PageEntity) = withContext(Dispatchers.IO) {
+        lock.withLock {
+            database.withTransaction {
+                val pages = selectedPages(dao.pages(documentId), ids)
+                pages.forEach { dao.updatePage(transform(it)) }
+                dao.touch(documentId, System.currentTimeMillis())
+            }
+        }
+    }
+    suspend fun filterPages(documentId: String, ids: List<String>, filter: ScanFilter, strength: Int) {
+        require(strength in 0..100)
+        updatePages(documentId, ids) { it.copy(filter = filter.name, filterStrength = strength) }
+    }
+    suspend fun rotatePages(documentId: String, ids: List<String>) = updatePages(documentId, ids) { it.copy(rotation = (it.rotation + 90) % 360) }
+    suspend fun copyFilterToDocument(pageId: String): Int = withContext(Dispatchers.IO) {
+        lock.withLock {
+            database.withTransaction {
+                val source = requireNotNull(dao.page(pageId))
+                val pages = dao.pages(source.documentId)
+                pages.forEach { dao.updatePage(it.copy(filter = source.filter, filterStrength = source.filterStrength)) }
+                dao.touch(source.documentId, System.currentTimeMillis()); pages.size
+            }
+        }
+    }
+    suspend fun deletePages(documentId: String, ids: List<String>) = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val all = dao.pages(documentId)
+            val removed = selectedPages(all, ids)
+            database.withTransaction {
+                removed.forEach { dao.deletePage(it.id) }
+                all.filter { it.id !in ids }.forEachIndexed { index, page -> dao.updatePage(page.copy(position = index)) }
+                dao.touch(documentId, System.currentTimeMillis())
+            }
+            removed.forEach { source(it).delete() }
+        }
     }
 
     suspend fun rename(id: String, title: String) = withContext(Dispatchers.IO) {

@@ -1,5 +1,11 @@
 package com.docscan.android.ui
 
+import android.Manifest
+import android.os.Build
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import com.docscan.android.export.PrintExport
 import android.content.ClipData
 import android.content.Intent
 import androidx.activity.compose.BackHandler
@@ -65,6 +71,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     var imageExportTarget by vm::imageExportTarget
     var pendingDeleteDocument by remember { mutableStateOf<DocumentSummary?>(null) }
     var pendingDeletePage by remember { mutableStateOf<PageEntity?>(null) }
+    var importing by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
     val document = documents.firstOrNull { it.document.id == documentId }?.document
@@ -82,17 +90,31 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         vm.importImages(uris, importTarget) { id -> documentId = id; screen = "document" }
     }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        vm.importPdfs(uris, importTarget) { id -> vm.openDocument(id) }
+    }
+    val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        val granted = grants[Manifest.permission.WRITE_EXTERNAL_STORAGE] == true && grants[Manifest.permission.READ_EXTERNAL_STORAGE] == true
+        val id = vm.galleryTarget
+        val ids = vm.outputPageIds.takeIf { it.isNotEmpty() }?.toList()
+        vm.galleryTarget = null; vm.outputPageIds = arrayListOf()
+        if (granted && id != null) vm.saveGallery(id, ids)
+        else if (!granted) Toast.makeText(context, R.string.gallery_permission_denied, Toast.LENGTH_LONG).show()
+    }
+    fun outputIds(): List<String>? = if (vm.selectingPages) vm.selectedPageIds.toList() else null
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val id = exportTarget
-        if (uri != null && id != null) vm.export(id, uri)
-        exportTarget = null
+        if (uri != null && id != null) vm.export(id, uri, ids = vm.outputPageIds.takeIf { it.isNotEmpty() }?.toList())
+        exportTarget = null; vm.outputPageIds = arrayListOf()
     }
     val imageFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val id = imageExportTarget
-        if (uri != null && id != null) vm.exportImages(id, uri)
-        imageExportTarget = null
+        if (uri != null && id != null) vm.exportImages(id, uri, vm.outputPageIds.takeIf { it.isNotEmpty() }?.toList())
+        imageExportTarget = null; vm.outputPageIds = arrayListOf()
     }
     fun navigateBack() {
+        if (screen == "document" && vm.selectingPages) { vm.selectingPages = false; vm.selectedPageIds = arrayListOf(); return }
+        if (screen == "home" && vm.selectingDocuments) { vm.selectingDocuments = false; vm.selectedDocuments = arrayListOf(); return }
         if (screen == "crop") vm.clearCropDraft()
         screen = when (screen) {
             "crop" -> "editor"
@@ -101,7 +123,11 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
             else -> "home"
         }
     }
-    BackHandler(screen != "home") { navigateBack() }
+    BackHandler(screen != "home" || vm.selectingDocuments) {
+        if (screen == "home" && vm.selectingDocuments) { vm.selectingDocuments = false; vm.selectedDocuments = arrayListOf() }
+        else if (screen == "document" && vm.selectingPages) { vm.selectingPages = false; vm.selectedPageIds = arrayListOf() }
+        else navigateBack()
+    }
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -138,10 +164,10 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (screen) {
-                    "home" -> HomeScreen(documents, busy,
+                    "home" -> LibraryScreen(documents, vm, busy,
                         googlePreparing = googleScan.preparing, onGoogleScan = googleScan.launch, onCancelGoogle = googleScan.cancel,
-                        onOpen = { documentId = it; screen = "document" },
-                        onImport = { importTarget = null; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        onOpen = { vm.openDocument(it) },
+                        onImport = { importTarget = null; importing = true },
                         onDelete = { pendingDeleteDocument = it },
                     )
                     "camera" -> documentId?.let { id ->
@@ -149,10 +175,10 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         CameraScreen(
                         pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = { navigateBack() },
                         onReview = { pageId = it; returnToCamera = true; screen = "editor" },
-                        onCapture = { file, onSaved ->
-                            if (target == null) vm.capture(id, file, onSaved)
+                        onCapture = { file, detectionMode, onSaved ->
+                            if (target == null) vm.capture(id, file, detectionMode, onSaved)
                             else if (screen != "camera" || retakePageId != target) { file.delete(); onSaved(false) }
-                            else vm.retake(target, file) { saved ->
+                            else vm.retake(target, file, detectionMode) { saved ->
                                 onSaved(saved)
                                 if (saved) { retakePageId = null; screen = "editor" }
                             }
@@ -160,7 +186,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     ) }
                     "editor" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) PageEditor(page, vm, busy, onCrop = { vm.beginCrop(page) },
+                        if (page != null) PageEditor(page, pages, vm, busy, onCrop = { vm.beginCrop(page) },
                             onRetake = { retakePageId = page.id; screen = "camera" })
                         else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
                             val selectedPage = pageId
@@ -192,29 +218,39 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         }
                         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
-                    else -> DocumentScreen(document, pages, vm, busy,
+                    else -> if (loadedPages != null) DocumentOverview(document, pages, vm, busy,
                         onCamera = { screen = "camera" },
-                        onImport = { importTarget = documentId; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        onImport = { importTarget = documentId; importing = true },
                         onEdit = { pageId = it; returnToCamera = false; screen = "editor" },
                         onDelete = { pendingDeletePage = it },
                         onRename = { editedName = document?.title.orEmpty(); renaming = true },
-                        onExport = { exportTarget = documentId; exportPicker.launch(ExportNames.pdf(document?.title.orEmpty())) },
-                        onExportImages = { imageExportTarget = documentId; imageFolderPicker.launch(null) },
-                        onShare = {
-                            documentId?.let { id -> vm.export(id, onShare = { file ->
-                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/pdf"; putExtra(Intent.EXTRA_STREAM, uri)
-                                    clipData = ClipData.newUri(context.contentResolver, "DocScan PDF", uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_pdf)))
-                            }) }
+                        onExport = { vm.outputPageIds = ArrayList(outputIds().orEmpty()); exportTarget = documentId; exportPicker.launch(ExportNames.pdf(document?.title.orEmpty())) },
+                        onExportImages = { vm.outputPageIds = ArrayList(outputIds().orEmpty()); imageExportTarget = documentId; imageFolderPicker.launch(null) },
+                        onGallery = {
+                            documentId?.let { id ->
+                                val ids = outputIds()
+                                if (Build.VERSION.SDK_INT <= 28 && listOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE).any {
+                                    ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                                }) {
+                                    vm.galleryTarget = id; vm.outputPageIds = ArrayList(ids.orEmpty())
+                                    galleryPermission.launch(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE))
+                                } else vm.saveGallery(id, ids)
+                            }
                         },
+                        onShare = { sharing = true },
                     )
                 }
             }
         }
+        if (importing) ImportSheet(onImages = { importing = false; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onPdf = { importing = false; pdfPicker.launch(arrayOf("application/pdf")) }, onDismiss = { importing = false })
+        if (sharing) ShareSheet(onShare = { format ->
+            sharing = false; documentId?.let { id -> vm.share(id, format, outputIds()) { intent ->
+                context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_options)))
+            } }
+        }, onPrint = {
+            sharing = false; documentId?.let { id -> vm.print(id, outputIds()) { file -> PrintExport.launch(context, file, document?.title.orEmpty()) } }
+        }, onDismiss = { sharing = false })
         if (pendingDeleteDocument != null || pendingDeletePage != null) {
             val wholeDocument = pendingDeleteDocument != null
             AlertDialog(
@@ -239,95 +275,17 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
 }
 
 @Composable
-private fun HomeScreen(documents: List<DocumentSummary>, busy: Boolean, googlePreparing: Boolean,
-    onGoogleScan: () -> Unit, onCancelGoogle: () -> Unit,
-    onOpen: (String) -> Unit, onImport: () -> Unit, onDelete: (DocumentSummary) -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineLarge)
-            Text(stringResource(R.string.library_subtitle), Modifier.padding(top = 8.dp, bottom = 20.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(stringResource(R.string.local_badge), style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(R.string.prototype_label), style = MaterialTheme.typography.bodySmall)
-                    ActionButton(R.drawable.ic_image, stringResource(R.string.import_images), !busy, onClick = onImport)
-                    ActionButton(R.drawable.ic_camera, stringResource(R.string.scan_google), !busy, Modifier.fillMaxWidth(), onGoogleScan)
-                    Text(stringResource(R.string.google_scan_hint), style = MaterialTheme.typography.bodySmall)
-                    if (googlePreparing) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.google_scan_preparing), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = onCancelGoogle) { Text(stringResource(R.string.cancel)) }
-                    }
-                }
-            }
-        }
-        if (documents.isEmpty()) item { EmptyState(stringResource(R.string.empty_title), stringResource(R.string.empty_body), Modifier.fillMaxWidth()) }
-        items(documents, key = { it.document.id }) { summary ->
-            ElevatedCard(onClick = { if (!busy) onOpen(summary.document.id) }, shape = RoundedCornerShape(22.dp)) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { AppIcon(R.drawable.ic_pdf, null, Modifier.padding(16.dp).size(28.dp)) }
-                    Column(Modifier.weight(1f)) {
-                        Text(summary.document.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(stringResource(R.string.page_count, summary.pageCount), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(enabled = !busy, onClick = { onDelete(summary) }) { AppIcon(R.drawable.ic_delete, stringResource(R.string.delete)) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DocumentScreen(
-    document: DocumentEntity?, pages: List<PageEntity>, vm: DocScanViewModel, busy: Boolean,
-    onCamera: () -> Unit, onImport: () -> Unit, onEdit: (String) -> Unit,
-    onDelete: (PageEntity) -> Unit, onRename: () -> Unit, onExport: () -> Unit, onExportImages: () -> Unit, onShare: () -> Unit,
-) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(document?.title ?: stringResource(R.string.document_title), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            IconButton(enabled = !busy && document != null, onClick = onRename) { AppIcon(R.drawable.ic_edit, stringResource(R.string.rename)) }
-        }
-        Text(stringResource(R.string.page_count, pages.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(R.drawable.ic_camera, stringResource(R.string.add_pages), !busy, Modifier.weight(1f), onCamera)
-            ActionButton(R.drawable.ic_image, stringResource(R.string.import_images), !busy, Modifier.weight(1f), onImport)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(R.drawable.ic_pdf, stringResource(R.string.save_pdf), !busy && pages.isNotEmpty(), Modifier.weight(1f), onExport)
-            ActionButton(R.drawable.ic_image, stringResource(R.string.save_images), !busy && pages.isNotEmpty(), Modifier.weight(1f), onExportImages)
-            IconButton(enabled = !busy && pages.isNotEmpty(), onClick = onShare) { AppIcon(R.drawable.ic_share, stringResource(R.string.share_pdf)) }
-        }
-        if (pages.isEmpty()) EmptyState(stringResource(R.string.no_pages_title), stringResource(R.string.no_pages_body), Modifier.weight(1f))
-        else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
-                OutlinedCard(shape = RoundedCornerShape(22.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Surface(onClick = { onEdit(page.id) }, enabled = !busy, shape = RoundedCornerShape(14.dp)) {
-                            PagePreview(page, vm.repository, Modifier.width(96.dp).height(128.dp))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.page_label, index + 1), style = MaterialTheme.typography.titleMedium)
-                            Text(filterLabel(ScanFilter.valueOf(page.filter)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(enabled = !busy, onClick = { onEdit(page.id) }) { Text(stringResource(R.string.edit)) }
-                            Row {
-                                IconButton(enabled = !busy && index > 0, onClick = { vm.move(page.id, -1) }) { AppIcon(R.drawable.ic_up, stringResource(R.string.move_previous)) }
-                                IconButton(enabled = !busy && index < pages.lastIndex, onClick = { vm.move(page.id, 1) }) { AppIcon(R.drawable.ic_down, stringResource(R.string.move_next)) }
-                                IconButton(enabled = !busy, onClick = { onDelete(page) }) { AppIcon(R.drawable.ic_delete, stringResource(R.string.delete)) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit, onRetake: () -> Unit) {
+private fun PageEditor(page: PageEntity, pages: List<PageEntity>, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit, onRetake: () -> Unit) {
     var showOriginal by rememberSaveable(page.id) { mutableStateOf(false) }
     var filterPicker by remember { mutableStateOf(false) }
     var adjusting by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (pages.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            val index = pages.indexOfFirst { it.id == page.id }
+            IconButton(enabled = !busy && index > 0, onClick = { vm.pageId = pages[index - 1].id }) { AppIcon(R.drawable.ic_up, stringResource(R.string.move_previous)) }
+            Text(stringResource(R.string.page_position, index + 1, pages.size))
+            IconButton(enabled = !busy && index < pages.lastIndex, onClick = { vm.pageId = pages[index + 1].id }) { AppIcon(R.drawable.ic_down, stringResource(R.string.move_next)) }
+        }
         PagePreview(if (showOriginal) page.withoutEdits() else page, vm.repository,
             Modifier.weight(1f).fillMaxWidth(), edge = 1400, zoomable = true)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -346,10 +304,12 @@ private fun PageEditor(page: PageEntity, vm: DocScanViewModel, busy: Boolean, on
         Text(stringResource(R.string.editor_summary, filterLabel(ScanFilter.valueOf(page.filter)),
             pageFormatLabel(com.docscan.android.processing.PageFormat.fromKey(page.pageFormat)), page.sharpness),
             style = MaterialTheme.typography.labelMedium)
+        if (vm.repository.source(page).extension == "pdf") Text(stringResource(R.string.pdf_edit_hint), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.original_preserved), style = MaterialTheme.typography.bodySmall)
     }
     if (filterPicker) FilterPicker(page, vm.repository, busy,
-        onFilter = { vm.filter(page.id, it) }, onStrength = { vm.filterStrength(page.id, it) }, onDismiss = { filterPicker = false })
+        onFilter = { vm.filter(page.id, it) }, onStrength = { vm.filterStrength(page.id, it) }, onDismiss = { filterPicker = false },
+        onApplyToAll = if (pages.size > 1) ({ vm.applyFilterToDocument(page.id); filterPicker = false }) else null)
     if (adjusting) AdjustmentSheet(page, vm.repository,
         onApply = { vm.adjustments(page.id, it); adjusting = false }, onDismiss = { adjusting = false })
 }

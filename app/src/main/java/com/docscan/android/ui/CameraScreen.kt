@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -51,6 +52,7 @@ import com.docscan.android.R
 import com.docscan.android.data.DocumentRepository
 import com.docscan.android.data.PageEntity
 import com.docscan.android.processing.AutoCaptureGate
+import com.docscan.android.processing.DetectionMode
 import com.docscan.android.processing.CaptureDecision
 import com.docscan.android.processing.CaptureStatus
 import kotlinx.coroutines.delay
@@ -63,7 +65,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 fun CameraScreen(
     pages: List<PageEntity>, repository: DocumentRepository, gate: AutoCaptureGate,
     busy: Boolean, manualOnly: Boolean, onDone: () -> Unit, onReview: (String) -> Unit,
-    onCapture: (File, (Boolean) -> Unit) -> Unit, onFailure: () -> Unit,
+    onCapture: (File, DetectionMode, (Boolean) -> Unit) -> Unit, onFailure: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current
@@ -86,11 +88,16 @@ fun CameraScreen(
         }
         return
     }
-    var automatic by rememberSaveable { mutableStateOf(!manualOnly) }
+    val preferences = remember(context) { context.getSharedPreferences("scan-preferences", android.content.Context.MODE_PRIVATE) }
+    var automatic by rememberSaveable { mutableStateOf(!manualOnly && preferences.getBoolean("automatic", true)) }
+    var highQuality by rememberSaveable { mutableStateOf(manualOnly || preferences.getBoolean("high-quality", false)) }
+    var angledDistance by rememberSaveable { mutableStateOf(preferences.getBoolean("angled-distance", false)) }
+    val detectionMode by rememberUpdatedState(if (angledDistance) DetectionMode.ANGLED_DISTANCE else DetectionMode.STANDARD)
+    var options by remember { mutableStateOf(false) }
     var paused by rememberSaveable { mutableStateOf(false) }
-    val controller = remember(automatic) { LifecycleCameraController(context).apply {
+    val controller = remember(highQuality) { LifecycleCameraController(context).apply {
         setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
-        imageCaptureMode = if (automatic) ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY else ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
+        imageCaptureMode = if (highQuality) ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY else ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
         imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
     } }
     val previewView = remember(controller) { PreviewView(context).apply {
@@ -115,7 +122,7 @@ fun CameraScreen(
         resumed = true; gate.interrupt()
         onPauseOrDispose { resumed = false; gate.interrupt(); outline = emptyList() }
     }
-    LaunchedEffect(automatic, paused) { gate.interrupt(); decision = CaptureDecision(CaptureStatus.SEARCHING) }
+    LaunchedEffect(automatic, paused, angledDistance) { gate.interrupt(); decision = CaptureDecision(CaptureStatus.SEARCHING) }
     LaunchedEffect(controller) {
         while (true) {
             delay(600)
@@ -127,6 +134,7 @@ fun CameraScreen(
 
     fun capturePage() {
         if (!cameraReady || busy || capturing || unavailable || !resumed) return
+        val captureMode = detectionMode
         capturing = true; gate.markCaptured()
         val file = File(context.cacheDir, "capture-${UUID.randomUUID()}.jpg")
         fun failed() {
@@ -137,7 +145,7 @@ fun CameraScreen(
         try {
             controller.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), mainExecutor, object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    onCapture(file) { saved ->
+                    onCapture(file, captureMode) { saved ->
                         capturing = false
                         if (saved) {
                             decision = CaptureDecision(CaptureStatus.WAIT_FOR_NEXT)
@@ -171,7 +179,7 @@ fun CameraScreen(
         val executor = Executors.newSingleThreadExecutor()
         val observer = Observer<PreviewView.StreamState> { cameraReady = it == PreviewView.StreamState.STREAMING }
         previewView.previewStreamState.observe(lifecycle, observer)
-        controller.setImageAnalysisAnalyzer(executor, CameraFrameAnalyzer { frame ->
+        controller.setImageAnalysisAnalyzer(executor, CameraFrameAnalyzer(detectionMode = { detectionMode }) { frame ->
             mainExecutor.execute { if (active.get()) currentFrameHandler(frame) }
         })
         try { controller.bindToLifecycle(lifecycle) } catch (_: Exception) { unavailable = true }
@@ -197,7 +205,25 @@ fun CameraScreen(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(fastLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             Switch(automatic, modifier = Modifier.semantics { contentDescription = fastLabel }, enabled = !busy && !capturing && !manualOnly,
-                onCheckedChange = { automatic = it; paused = false })
+                onCheckedChange = { automatic = it; paused = false; preferences.edit { putBoolean("automatic", it) } })
+            Box {
+                IconButton(enabled = !busy && !capturing, onClick = { options = true }) { AppIcon(R.drawable.ic_more, stringResource(R.string.more_options)) }
+                DropdownMenu(options, onDismissRequest = { options = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.high_quality_capture)) }, trailingIcon = { Checkbox(highQuality, onCheckedChange = null) }, onClick = {
+                        highQuality = !highQuality; preferences.edit { putBoolean("high-quality", highQuality) }; options = false
+                    })
+                    val angleLabel = stringResource(R.string.angle_distance_detection)
+                    DropdownMenuItem(text = { Text(angleLabel) }, trailingIcon = {
+                        Checkbox(angledDistance, modifier = Modifier.semantics { contentDescription = angleLabel }, onCheckedChange = {
+                            angledDistance = it; preferences.edit { putBoolean("angled-distance", it) }; options = false
+                        })
+                    }, onClick = {
+                        angledDistance = !angledDistance; preferences.edit { putBoolean("angled-distance", angledDistance) }; options = false
+                    })
+                    Text(stringResource(R.string.angle_distance_hint), Modifier.widthIn(max = 260.dp).padding(16.dp), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.capture_quality_hint), Modifier.widthIn(max = 260.dp).padding(16.dp), style = MaterialTheme.typography.bodySmall)
+                }
+            }
             Text(stringResource(R.string.page_count, pages.size), style = MaterialTheme.typography.labelLarge)
         }
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
@@ -212,6 +238,9 @@ fun CameraScreen(
                     drawPath(path, Color(0xFF50E0C2), style = Stroke(3.dp.toPx()))
                     outline.forEach { drawCircle(Color.White, 5.dp.toPx(), it) }
                 }
+            }
+            if (angledDistance) Surface(Modifier.align(Alignment.TopCenter).padding(12.dp), color = Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(16.dp)) {
+                Text(stringResource(R.string.angle_distance_detection), Modifier.padding(8.dp), color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
             Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), color = Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {

@@ -10,13 +10,14 @@ import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.camera.view.transform.OutputTransform
 import com.docscan.android.processing.CropQuad
 import com.docscan.android.processing.DocumentDetector
+import com.docscan.android.processing.DetectionMode
 import com.docscan.android.processing.LumaSampler
 import com.docscan.android.processing.PageFingerprint
 
 data class CameraFrame(val quad: CropQuad?, val width: Int, val height: Int,
     val transform: OutputTransform, val timestamp: Long, val fingerprint: PageFingerprint?)
 
-class CameraFrameAnalyzer(private val onFrame: (CameraFrame) -> Unit) : ImageAnalysis.Analyzer {
+class CameraFrameAnalyzer(private val detectionMode: () -> DetectionMode = { DetectionMode.STANDARD }, private val onFrame: (CameraFrame) -> Unit) : ImageAnalysis.Analyzer {
     private var lastAnalysis = -1L
     private val transforms = ImageProxyTransformFactory().apply {
         isUsingCropRect = true
@@ -30,12 +31,13 @@ class CameraFrameAnalyzer(private val onFrame: (CameraFrame) -> Unit) : ImageAna
             val now = SystemClock.elapsedRealtime()
             if (lastAnalysis >= 0 && now - lastAnalysis < 100) return
             lastAnalysis = now
+            val mode = detectionMode()
             val crop = image.cropRect
             val rotation = image.imageInfo.rotationDegrees
             val plane = image.planes[0]
             val gray = LumaSampler.sample(plane.buffer.duplicate(), plane.rowStride, plane.pixelStride,
-                crop.left, crop.top, crop.width(), crop.height(), rotation)
-            val detection = DocumentDetector.detect(gray)?.takeIf { it.confidence >= .15f }
+                crop.left, crop.top, crop.width(), crop.height(), rotation, maxEdge = mode.analysisEdge)
+            val detection = DocumentDetector.detect(gray, mode)?.takeIf { it.confidence >= mode.liveConfidence }
             onFrame(CameraFrame(detection?.quad,
                 if (rotation % 180 == 0) crop.width() else crop.height(),
                 if (rotation % 180 == 0) crop.height() else crop.width(),
