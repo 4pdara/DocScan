@@ -13,6 +13,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -26,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -82,6 +85,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     val snackbar = remember { SnackbarHostState() }
     val googleScan = rememberGoogleScanAction(onPages = { uris ->
         vm.importImages(uris, null, detectBounds = false) { id ->
+            vm.googleReviewDocumentId = id; vm.documentGrid = false
             documentId = id; returnToCamera = false; screen = "document"
         }
     }, onError = vm::googleScannerError)
@@ -173,7 +177,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     "camera" -> documentId?.let { id ->
                         val target = retakePageId
                         CameraScreen(
-                        pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = { navigateBack() },
+                        pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = { vm.documentGrid = false; navigateBack() },
                         onReview = { pageId = it; returnToCamera = true; screen = "editor" },
                         onCapture = { file, detectionMode, onSaved ->
                             if (target == null) vm.capture(id, file, detectionMode, onSaved)
@@ -186,8 +190,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     ) }
                     "editor" -> {
                         val page = pages.firstOrNull { it.id == pageId }
-                        if (page != null) PageEditor(page, pages, vm, busy, onCrop = { vm.beginCrop(page) },
-                            onRetake = { retakePageId = page.id; screen = "camera" })
+                        if (page != null) PageEditor(page, pages, vm, busy, onCrop = { vm.beginCrop(it) },
+                            onRetake = { retakePageId = it; screen = "camera" })
                         else if (loadedPages != null) LaunchedEffect(documentId, pageId) {
                             val selectedPage = pageId
                             val selectedDocument = documentId
@@ -203,6 +207,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         if (page != null) CropScreen(page, vm.repository, busy,
                             quad = CropQuad.decode(vm.cropPoints) ?: CropQuad.FULL,
                             format = PageFormat.fromKey(vm.cropFormat), rectangle = vm.cropRectangle,
+                            detectOnOpen = vm.cropDetectOnOpen, onDetectionComplete = { vm.cropDetectOnOpen = false },
                             onQuadChange = { vm.cropPoints = it.encode() },
                             onFormatChange = { vm.cropFormat = it.name },
                             onRectangleChange = { vm.cropRectangle = it },
@@ -238,6 +243,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                             }
                         },
                         onShare = { sharing = true },
+                        onCrop = { returnToCamera = false; vm.beginCrop(it, detectBounds = true) },
                     )
                 }
             }
@@ -275,31 +281,40 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
 }
 
 @Composable
-private fun PageEditor(page: PageEntity, pages: List<PageEntity>, vm: DocScanViewModel, busy: Boolean, onCrop: () -> Unit, onRetake: () -> Unit) {
+private fun PageEditor(initialPage: PageEntity, pages: List<PageEntity>, vm: DocScanViewModel, busy: Boolean,
+    onCrop: (PageEntity) -> Unit, onRetake: (String) -> Unit) {
+    val pager = rememberPagerState(initialPage = pages.indexOfFirst { it.id == initialPage.id }.coerceAtLeast(0)) { pages.size }
+    val page = pages.getOrNull(pager.settledPage) ?: initialPage
+    var zoomed by remember { mutableStateOf(false) }
+    val blocked = busy || pager.isScrollInProgress
+    LaunchedEffect(page.id) { vm.pageId = page.id; zoomed = false }
     var showOriginal by rememberSaveable(page.id) { mutableStateOf(false) }
     var filterPicker by remember { mutableStateOf(false) }
     var adjusting by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (pages.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            val index = pages.indexOfFirst { it.id == page.id }
-            IconButton(enabled = !busy && index > 0, onClick = { vm.pageId = pages[index - 1].id }) { AppIcon(R.drawable.ic_up, stringResource(R.string.move_previous)) }
-            Text(stringResource(R.string.page_position, index + 1, pages.size))
-            IconButton(enabled = !busy && index < pages.lastIndex, onClick = { vm.pageId = pages[index + 1].id }) { AppIcon(R.drawable.ic_down, stringResource(R.string.move_next)) }
+        if (pages.size > 1) Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(R.string.page_position, pager.currentPage + 1, pages.size))
+            Text(stringResource(R.string.swipe_pages), style = MaterialTheme.typography.labelSmall)
         }
-        PagePreview(if (showOriginal) page.withoutEdits() else page, vm.repository,
-            Modifier.weight(1f).fillMaxWidth(), edge = 1400, zoomable = true)
+        HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().testTag("page-pager"),
+            key = { pages[it].id }, userScrollEnabled = !busy && !zoomed && !filterPicker && !adjusting) { index ->
+            val item = pages[index]
+            PagePreview(if (showOriginal && item.id == page.id) item.withoutEdits() else item, vm.repository,
+                Modifier.fillMaxSize(), edge = 1400, zoomable = item.id == page.id,
+                onZoomChanged = { if (item.id == page.id) zoomed = it })
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EditorTool(R.drawable.ic_crop, stringResource(R.string.crop_title), !busy && !showOriginal, Modifier.weight(1f), onCrop)
-            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !busy && !showOriginal, Modifier.weight(1f)) { filterPicker = true }
-            EditorTool(R.drawable.ic_tune, stringResource(R.string.image_adjustments), !busy && !showOriginal, Modifier.weight(1f)) { adjusting = true }
+            EditorTool(R.drawable.ic_crop, stringResource(R.string.crop_title), !blocked && !showOriginal, Modifier.weight(1f)) { onCrop(page) }
+            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !blocked && !showOriginal, Modifier.weight(1f)) { filterPicker = true }
+            EditorTool(R.drawable.ic_tune, stringResource(R.string.image_adjustments), !blocked && !showOriginal, Modifier.weight(1f)) { adjusting = true }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(showOriginal, onCheckedChange = { showOriginal = it })
                 Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.show_original), style = MaterialTheme.typography.labelMedium)
             }
-            TextButton(enabled = !busy && !showOriginal, onClick = onRetake) { Text(stringResource(R.string.retake)) }
-            IconButton(enabled = !busy && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
+            TextButton(enabled = !blocked && !showOriginal, onClick = { onRetake(page.id) }) { Text(stringResource(R.string.retake)) }
+            IconButton(enabled = !blocked && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
         }
         Text(stringResource(R.string.editor_summary, filterLabel(ScanFilter.valueOf(page.filter)),
             pageFormatLabel(com.docscan.android.processing.PageFormat.fromKey(page.pageFormat)), page.sharpness),

@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.user4pdara.docscan"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -29,6 +29,8 @@ android {
     }
     buildFeatures { compose = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
+    sourceSets["test"].resources.srcDir("src/sharedTest/resources")
+    sourceSets["androidTest"].assets.srcDir("src/sharedTest/resources")
 }
 
 kotlin {

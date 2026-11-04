@@ -36,7 +36,9 @@ class CameraFrameAnalyzer(private val detectionMode: () -> DetectionMode = { Det
             val rotation = image.imageInfo.rotationDegrees
             val plane = image.planes[0]
             val gray = LumaSampler.sample(plane.buffer.duplicate(), plane.rowStride, plane.pixelStride,
-                crop.left, crop.top, crop.width(), crop.height(), rotation, maxEdge = mode.analysisEdge)
+                crop.left, crop.top, crop.width(), crop.height(), rotation, maxEdge = mode.analysisEdge,
+                u = image.planes.getOrNull(1)?.let { LumaSampler.Chroma(it.buffer.duplicate(), it.rowStride, it.pixelStride) },
+                v = image.planes.getOrNull(2)?.let { LumaSampler.Chroma(it.buffer.duplicate(), it.rowStride, it.pixelStride) })
             val detection = DocumentDetector.detect(gray, mode)?.takeIf { it.confidence >= mode.liveConfidence }
             onFrame(CameraFrame(detection?.quad,
                 if (rotation % 180 == 0) crop.width() else crop.height(),

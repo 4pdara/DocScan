@@ -2,8 +2,8 @@ package com.docscan.android.processing
 
 import kotlin.math.*
 
-data class GrayImage(val width: Int, val height: Int, val pixels: IntArray) {
-    init { require(width > 0 && height > 0 && pixels.size == width * height) }
+data class GrayImage(val width: Int, val height: Int, val pixels: IntArray, val pageContrast: IntArray? = null) {
+    init { require(width > 0 && height > 0 && pixels.size == width * height && (pageContrast == null || pageContrast.size == pixels.size)) }
 }
 
 data class DocumentDetection(val quad: CropQuad, val confidence: Float)
@@ -13,10 +13,23 @@ data class DocumentDetection(val quad: CropQuad, val confidence: Float)
  */
 object DocumentDetector {
     fun detect(image: GrayImage, mode: DetectionMode = DetectionMode.STANDARD): DocumentDetection? {
+        // A closed colour-assisted silhouette avoids choosing printed columns or distant wall lines.
+        // Do not run another expensive Hough pass when that silhouette already has strong evidence.
+        image.pageContrast?.let { contrast ->
+            val view = GrayImage(image.width, image.height, contrast)
+            val regular = detectGray(view, DetectionMode.STANDARD, edges = false, brightOnly = true)
+            val candidate = regular ?: detectGray(view, DetectionMode.ANGLED_DISTANCE, edges = false, brightOnly = true)
+            val quality = candidate?.let { if (regular != null) it.confidence / it.quad.area else it.confidence / .9f } ?: 0f
+            if (candidate != null && quality >= .72f) return candidate.copy(confidence = quality.coerceIn(0f, 1f))
+        }
+        return detectGray(image, mode, edges = true)
+    }
+
+    private fun detectGray(image: GrayImage, mode: DetectionMode, edges: Boolean, brightOnly: Boolean = false): DocumentDetection? {
         val wider = mode == DetectionMode.ANGLED_DISTANCE
         val w = image.width; val h = image.height; val pixels = image.pixels
         if (w < 32 || h < 32 || w * h > 1_000_000) return null
-        val edge = EdgeDocumentDetector.detect(image, mode)
+        val edge = if (edges) EdgeDocumentDetector.detect(image, mode) else null
         val histogram = IntArray(256)
         pixels.forEach { histogram[it.coerceIn(0, 255)]++ }
         val total = pixels.size
@@ -33,7 +46,7 @@ object DocumentDetector {
         }
         if (bestVariance / total / total < 90) return edge?.let { it.copy(quad = PageBoundary.refine(image, it.quad)) }
         var best: DocumentDetection? = null
-        for (bright in if (wider) listOf(true, false) else listOf(true)) {
+        for (bright in if (wider && !brightOnly) listOf(true, false) else listOf(true)) {
             for (level in listOf(threshold + 1, threshold + 20, threshold - 16).map { it.coerceIn(20, 235) }.distinct()) {
                 var strongAtLevel = false
                 val visited = BooleanArray(total)
@@ -105,7 +118,7 @@ object DocumentDetector {
             }
         }
         return selected?.takeIf { !wider || it.confidence >= .45f }
-            ?.let { it.copy(quad = PageBoundary.refine(image, it.quad)) }
+            ?.let { it.copy(quad = PageBoundary.refine(image, it.quad, searchRadius = if (edges) 5 else 9)) }
     }
 
     private fun edgeContrast(image: GrayImage, corners: List<CropPoint>): Float {

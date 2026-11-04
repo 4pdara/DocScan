@@ -5,6 +5,20 @@ import org.junit.Test
 import java.nio.ByteBuffer
 
 class LumaAndContentTest {
+    @Test fun chromaPaddingCropOffsetsAndRotationDoNotMoveThePageContrast() {
+        val y = ByteBuffer.wrap(ByteArray(8*4) { 180.toByte() })
+        val u = ByteBuffer.wrap(byteArrayOf(99, 125, 99, 140.toByte(), 99, 99, 99, 99, 99, 130.toByte(), 99, 120, 99, 99, 99, 99)).apply { position(1) }
+        val v = ByteBuffer.wrap(ByteArray(16) { 128.toByte() }).apply { position(1) }
+        for (rotation in listOf(0, 90, 180, 270)) {
+            val result = LumaSampler.sample(y, 8, 2, 1, 1, 2, 2, rotation, 360,
+                LumaSampler.Chroma(u, 8, 2), LumaSampler.Chroma(v, 8, 2))
+            val original = intArrayOf(PageContrast.yuv(180,125,128), PageContrast.yuv(180,140,128), PageContrast.yuv(180,130,128), PageContrast.yuv(180,120,128))
+            val order = when(rotation) { 90 -> listOf(2,0,3,1); 180 -> listOf(3,2,1,0); 270 -> listOf(1,3,0,2); else -> listOf(0,1,2,3) }
+            assertArrayEquals(order.map { original[it] }.toIntArray(), result.pageContrast)
+        }
+        assertEquals(1,u.position()); assertEquals(1,v.position()); assertEquals(0,y.position())
+    }
+
     @Test fun paddedYPlaneAndCropOriginAreRespected() {
         val bytes = ByteArray(8 * 4) { 99 }
         for (y in 0..3) for (x in 0..3) bytes[y * 8 + x * 2] = (y * 10 + x).toByte()
