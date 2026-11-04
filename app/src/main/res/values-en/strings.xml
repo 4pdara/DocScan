@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="filter_auto_document">Auto document</string>
+    <string name="auto_document_hint">Normalize paper color and lighting and strengthen text. Check faint ink and stamps; adjust strength or return to the original.</string>
     <string name="swipe_pages">Swipe left or right to change pages</string>
     <string name="edit_page_desc">Edit page %1$d</string>
     <string name="continuous_pages">Continuous view</string>

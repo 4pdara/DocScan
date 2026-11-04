@@ -48,7 +48,9 @@ object ImagePipeline {
             }
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            if (filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT) {
+            if (filter == ScanFilter.AUTO_DOCUMENT) {
+                AutoDocumentFilter.apply(pixels, bitmap.width, bitmap.height, filterStrength)
+            } else if (filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT) {
                 DocumentFilters.apply(pixels, bitmap.width, bitmap.height, filter, filterStrength)
             } else if (filter in ProDocumentFilters.supported) {
                 ProDocumentFilters.apply(pixels, bitmap.width, bitmap.height, filter, filterStrength)
@@ -97,8 +99,8 @@ object ImagePipeline {
     }
 
     fun detectCrop(file: File, mode: DetectionMode = DetectionMode.STANDARD): CropQuad? {
-        val bitmap = render(file, 0, ScanFilter.ORIGINAL, maxOf(480, mode.stillEdge))
-        return try { detect(bitmap, mode)?.quad } finally { bitmap.recycle() }
+        val bitmap = render(file, 0, ScanFilter.ORIGINAL, 960)
+        return try { StillDocumentDetector.detect(detectionImage(bitmap), mode)?.quad } finally { bitmap.recycle() }
     }
 
     fun detect(bitmap: Bitmap, mode: DetectionMode = DetectionMode.STANDARD): DocumentDetection? {
@@ -106,15 +108,19 @@ object ImagePipeline {
         val resized = if (scale < 1f) Bitmap.createScaledBitmap(bitmap,
             (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true) else bitmap
         return try {
-            val pixels = IntArray(resized.width * resized.height)
-            resized.getPixels(pixels, 0, resized.width, 0, 0, resized.width, resized.height)
-            val contrast = IntArray(pixels.size)
-            for (i in pixels.indices) {
-                val p = pixels[i]
-                contrast[i] = PageContrast.rgb(p ushr 16 and 255, p ushr 8 and 255, p and 255)
-                pixels[i] = ((p ushr 16 and 255) * 77 + (p ushr 8 and 255) * 150 + (p and 255) * 29) ushr 8
-            }
-            DocumentDetector.detect(GrayImage(resized.width, resized.height, pixels, contrast), mode)
+            DocumentDetector.detect(detectionImage(resized), mode)
         } finally { if (resized !== bitmap) resized.recycle() }
+    }
+
+    private fun detectionImage(bitmap: Bitmap): GrayImage {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val contrast = IntArray(pixels.size)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            contrast[i] = PageContrast.rgb(p ushr 16 and 255, p ushr 8 and 255, p and 255)
+            pixels[i] = ((p ushr 16 and 255) * 77 + (p ushr 8 and 255) * 150 + (p and 255) * 29) ushr 8
+        }
+        return GrayImage(bitmap.width, bitmap.height, pixels, contrast)
     }
 }

@@ -72,10 +72,11 @@ fun FilterPicker(page: PageEntity, repository: DocumentRepository, busy: Boolean
                 }
             }
             val filter = ScanFilter.valueOf(page.filter)
-            if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT) {
+            if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT || filter == ScanFilter.AUTO_DOCUMENT) {
                 AdjustmentControl(stringResource(R.string.filter_strength), page.filterStrength, 0..100, !busy, onStrength)
             }
             Text(stringResource(when (filter) {
+                ScanFilter.AUTO_DOCUMENT -> R.string.auto_document_hint
                 ScanFilter.ADAPTIVE_MONO -> R.string.adaptive_hint
                 ScanFilter.BLACKBOARD -> R.string.blackboard_hint
                 else -> R.string.original_preserved
