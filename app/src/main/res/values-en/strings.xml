@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="swipe_pages">Swipe left or right to change pages</string>
+    <string name="edit_page_desc">Edit page %1$d</string>
+    <string name="continuous_pages">Continuous view</string>
+    <string name="page_grid">Page grid</string>
+    <string name="refine_bounds">Refine crop</string>
+    <string name="google_review_hint">Check that the whole page is inside the crop. Refine any page; the original Google result is preserved.</string>
     <string name="app_name">DocScan</string>
     <string name="library_title">My documents</string>
     <string name="library_subtitle">Your pages, all together.</string>

@@ -5,9 +5,9 @@ import kotlin.math.*
 /** Fit all four actual image edges before warping; a Hough angle bin is only a starting point. */
 internal object PageBoundary {
     private data class Line(val nx: Float, val ny: Float, val rho: Float)
-    fun refine(image: GrayImage, quad: CropQuad): CropQuad {
+    fun refine(image: GrayImage, quad: CropQuad, searchRadius: Int = 5): CropQuad {
         val points = quad.points.map { CropPoint(it.x * (image.width - 1), it.y * (image.height - 1)) }
-        val lines = points.indices.map { fit(image, points[it], points[(it + 1) % 4]) }
+        val lines = points.indices.map { fit(image, points[it], points[(it + 1) % 4], searchRadius) }
         val corners = points.indices.map { i ->
             val a = lines[(i + 3) % 4]; val b = lines[i]
             val determinant = a.nx * b.ny - a.ny * b.nx
@@ -21,7 +21,7 @@ internal object PageBoundary {
         return refined.takeIf { it.isValid() && it.maxDistance(quad) <= .045f } ?: quad
     }
 
-    private fun fit(image: GrayImage, a: CropPoint, b: CropPoint): Line {
+    private fun fit(image: GrayImage, a: CropPoint, b: CropPoint, searchRadius: Int): Line {
         val dx = b.x - a.x; val dy = b.y - a.y; val length = hypot(dx, dy)
         val nx = -dy / length; val ny = dx / length
         val original = Line(nx, ny, nx * a.x + ny * a.y)
@@ -31,7 +31,7 @@ internal object PageBoundary {
             val t = .06f + .88f * i / (samples + 1)
             val x = a.x + dx * t; val y = a.y + dy * t
             var best: CropPoint? = null; var bestScore = 0f
-            for (offset in -5..5) {
+            for (offset in -searchRadius..searchRadius) {
                 val px = (x + nx * offset).roundToInt(); val py = (y + ny * offset).roundToInt()
                 if (px !in 1 until image.width - 1 || py !in 1 until image.height - 1) continue
                 val at = py * image.width + px

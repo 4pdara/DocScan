@@ -5,18 +5,27 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
+import android.content.res.Configuration
+import android.content.res.Resources
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import android.provider.MediaStore
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.docscan.android.data.PageEntity
+import com.docscan.android.ui.DocScanApp
+import com.docscan.android.ui.DocScanTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.Assert.*
 import java.io.File
 import java.util.UUID
+import java.util.Locale
 
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.Q)
 class DocumentWorkflowUiTest {
@@ -24,7 +33,8 @@ class DocumentWorkflowUiTest {
     private val app get() = ui.activity.application as DocScanApplication
     private val prefix = "Workflow ${UUID.randomUUID()}"
     private val inputs = mutableListOf<File>()
-    private fun text(id: Int) = ui.activity.getString(id)
+    private var labels: Resources? = null
+    private fun text(id: Int, vararg args: Any) = (labels ?: ui.activity.resources).getString(id, *args)
     private fun ready() { ui.waitForIdle() }
     private fun create(suffix: String, count: Int): Pair<String, List<PageEntity>> = runBlocking {
         val id = app.repository.create("$prefix $suffix")
@@ -36,7 +46,7 @@ class DocumentWorkflowUiTest {
     private fun open(suffix: String) {
         ui.waitUntil(15_000) { ui.onAllNodesWithText("$prefix $suffix").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("$prefix $suffix").performScrollTo().performClick()
-        ui.waitUntil(15_000) { ui.onAllNodesWithText(ui.activity.getString(R.string.page_label, 1)).fetchSemanticsNodes().isNotEmpty() }
+        ui.waitUntil(15_000) { ui.onAllNodesWithText(text(R.string.page_label, 1)).fetchSemanticsNodes().isNotEmpty() }
     }
     private fun selectPages() {
         ui.onNodeWithContentDescription(text(R.string.more_options)).performClick()
@@ -98,7 +108,7 @@ class DocumentWorkflowUiTest {
         assertEquals("GRAYSCALE", pages[0].filter); assertEquals(90, pages[1].rotation)
         assertNotEquals(b.second.single().sourceFile, pages[0].sourceFile)
         assertNotEquals(a.second.single().sourceFile, pages[1].sourceFile)
-        ui.waitUntil(10_000) { ui.onAllNodesWithText(ui.activity.getString(R.string.page_label, 2)).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("continuous-pages").performScrollToNode(hasText(text(R.string.page_label, 2)))
         screenshot("workflow-merged-document.png")
     }
     @Test fun batchFilterEditsSelectionAndShareSheetOffersAllFormats() {
@@ -116,5 +126,92 @@ class DocumentWorkflowUiTest {
         ui.onNodeWithText(text(R.string.share_images)).assertIsDisplayed()
         ui.onNodeWithText(text(R.string.share_both)).assertIsDisplayed()
         screenshot("workflow-share-options.png")
+    }
+
+    @Test fun defaultReviewShowsLargePagesInAContinuousScroll() {
+        val (id, pages) = create("Continuous", 4); open("Continuous")
+        val list = ui.onNodeWithTag("continuous-pages").assertIsDisplayed()
+        val preview = ui.onNodeWithTag("review-page-${pages[0].id}", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val viewport = list.fetchSemanticsNode().boundsInRoot
+        assertTrue("Review must show a large page", preview.width > viewport.width * .9f)
+        list.performScrollToNode(hasText(text(R.string.page_label, 4)))
+        ui.onNodeWithText(text(R.string.page_label, 4)).assertIsDisplayed()
+        screenshot("workflow-continuous-review.png")
+        assertEquals(pages.map { it.id }, runBlocking { app.database.documents().pages(id).map { it.id } })
+    }
+
+    @Test fun editorSwipesPreservePageEditsAndZoomPansWithoutSwitchingPages() {
+        val (id, pages) = create("Swipes", 3); open("Swipes")
+        ui.onNodeWithContentDescription(text(R.string.edit_page_desc, 1)).performClick()
+        val pager = ui.onNodeWithTag("page-pager")
+        pager.performTouchInput { swipeLeft() }
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 2, 3)).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithContentDescription(text(R.string.rotate)).performClick()
+        ui.waitUntil(10_000) { runBlocking { app.database.documents().page(pages[1].id)?.rotation == 90 } }
+        assertEquals(0, runBlocking { app.database.documents().page(pages[0].id)?.rotation })
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.zoom_in)).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithText(text(R.string.zoom_in)).performClick()
+        ui.onNodeWithText(text(R.string.zoom_reset)).assertIsDisplayed()
+        pager.performTouchInput { swipeLeft() }
+        ui.onNodeWithText(text(R.string.page_position, 2, 3)).assertIsDisplayed()
+        ui.onNodeWithText(text(R.string.zoom_reset)).performClick()
+        pager.performTouchInput { swipeLeft() }
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 3, 3)).fetchSemanticsNodes().isNotEmpty() }
+        pager.performTouchInput { swipeRight() }
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 2, 3)).fetchSemanticsNodes().isNotEmpty() }
+        ui.activityRule.scenario.recreate()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 2, 3)).fetchSemanticsNodes().isNotEmpty() }
+        screenshot("workflow-swipe-editor.png")
+        assertEquals(3, runBlocking { app.database.documents().pages(id).size })
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun hebrewPageSwipesUseRtlDirection() {
+        val original = Configuration(ui.activity.resources.configuration)
+        val originalApp = Configuration(app.resources.configuration)
+        val configuration = Configuration(original).apply { setLocale(Locale.forLanguageTag("he")) }
+        ui.runOnUiThread {
+            ui.activity.resources.updateConfiguration(configuration,ui.activity.resources.displayMetrics)
+            app.resources.updateConfiguration(configuration,app.resources.displayMetrics)
+            ui.activity.setContent {
+                CompositionLocalProvider(LocalConfiguration provides configuration, LocalContext provides ui.activity) { DocScanTheme { DocScanApp() } }
+            }
+        }
+        labels = ui.activity.resources
+        try {
+        create("RTL", 2); open("RTL")
+        ui.onNodeWithContentDescription(text(R.string.edit_page_desc, 1)).performClick()
+        ui.onNodeWithTag("page-pager").performTouchInput { swipeRight() }
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 2, 2)).fetchSemanticsNodes().isNotEmpty() }
+        screenshot("he-swipe-editor.png")
+        ui.onNodeWithTag("page-pager").performTouchInput { swipeLeft() }
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.page_position, 1, 2)).fetchSemanticsNodes().isNotEmpty() }
+        } finally { ui.runOnUiThread {
+            ui.activity.resources.updateConfiguration(original,ui.activity.resources.displayMetrics)
+            app.resources.updateConfiguration(originalApp,app.resources.displayMetrics)
+        } }
+    }
+
+    @Test fun importedScannerResultCanBeRefinedWithoutChangingItUntilConfirmation() {
+        val encoded = InstrumentationRegistry.getInstrumentation().context.assets.open("book-angle.jpg.b64").use { it.readBytes() }
+        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+        val input = File(ui.activity.cacheDir,"scanner-${UUID.randomUUID()}.jpg").apply { writeBytes(bytes) }; inputs.add(input)
+        val id = runBlocking { app.repository.create("$prefix Scanner") }
+        val page = runBlocking { app.repository.importImage(id,Uri.fromFile(input),detectBounds=false) }
+        open("Scanner")
+        ui.onNodeWithText(text(R.string.refine_bounds)).performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.apply_crop)).fetchSemanticsNodes().isNotEmpty() }
+        ui.waitUntil(10_000) { runCatching { ui.onNodeWithText(text(R.string.apply_crop)).assertIsEnabled() }.isSuccess }
+        assertNull(runBlocking { app.database.documents().page(page.id)?.crop })
+        ui.onNodeWithText(text(R.string.cancel)).performClick()
+        assertNull(runBlocking { app.database.documents().page(page.id)?.crop })
+        ui.onNodeWithContentDescription(text(R.string.back)).performClick()
+        ui.onNodeWithText(text(R.string.refine_bounds)).performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.apply_crop)).fetchSemanticsNodes().isNotEmpty() }
+        ui.waitUntil(10_000) { runCatching { ui.onNodeWithText(text(R.string.apply_crop)).assertIsEnabled() }.isSuccess }
+        ui.onNodeWithText(text(R.string.apply_crop)).performClick()
+        ui.waitUntil(10_000) { runBlocking { app.database.documents().page(page.id)?.crop != null } }
+        assertArrayEquals(bytes, app.repository.source(page).readBytes())
+        screenshot("workflow-refined-scanner-result.png")
     }
 }

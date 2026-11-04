@@ -9,6 +9,7 @@ internal object EdgeDocumentDetector {
     private val sines = FloatArray(ANGLES) { sin(it * PI / ANGLES).toFloat() }
     private data class Line(val angle: Int, val rho: Float, val votes: Int)
     private data class PairOfLines(val a: Line, val b: Line)
+    private data class Support(val coverage: Float, val start: Int, val end: Int, val gap: Int)
 
     fun detect(image: GrayImage, mode: DetectionMode = DetectionMode.STANDARD): DocumentDetection? {
         val wider = mode == DetectionMode.ANGLED_DISTANCE
@@ -56,7 +57,7 @@ internal object EdgeDocumentDetector {
             if (lines.none { angularDistance(it.angle, candidate.angle) <= 2 &&
                     abs(it.rho - if (abs(it.angle - candidate.angle) > ANGLES / 2) -candidate.rho else candidate.rho) < 7 }) {
                 lines.add(candidate)
-                if (lines.size == (if (wider) 18 else 16)) break
+                if (lines.size == (if (wider) 28 else 24)) break
             }
         }
         val pairs = ArrayList<PairOfLines>()
@@ -87,10 +88,12 @@ internal object EdgeDocumentDetector {
             if (!quad.isValid() || quad.area !in (if (wider) .04f else .15f).. .92f) continue
             val lengths = pixelCorners.indices.map { pixelCorners[it].distance(pixelCorners[(it + 1) % 4]) }
             if (lengths.min() < min(w, h) * (if (wider) .07f else .18f) || lengths.max() / lengths.min() > (if (wider) 7f else 4.5f)) continue
-            val support = pixelCorners.indices.map { edgeSupport(magnitude, w, h, pixelCorners[it], pixelCorners[(it + 1) % 4], threshold) }
+            val support = pixelCorners.indices.map { edgeSupport(image, magnitude, pixelCorners[it], pixelCorners[(it + 1) % 4], threshold, wider) }
             // Each whole side needs evidence; a circle's four tangent lines must not become a page.
-            if (support.min() < .60f || support.average() < .78) continue
-            val confidence = support.average().toFloat()
+            if (support.minOf { it.coverage } < .60f || support.map { it.coverage }.average() < .78) continue
+            // A background line must not extend page sides past the actual page corners.
+            if (support.any { it.start < 2 || it.end < 2 || it.gap > 6 }) continue
+            val confidence = support.map { it.coverage }.average().toFloat()
             val score = quad.area * confidence
             if (score > bestScore) { bestScore = score; best = DocumentDetection(quad, confidence) }
         }
@@ -113,19 +116,29 @@ internal object EdgeDocumentDetector {
         return CropPoint((a.rho * sb - sa * b.rho) / determinant, (ca * b.rho - a.rho * cb) / determinant)
     }
 
-    private fun edgeSupport(magnitude: IntArray, w: Int, h: Int, a: CropPoint, b: CropPoint, threshold: Int): Float {
-        var supported = 0
-        for (sample in 1..24) {
-            val t = sample / 25f
+    private fun edgeSupport(image: GrayImage, magnitude: IntArray, a: CropPoint, b: CropPoint, threshold: Int, smooth: Boolean): Support {
+        val w = image.width; val h = image.height
+        val dx = b.x - a.x; val dy = b.y - a.y; val length = hypot(dx, dy)
+        val nx = -dy / length; val ny = dx / length
+        var supported = 0; var first = 0; var last = 0; var gap = 0; var longest = 0
+        for (sample in 1..32) {
+            val t = sample / 33f
             val x = (a.x + (b.x - a.x) * t).roundToInt()
             val y = (a.y + (b.y - a.y) * t).roundToInt()
             var maximum = 0
-            for (dy in -2..2) for (dx in -2..2) {
-                val px = (x + dx).coerceIn(0, w - 1); val py = (y + dy).coerceIn(0, h - 1)
-                maximum = max(maximum, magnitude[py * w + px])
+            for (oy in -3..3) for (ox in -3..3) {
+                val px = (x + ox).coerceIn(1, w - 2); val py = (y + oy).coerceIn(1, h - 2)
+                val at = py * w + px
+                if (magnitude[at] < threshold) continue
+                val gx = gradientX(image.pixels, at, w, smooth); val gy = gradientY(image.pixels, at, w, smooth)
+                if (abs(gx * nx + gy * ny) >= hypot(gx.toFloat(), gy.toFloat()) * .75f) {
+                    maximum = max(maximum, magnitude[at])
+                }
             }
-            if (maximum >= threshold) supported++
+            if (maximum >= threshold) {
+                supported++; if (sample <= 4) first++; if (sample >= 29) last++; gap = 0
+            } else { gap++; longest = max(longest, gap) }
         }
-        return supported / 24f
+        return Support(supported / 32f, first, last, longest)
     }
 }

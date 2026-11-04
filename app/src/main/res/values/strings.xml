@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="swipe_pages">החלק ימינה או שמאלה למעבר בין עמודים</string>
+    <string name="edit_page_desc">עריכת עמוד %1$d</string>
+    <string name="continuous_pages">תצוגה רציפה</string>
+    <string name="page_grid">תצוגת רשת</string>
+    <string name="refine_bounds">שפר חיתוך</string>
+    <string name="google_review_hint">בדוק שהדף כולו בתוך החיתוך. אפשר לשפר את הגבולות בכל עמוד; תוצאת Google המקורית נשמרת.</string>
     <string name="app_name">DocScan</string>
     <string name="library_title">המסמכים שלי</string>
     <string name="library_subtitle">כל הדפים שלך. במקום אחד.</string>

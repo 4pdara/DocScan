@@ -209,4 +209,22 @@ class GallerySharingDeviceTest {
             assertTrue(text.contains("SECOND")); assertFalse(text.contains("FIRST")); assertFalse(text.contains("THIRD"))
         }
     }
+    @Test fun phoneBookPhotoGetsAnActualCropAndKeepsItsSource(): Unit = runBlocking {
+        val encoded = InstrumentationRegistry.getInstrumentation().context.assets.open("book-angle.jpg.b64").use { it.readBytes() }
+        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+        val input = File(directory, "phone-book.jpg").apply { writeBytes(bytes) }
+        val page = repository.importImage(document(), Uri.fromFile(input))
+        val expected = CropQuad(CropPoint(.210f,.195f), CropPoint(.728f,.235f), CropPoint(.882f,.794f), CropPoint(.068f,.781f))
+        val quad = requireNotNull(CropQuad.decode(page.crop))
+        assertTrue("Actual phone photograph: $quad", quad.maxDistance(expected) < .055f)
+        val image = page.render(repository.source(page), 1200)
+        try {
+            assertTrue("The rectified portrait book must keep a portrait shape",image.height>image.width)
+            recordFixture(image, "workflow-phone-book-crop")
+            val pixels = IntArray(image.width*image.height)
+            image.getPixels(pixels,0,image.width,0,0,image.width,image.height)
+            assertTrue("Printed cover must survive", pixels.count { Color.blue(it) > Color.red(it) + 25 } > 1000)
+        } finally { image.recycle() }
+        assertArrayEquals(bytes, repository.source(page).readBytes())
+    }
 }

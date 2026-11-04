@@ -6,7 +6,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +21,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -65,11 +71,14 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
 private data class PreviewResult(val bitmap: Bitmap? = null, val failed: Boolean = false, val page: PageEntity? = null)
 
 @Composable
-fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modifier = Modifier, edge: Int = 640, zoomable: Boolean = false) {
+fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modifier = Modifier, edge: Int = 640,
+    zoomable: Boolean = false, fitPage: Boolean = false, onZoomChanged: (Boolean) -> Unit = {}) {
     var zoom by remember(page.id, page.sourceFile) { mutableFloatStateOf(1f) }
     var pan by remember(page.id, page.sourceFile) { mutableStateOf(Offset.Zero) }
     var detail by remember(page.id, page.sourceFile) { mutableStateOf(false) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
+    val zoomChanged by rememberUpdatedState(onZoomChanged)
+    LaunchedEffect(zoom > 1.01f, zoomable) { if (zoomable) zoomChanged(zoom > 1.01f) }
     val renderLock = remember { Mutex() }
     val requestedEdge = if (zoomable && detail) maxOf(edge, 3200) else edge
     LaunchedEffect(page.crop, page.rotation, page.pageFormat) { zoom = 1f; pan = Offset.Zero }
@@ -99,13 +108,25 @@ fun PagePreview(page: PageEntity, repository: DocumentRepository, modifier: Modi
     val gestures = if (zoomable) Modifier.semantics { contentDescription = description }
         .onSizeChanged { viewport = it }
         .pointerInput(page.id, page.sourceFile) {
-            detectTransformGestures { center, movement, factor, _ -> transform(center, movement, factor) }
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    // A single finger at fit size belongs to the parent page pager.
+                    // Pinching and panning a magnified page stay inside this preview.
+                    if (event.changes.count { it.pressed } > 1 || zoom > 1.01f) {
+                        transform(event.calculateCentroid(), event.calculatePan(), event.calculateZoom())
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
+                    }
+                } while (event.changes.any { it.pressed })
+            }
         }.pointerInput(page.id, page.sourceFile) {
             detectTapGestures(onDoubleTap = { center ->
                 if (zoom > 1f) { zoom = 1f; pan = Offset.Zero } else transform(center, Offset.Zero, 2.5f)
             })
         } else Modifier
-    Box(modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant).then(gestures), contentAlignment = Alignment.Center) {
+    val pageSize = if (fitPage) Modifier.aspectRatio(preview.bitmap?.let { it.width.toFloat() / it.height } ?: .707f) else Modifier
+    Box(modifier.then(pageSize).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant).then(gestures), contentAlignment = Alignment.Center) {
         when {
             preview.bitmap != null -> Image(requireNotNull(preview.bitmap).asImageBitmap(), null,
                 Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, contentScale = ContentScale.Fit)

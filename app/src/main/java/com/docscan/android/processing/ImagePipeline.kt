@@ -92,11 +92,13 @@ object ImagePipeline {
         return try {
             val pixels = IntArray(resized.width * resized.height)
             resized.getPixels(pixels, 0, resized.width, 0, 0, resized.width, resized.height)
+            val contrast = IntArray(pixels.size)
             for (i in pixels.indices) {
                 val p = pixels[i]
+                contrast[i] = PageContrast.rgb(p ushr 16 and 255, p ushr 8 and 255, p and 255)
                 pixels[i] = ((p ushr 16 and 255) * 77 + (p ushr 8 and 255) * 150 + (p and 255) * 29) ushr 8
             }
-            DocumentDetector.detect(GrayImage(resized.width, resized.height, pixels), mode)
+            DocumentDetector.detect(GrayImage(resized.width, resized.height, pixels, contrast), mode)
         } finally { if (resized !== bitmap) resized.recycle() }
     }
 }

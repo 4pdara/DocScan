@@ -46,7 +46,8 @@ import kotlin.math.roundToInt
 fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
     quad: CropQuad, format: PageFormat, rectangle: Boolean,
     onQuadChange: (CropQuad) -> Unit, onFormatChange: (PageFormat) -> Unit, onRectangleChange: (Boolean) -> Unit,
-    onCancel: () -> Unit, onApply: (CropQuad?, PageFormat) -> Unit) {
+    onCancel: () -> Unit, onApply: (CropQuad?, PageFormat) -> Unit,
+    detectOnOpen: Boolean = false, onDetectionComplete: () -> Unit = {}) {
     var options by remember { mutableStateOf(false) }
     var failed by remember(page.id) { mutableStateOf(false) }
     val bitmap by produceState<Bitmap?>(null, page.id) {
@@ -56,7 +57,25 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
     }
     var detecting by remember { mutableStateOf(false) }
     var noBounds by remember { mutableStateOf(false) }
+    var draftVersion by remember(page.id) { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(bitmap) {
+        val image = bitmap ?: return@LaunchedEffect
+        if (detectOnOpen) {
+            detecting = true
+            val version = draftVersion
+            var complete = false
+            try {
+                val result = withContext(Dispatchers.Default) { ImagePipeline.detect(image, com.docscan.android.processing.DetectionMode.ANGLED_DISTANCE) }
+                if (version == draftVersion) {
+                    if (result == null) noBounds = true else onQuadChange(if (rectangle) result.quad.rectangle() else result.quad)
+                }
+                complete = true
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { noBounds = true; complete = true }
+            finally { detecting = false; if (complete) onDetectionComplete() }
+        }
+    }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(stringResource(R.string.crop_title), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
@@ -64,7 +83,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
         }
         Text(stringResource(R.string.crop_hint), style = MaterialTheme.typography.bodyMedium)
         val image = bitmap
-        if (image != null) CropCanvas(image, quad, rectangle, onChanged = { onQuadChange(it); noBounds = false }, Modifier.weight(1f).fillMaxWidth())
+        if (image != null) CropCanvas(image, quad, rectangle, onChanged = { draftVersion++; onQuadChange(it); noBounds = false }, Modifier.weight(1f).fillMaxWidth())
         else Box(Modifier.weight(1f).fillMaxWidth()) {
             if (failed) Text(stringResource(R.string.preview_failed)) else CircularProgressIndicator()
         }
@@ -72,10 +91,13 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(enabled = image != null && !busy && !detecting, modifier = Modifier.weight(1f), onClick = {
                 detecting = true; noBounds = false
+                val version = draftVersion
                 scope.launch {
                     try {
                         val result = withContext(Dispatchers.Default) { ImagePipeline.detect(requireNotNull(image), com.docscan.android.processing.DetectionMode.ANGLED_DISTANCE) }
-                        if (result == null) noBounds = true else onQuadChange(if (rectangle) result.quad.rectangle() else result.quad)
+                        if (version == draftVersion) {
+                            if (result == null) noBounds = true else onQuadChange(if (rectangle) result.quad.rectangle() else result.quad)
+                        }
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { noBounds = true }
                     finally { detecting = false }
@@ -90,7 +112,7 @@ fun CropScreen(page: PageEntity, repository: DocumentRepository, busy: Boolean,
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(enabled = !busy, onClick = onCancel) { Text(stringResource(R.string.cancel)) }
-            Button(enabled = image != null && !busy && !detecting && quad.isValid(), modifier = Modifier.weight(1f), onClick = {
+            Button(enabled = image != null && !busy && !detecting && !detectOnOpen && quad.isValid(), modifier = Modifier.weight(1f), onClick = {
                 onApply(quad.takeUnless { it == CropQuad.FULL }, format)
             }) { Text(stringResource(R.string.apply_crop)) }
         }

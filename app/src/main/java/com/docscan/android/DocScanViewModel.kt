@@ -48,6 +48,8 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var cropPoints by savedState.saveable { mutableStateOf<String?>(null) }
     var cropFormat by savedState.saveable { mutableStateOf("NATURAL") }
     var cropRectangle by savedState.saveable { mutableStateOf(false) }
+    var cropDetectOnOpen by savedState.saveable { mutableStateOf(false) }
+    var googleReviewDocumentId by savedState.saveable { mutableStateOf<String?>(null) }
 
     var outputPageIds by savedState.saveable { mutableStateOf<List<String>>(arrayListOf()) }
     var galleryTarget by savedState.saveable { mutableStateOf<String?>(null) }
@@ -58,6 +60,7 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var libraryQuery by savedState.saveable { mutableStateOf("") }
     var librarySort by savedState.saveable { mutableStateOf("UPDATED") }
     var libraryGrid by savedState.saveable { mutableStateOf(false) }
+    var documentGrid by savedState.saveable { mutableStateOf(false) }
 
     fun openDocument(id: String) {
         documentId = id; screen = "document"; returnToCamera = false
@@ -66,13 +69,14 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     fun togglePage(id: String) { selectedPageIds = ArrayList(if (id in selectedPageIds) selectedPageIds - id else selectedPageIds + id) }
     fun toggleDocument(id: String) { selectedDocuments = ArrayList(if (id in selectedDocuments) selectedDocuments - id else selectedDocuments + id) }
 
-    fun beginCrop(page: PageEntity) {
+    fun beginCrop(page: PageEntity, detectBounds: Boolean = false) {
         cropPoints = page.crop; cropFormat = page.pageFormat; cropRectangle = false
+        cropDetectOnOpen = detectBounds
         pageId = page.id; documentId = page.documentId; screen = "crop"
     }
 
     fun clearCropDraft() {
-        cropPoints = null; cropFormat = "NATURAL"; cropRectangle = false
+        cropPoints = null; cropFormat = "NATURAL"; cropRectangle = false; cropDetectOnOpen = false
     }
 
     val repository = (application as DocScanApplication).repository
