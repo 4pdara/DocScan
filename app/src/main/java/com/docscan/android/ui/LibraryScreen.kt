@@ -22,7 +22,7 @@ import com.docscan.android.data.DocumentSummary
 @Composable
 fun LibraryScreen(documents: List<DocumentSummary>, vm: DocScanViewModel, busy: Boolean, googlePreparing: Boolean,
     onGoogleScan: () -> Unit, onCancelGoogle: () -> Unit, onOpen: (String) -> Unit,
-    onImport: () -> Unit, onDelete: (DocumentSummary) -> Unit) {
+    onImport: () -> Unit, onDelete: (DocumentSummary) -> Unit, onBackup: () -> Unit, onRestore: () -> Unit) {
     var tools by remember { mutableStateOf(false) }
     var sorting by remember { mutableStateOf(false) }
     var merging by remember { mutableStateOf(false) }
@@ -47,6 +47,8 @@ fun LibraryScreen(documents: List<DocumentSummary>, vm: DocScanViewModel, busy: 
                         vm.selectingDocuments = !vm.selectingDocuments; vm.selectedDocuments = arrayListOf(); tools = false
                     })
                     DropdownMenuItem(text = { Text(stringResource(R.string.scan_google)) }, enabled = !busy, onClick = { tools = false; onGoogleScan() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.archive_backup)) }, enabled = !busy && documents.isNotEmpty(), onClick = { tools = false; onBackup() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.archive_restore)) }, enabled = !busy, onClick = { tools = false; onRestore() })
                 }
             }
         }

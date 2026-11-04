@@ -16,9 +16,11 @@ import com.docscan.android.processing.PdfSources
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.OutputStream
 import java.util.UUID
 
 class DocumentRepository(context: Context, private val database: DocScanDatabase) {
@@ -32,6 +34,65 @@ class DocumentRepository(context: Context, private val database: DocScanDatabase
     fun observeDocument(id: String) = dao.observeDocument(id)
     fun observePages(id: String) = dao.observePages(id)
     fun source(page: PageEntity) = File(originals, page.sourceFile)
+
+    suspend fun backup(output: OutputStream, checkpoint: () -> Unit = {}, progress: (ArchiveProgress) -> Unit = {}): ArchiveSummary =
+        withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            lock.withLock {
+                val snapshot = database.withTransaction {
+                    val documents = dao.allDocuments()
+                    require(documents.size <= DocumentArchive.MAX_DOCUMENTS)
+                    var count = 0
+                    documents.map {
+                        val pages = dao.pages(it.id)
+                        count += pages.size; require(count <= DocumentArchive.MAX_PAGES)
+                        ArchiveDocument(it, pages)
+                    }
+                }
+                DocumentArchive.write(snapshot, output, ::source, { coroutine.ensureActive(); checkpoint() }, progress)
+            }
+        }
+
+    suspend fun restore(input: InputStream, checkpoint: () -> Unit = {}, progress: (ArchiveProgress) -> Unit = {}): ArchiveSummary =
+        withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            lock.withLock {
+                val directory = File(staging, "restore-${UUID.randomUUID()}").apply { check(mkdirs()) }
+                val published = mutableListOf<File>()
+                var committed = false
+                fun checkActive() { coroutine.ensureActive(); checkpoint() }
+                try {
+                    val documents = DocumentArchive.read(input, directory, ::checkActive, progress)
+                    documents.flatMap { it.pages }.forEach { page ->
+                        checkActive()
+                        if (PdfSources.isPdf(page.file)) {
+                            com.tom_roush.pdfbox.pdmodel.PDDocument.load(page.file, PdfSources.memory(directory)).use {
+                                require(!it.isEncrypted && it.numberOfPages == 1)
+                            }
+                        } else ImagePipeline.validate(page.file)
+                    }
+                    checkActive()
+                    // A cancellation cannot separate the database commit from publication/cleanup.
+                    withContext(NonCancellable) {
+                        progress(ArchiveProgress(finishing = true))
+                        val pages = documents.flatMap { it.pages }.map { page ->
+                            val target = File(originals, "${page.settings.id}.${page.file.extension}")
+                            check(!target.exists() && page.file.renameTo(target)); published.add(target)
+                            page.settings.copy(sourceFile = target.name)
+                        }
+                        database.withTransaction {
+                            documents.forEach { dao.insertDocument(it.metadata) }
+                            pages.forEach { dao.insertPage(it) }
+                        }
+                        committed = true
+                        ArchiveSummary(documents.size, pages.size)
+                    }
+                } catch (failure: Exception) {
+                    if (!committed) published.forEach { it.delete() }
+                    throw failure
+                } finally { directory.deleteRecursively() }
+            }
+        }
 
     suspend fun recover() = withContext(Dispatchers.IO) {
         lock.withLock {

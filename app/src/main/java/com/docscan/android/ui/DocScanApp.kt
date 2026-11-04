@@ -78,6 +78,10 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     var sharing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
+    var archiveAction by rememberSaveable { mutableStateOf<String?>(null) }
+    val archiveOperation by vm.archiveOperation.collectAsStateWithLifecycle()
+    val archiveProgress by vm.archiveProgress.collectAsStateWithLifecycle()
+    val archiveCancelling by vm.archiveCancelling.collectAsStateWithLifecycle()
     val document = documents.firstOrNull { it.document.id == documentId }?.document
     val pageFlow: Flow<List<PageEntity>?> = remember(documentId) { documentId?.let(vm.repository::observePages) ?: flowOf(emptyList()) }
     val loadedPages by key(documentId) { pageFlow.collectAsStateWithLifecycle(initialValue = null) }
@@ -96,6 +100,26 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     }
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         vm.importPdfs(uris, importTarget) { id -> vm.openDocument(id) }
+    }
+    val archiveWriter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) vm.backupArchive(uri)
+    }
+    val archiveReader = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.restoreArchive(uri)
+    }
+    CompositionLocalProvider(LocalLayoutDirection provides direction) {
+        archiveAction?.let { action ->
+            ArchiveConfirmDialog(action == "backup", onConfirm = {
+                archiveAction = null
+                if (action == "backup") {
+                    val timestamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
+                    archiveWriter.launch("DocScan-Backup-$timestamp.zip")
+                } else archiveReader.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+            }, onDismiss = { archiveAction = null })
+        }
+        archiveOperation?.let {
+            ArchiveProgressDialog(it == "backup", archiveProgress.finishing, archiveCancelling, vm::cancelArchive)
+        }
     }
     val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val granted = grants[Manifest.permission.WRITE_EXTERNAL_STORAGE] == true && grants[Manifest.permission.READ_EXTERNAL_STORAGE] == true
@@ -173,6 +197,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         onOpen = { vm.openDocument(it) },
                         onImport = { importTarget = null; importing = true },
                         onDelete = { pendingDeleteDocument = it },
+                        onBackup = { archiveAction = "backup" }, onRestore = { archiveAction = "restore" },
                     )
                     "camera" -> documentId?.let { id ->
                         val target = retakePageId

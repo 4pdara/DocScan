@@ -159,4 +159,19 @@
     <string name="angle_distance_detection">Angled and distant pages</string>
     <string name="angle_distance_hint">Find smaller pages or pages viewed from the side. Keep all four page edges visible and hold steady.</string>
     <string name="capture_crop_review">The photo was saved without automatic cropping because the boundaries were unclear. After scanning, open Crop and straighten to adjust the page edges.</string>
+    <string name="archive_backup">Back up all documents</string>
+    <string name="archive_restore">Restore from backup</string>
+    <string name="archive_backup_hint">The backup contains every document, original file, page order and saved edit. Choose a location outside the private app storage so the file remains available after uninstalling.\n\nThe file is not encrypted and may contain personal information. There is no automatic cloud upload.</string>
+    <string name="archive_restore_hint">Choose a ZIP backup created by DocScan. After validation, documents will be added as new copies with their originals and edits. Existing documents are preserved. Restoring the same backup again creates additional copies.</string>
+    <string name="archive_choose_destination">Choose location and save</string>
+    <string name="archive_choose_file">Choose backup file</string>
+    <string name="archive_creating">Creating and saving the backup… Keep the app open.</string>
+    <string name="archive_checking">Checking the backup and preparing documents…</string>
+    <string name="archive_finishing">Finishing document storage…</string>
+    <string name="archive_cancelling">Cancelling…</string>
+    <string name="archive_saved">Backup saved · Documents: %1$d · Pages: %2$d</string>
+    <string name="archive_restored">Restore complete · Documents: %1$d · Pages: %2$d</string>
+    <string name="archive_cancelled">Operation cancelled</string>
+    <string name="archive_backup_failed">Backup did not complete. Check free space and the destination. The backup limit is 2 GB of original data.</string>
+    <string name="archive_restore_failed">Unable to complete restore. Check that this is a valid DocScan backup from a supported version and that the device has enough free space.</string>
 </resources>
