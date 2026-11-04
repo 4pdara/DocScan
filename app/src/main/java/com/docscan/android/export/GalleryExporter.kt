@@ -15,6 +15,7 @@ object GalleryExporter {
     /** Publish the entire batch after encoding, and remove only files created by this call on failure. */
     @Suppress("DEPRECATION")
     fun write(context: Context, title: String, pages: List<PageEntity>, repository: DocumentRepository,
+        quality: ExportQuality = ExportQuality.ORIGINAL,
         checkpoint: () -> Unit = {}): List<Uri> {
         require(pages.isNotEmpty())
         val resolver = context.contentResolver
@@ -41,7 +42,7 @@ object GalleryExporter {
                 }
                 val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
                 created.add(uri)
-                requireNotNull(resolver.openOutputStream(uri, "w")).use { JpegExporter.write(page, repository, it) }
+                requireNotNull(resolver.openOutputStream(uri, "w")).use { JpegExporter.write(page, repository, it, quality) }
             }
             checkpoint()
             if (Build.VERSION.SDK_INT >= 29) created.forEach { uri ->

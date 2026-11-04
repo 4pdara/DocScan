@@ -1,6 +1,10 @@
 package com.docscan.android
 
 import android.app.Application
+import androidx.core.content.edit
+import com.docscan.android.export.ExportQuality
+import com.docscan.android.export.SourceExporter
+import com.docscan.android.processing.OriginalResolutionUnavailable
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -51,6 +55,7 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var importTarget by savedState.saveable { mutableStateOf<String?>(null) }
     var exportTarget by savedState.saveable { mutableStateOf<String?>(null) }
     var imageExportTarget by savedState.saveable { mutableStateOf<String?>(null) }
+    var sourceExportPending by savedState.saveable { mutableStateOf(false) }
     var cropPoints by savedState.saveable { mutableStateOf<String?>(null) }
     var cropFormat by savedState.saveable { mutableStateOf("NATURAL") }
     var cropRectangle by savedState.saveable { mutableStateOf(false) }
@@ -87,6 +92,14 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
 
     val repository = (application as DocScanApplication).repository
     private val app = application
+    private val outputPreferences = application.getSharedPreferences("output-preferences", Application.MODE_PRIVATE)
+    var exportQuality by mutableStateOf(ExportQuality.fromKey(outputPreferences.getString("quality", null)))
+        private set
+    fun chooseExportQuality(quality: ExportQuality) {
+        if (_busy.value) return
+        exportQuality = quality
+        outputPreferences.edit { putString("quality", quality.name) }
+    }
     private val _busy = MutableStateFlow(false)
     val busy = _busy.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
@@ -238,17 +251,19 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
         val count = repository.copyFilterToDocument(pageId)
         _message.value = app.getString(R.string.applied_to_pages, count)
     }
-    fun saveGallery(id: String, ids: List<String>? = null) = task {
+    fun saveGallery(id: String, ids: List<String>? = null) = outputTask {
+        val quality = exportQuality
         val coroutine = currentCoroutineContext()
         val count = repository.readSnapshot(id) { document, pages ->
-            GalleryExporter.write(app, document.title, repository.selectedPages(pages, ids), repository) { coroutine.ensureActive() }.size
+            GalleryExporter.write(app, document.title, repository.selectedPages(pages, ids), repository, quality) { coroutine.ensureActive() }.size
         }
         _message.value = app.getString(R.string.saved_gallery, count)
     }
     fun share(id: String, format: ShareFormat, ids: List<String>? = null, onReady: (Intent) -> Unit) = prepareShare(id, format, ids) { files -> onReady(ShareExport.intent(app, files)) }
     fun print(id: String, ids: List<String>? = null, onReady: (File) -> Unit) = prepareShare(id, ShareFormat.PDF, ids) { onReady(it.single()) }
-    private fun prepareShare(id: String, format: ShareFormat, ids: List<String>?, onReady: (List<File>) -> Unit) = task {
-        val files = repository.readSnapshot(id) { document, pages -> ShareExport.prepare(app, document.title, repository.selectedPages(pages, ids), repository, format) }
+    private fun prepareShare(id: String, format: ShareFormat, ids: List<String>?, onReady: (List<File>) -> Unit) = outputTask {
+        val quality = exportQuality
+        val files = repository.readSnapshot(id) { document, pages -> ShareExport.prepare(app, document.title, repository.selectedPages(pages, ids), repository, format, quality) }
         try { onReady(files) } catch (failure: Exception) { files.first().parentFile?.deleteRecursively(); throw failure }
     }
 
@@ -281,11 +296,12 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     fun deletePage(id: String) = task { repository.deletePage(id) }
     fun deleteDocument(id: String) = task { repository.deleteDocument(id) }
 
-    fun export(documentId: String, destination: Uri? = null, onShare: ((File) -> Unit)? = null, ids: List<String>? = null) = task {
+    fun export(documentId: String, destination: Uri? = null, onShare: ((File) -> Unit)? = null, ids: List<String>? = null) = outputTask {
+        val quality = exportQuality
         val file = File(app.cacheDir, "exports/${UUID.randomUUID()}.pdf")
         file.parentFile?.mkdirs()
         try {
-            repository.readSnapshot(documentId) { _, pages -> PdfExporter.write(repository.selectedPages(pages, ids), repository, file) }
+            repository.readSnapshot(documentId) { _, pages -> PdfExporter.write(repository.selectedPages(pages, ids), repository, file, quality) }
             if (destination != null) {
                 withContext(Dispatchers.IO) {
                     requireNotNull(app.contentResolver.openOutputStream(destination, "w")).use { output ->
@@ -297,11 +313,25 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
         } finally { if (destination != null) file.delete() }
     }
 
-    fun exportImages(documentId: String, folder: Uri, ids: List<String>? = null) = task {
+    fun exportImages(documentId: String, folder: Uri, ids: List<String>? = null) = outputTask {
+        val quality = exportQuality
         val count = repository.readSnapshot(documentId) { document, pages ->
-            JpegExporter.writeFolder(app, folder, document.title, repository.selectedPages(pages, ids), repository)
+            JpegExporter.writeFolder(app, folder, document.title, repository.selectedPages(pages, ids), repository, quality)
         }
         _message.value = app.getString(R.string.saved_images, count)
+    }
+
+    fun exportSources(documentId: String, folder: Uri, ids: List<String>? = null) = outputTask {
+        val coroutine = currentCoroutineContext()
+        val count = repository.readSnapshot(documentId) { document, pages ->
+            SourceExporter.writeFolder(app, folder, document.title, repository.selectedPages(pages, ids), repository) { coroutine.ensureActive() }
+        }
+        _message.value = app.getString(R.string.saved_sources, count)
+    }
+
+    private fun outputTask(operation: suspend () -> Unit) {
+        if (initialized.isCompleted) task(operation = operation)
+        else viewModelScope.launch { initialized.await(); task(operation = operation) }
     }
 
     private fun defaultTitle(): String = app.getString(
@@ -314,7 +344,8 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
         viewModelScope.launch {
             try { operation() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { _message.value = app.getString(R.string.operation_failed) }
+            catch (failure: Exception) { _message.value = app.getString(
+                if (failure is OriginalResolutionUnavailable) R.string.original_resolution_unavailable else R.string.operation_failed) }
             finally { _busy.value = false; finallyAction() }
         }
     }

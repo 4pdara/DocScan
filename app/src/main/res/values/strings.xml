@@ -174,4 +174,17 @@
     <string name="archive_cancelled">הפעולה בוטלה</string>
     <string name="archive_backup_failed">הגיבוי לא הושלם. בדוק מקום פנוי וזמינות של מיקום השמירה. מגבלת הגיבוי היא 2 GB של נתוני מקור.</string>
     <string name="archive_restore_failed">לא ניתן להשלים את השחזור. בדוק שזהו גיבוי DocScan תקין מגרסה נתמכת ושיש מקום פנוי במכשיר.</string>
+    <string name="export_quality">איכות הייצוא</string>
+    <string name="export_quality_current">איכות: %1$s</string>
+    <string name="quality_original">מקורית</string>
+    <string name="quality_high">גבוהה</string>
+    <string name="quality_compact">חסכונית</string>
+    <string name="quality_original_hint">פרטי הצילום המקורי לאחר חיתוך ויישור, ללא הקטנה יזומה. JPEG באיכות מרבית. המקור הלא ערוך נשמר בנפרד. עריכת תמונת PDF מעובדת ב־300 DPI.</string>
+    <string name="quality_high_hint">עד 3,200 פיקסלים בצלע הארוכה, לקובץ קטן יותר.</string>
+    <string name="quality_compact_hint">עד 1,600 פיקסלים בצלע הארוכה, לחיסכון במקום ושיתוף מהיר.</string>
+    <string name="original_resolution_unavailable">המקור נשמר במלואו. לעיבוד בגודל הזה אין די משאבים במכשיר. אפשר לבחור איכות ״גבוהה״ או ״חסכונית״, או לשמור את מקורות העמודים ללא עיבוד.</string>
+    <string name="save_sources">שמירת מקורות העמודים</string>
+    <string name="save_sources_hint">יישמרו קובצי המקור המלאים ללא חיתוך, מסננים או שינוי איכות, כולל פרטי צילום שהיו בקבצים. בחר תיקייה לשמירה. עריכות המסמך נשארות באפליקציה ובגיבוי המלא.</string>
+    <string name="saved_sources">נשמרו קובצי מקור: %1$d</string>
+    <string name="choose_folder">בחירת תיקייה</string>
 </resources>

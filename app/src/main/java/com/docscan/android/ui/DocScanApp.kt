@@ -79,6 +79,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     var renaming by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
     var archiveAction by rememberSaveable { mutableStateOf<String?>(null) }
+    var sourceExportConfirmation by rememberSaveable { mutableStateOf(false) }
     val archiveOperation by vm.archiveOperation.collectAsStateWithLifecycle()
     val archiveProgress by vm.archiveProgress.collectAsStateWithLifecycle()
     val archiveCancelling by vm.archiveCancelling.collectAsStateWithLifecycle()
@@ -137,8 +138,11 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     }
     val imageFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val id = imageExportTarget
-        if (uri != null && id != null) vm.exportImages(id, uri, vm.outputPageIds.takeIf { it.isNotEmpty() }?.toList())
-        imageExportTarget = null; vm.outputPageIds = arrayListOf()
+        if (uri != null && id != null) {
+            val ids = vm.outputPageIds.takeIf { it.isNotEmpty() }?.toList()
+            if (vm.sourceExportPending) vm.exportSources(id, uri, ids) else vm.exportImages(id, uri, ids)
+        }
+        imageExportTarget = null; vm.outputPageIds = arrayListOf(); vm.sourceExportPending = false
     }
     fun navigateBack() {
         if (screen == "document" && vm.selectingPages) { vm.selectingPages = false; vm.selectedPageIds = arrayListOf(); return }
@@ -255,7 +259,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         onDelete = { pendingDeletePage = it },
                         onRename = { editedName = document?.title.orEmpty(); renaming = true },
                         onExport = { vm.outputPageIds = ArrayList(outputIds().orEmpty()); exportTarget = documentId; exportPicker.launch(ExportNames.pdf(document?.title.orEmpty())) },
-                        onExportImages = { vm.outputPageIds = ArrayList(outputIds().orEmpty()); imageExportTarget = documentId; imageFolderPicker.launch(null) },
+                        onExportSources = { sourceExportConfirmation = true },
+                        onExportImages = { vm.sourceExportPending = false; vm.outputPageIds = ArrayList(outputIds().orEmpty()); imageExportTarget = documentId; imageFolderPicker.launch(null) },
                         onGallery = {
                             documentId?.let { id ->
                                 val ids = outputIds()
@@ -275,13 +280,21 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         }
         if (importing) ImportSheet(onImages = { importing = false; importPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onPdf = { importing = false; pdfPicker.launch(arrayOf("application/pdf")) }, onDismiss = { importing = false })
+        if (sourceExportConfirmation) AlertDialog(onDismissRequest = { sourceExportConfirmation = false },
+            title = { Text(stringResource(R.string.save_sources)) },
+            text = { Text(stringResource(R.string.save_sources_hint)) },
+            confirmButton = { TextButton(onClick = {
+                sourceExportConfirmation = false; vm.sourceExportPending = true
+                vm.outputPageIds = ArrayList(outputIds().orEmpty()); imageExportTarget = documentId; imageFolderPicker.launch(null)
+            }) { Text(stringResource(R.string.choose_folder)) } },
+            dismissButton = { TextButton(onClick = { sourceExportConfirmation = false }) { Text(stringResource(R.string.cancel)) } })
         if (sharing) ShareSheet(onShare = { format ->
             sharing = false; documentId?.let { id -> vm.share(id, format, outputIds()) { intent ->
                 context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_options)))
             } }
         }, onPrint = {
             sharing = false; documentId?.let { id -> vm.print(id, outputIds()) { file -> PrintExport.launch(context, file, document?.title.orEmpty()) } }
-        }, onDismiss = { sharing = false })
+        }, onDismiss = { sharing = false }, quality = vm.exportQuality)
         if (pendingDeleteDocument != null || pendingDeletePage != null) {
             val wholeDocument = pendingDeleteDocument != null
             AlertDialog(

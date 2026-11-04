@@ -25,11 +25,12 @@ import com.docscan.android.data.PageEntity
 @Composable
 fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: DocScanViewModel, busy: Boolean,
     onCamera: () -> Unit, onImport: () -> Unit, onEdit: (String) -> Unit, onDelete: (PageEntity) -> Unit,
-    onRename: () -> Unit, onExport: () -> Unit, onExportImages: () -> Unit, onGallery: () -> Unit, onShare: () -> Unit,
+    onRename: () -> Unit, onExport: () -> Unit, onExportImages: () -> Unit, onExportSources: () -> Unit, onGallery: () -> Unit, onShare: () -> Unit,
     onCrop: (PageEntity) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var batchFilter by remember { mutableStateOf(false) }
     var batchDelete by remember { mutableStateOf(false) }
+    var qualitySheet by remember { mutableStateOf(false) }
     val ids = vm.selectedPageIds.toList()
     val canOutput = !busy && pages.isNotEmpty() && (!vm.selectingPages || ids.isNotEmpty())
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -45,11 +46,17 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
                         vm.selectingPages = !vm.selectingPages; vm.selectedPageIds = arrayListOf(); menu = false
                     })
                     DropdownMenuItem(text = { Text(stringResource(R.string.save_images)) }, enabled = canOutput, onClick = { menu = false; onExportImages() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.save_sources)) }, enabled = canOutput, onClick = { menu = false; onExportSources() })
                 }
             }
         }
-        Text(stringResource(if (vm.selectingPages) R.string.selected_count else R.string.page_count,
-            if (vm.selectingPages) ids.size else pages.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(if (vm.selectingPages) R.string.selected_count else R.string.page_count,
+                if (vm.selectingPages) ids.size else pages.size), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(enabled = !busy, onClick = { qualitySheet = true }) {
+                Text(stringResource(R.string.export_quality_current, exportQualityLabel(vm.exportQuality)))
+            }
+        }
         if (vm.selectingPages) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { vm.selectedPageIds = ArrayList(pages.map { it.id }) }) { Text(stringResource(R.string.select_all)) }
@@ -82,6 +89,8 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
             EditorTool(R.drawable.ic_share, shareLabel, canOutput, Modifier.weight(1f).semantics { contentDescription = shareLabel }, onShare)
         }
     }
+    if (qualitySheet) ExportQualitySheet(vm.exportQuality,
+        onApply = { vm.chooseExportQuality(it); qualitySheet = false }, onDismiss = { qualitySheet = false })
     if (batchFilter) BatchFilterSheet(onApply = { filter, strength ->
         batchFilter = false; document?.let { vm.batchFilter(it.id, ids, filter, strength) }
     }, onDismiss = { batchFilter = false })
