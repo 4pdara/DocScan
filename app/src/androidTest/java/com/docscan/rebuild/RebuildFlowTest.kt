@@ -69,7 +69,7 @@ class RebuildFlowTest {
         compose.onNodeWithTag("document-pages").assertIsDisplayed()
     }
 
-    @Test fun sourceRecipeAndOrderSurviveDatabaseReopen() = runBlocking {
+    @Test fun sourceRecipeAndOrderSurviveDatabaseReopen(): Unit = runBlocking {
         @Suppress("DEPRECATION") val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
         assertFalse(packageInfo.requestedPermissions.orEmpty().contains(android.Manifest.permission.INTERNET))
         assertEquals(0, context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)
@@ -103,7 +103,7 @@ class RebuildFlowTest {
         } finally { file.delete() }
     }
 
-    @Test fun pdfContainsAllPagesAndLeavesMastersUntouched() = runBlocking {
+    @Test fun pdfContainsAllPagesAndLeavesMastersUntouched(): Unit = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, ScanDatabase::class.java).build(); val store = ScanStore(context, db)
         val book = store.create("PDF test"); val input = fixture("pdf-source.jpg")
         val first = store.captured(book.id, input); val second = store.captured(book.id, input); val digest = hash(input)
@@ -118,7 +118,7 @@ class RebuildFlowTest {
         pdf.delete(); input.delete(); store.source(first).delete(); store.source(second).delete(); db.close()
     }
 
-    @Test fun invalidCropCannotOverwriteSourceOrSavedRecipe() = runBlocking {
+    @Test fun invalidCropCannotOverwriteSourceOrSavedRecipe(): Unit = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, ScanDatabase::class.java).build(); val store = ScanStore(context, db)
         val book = store.create("Invalid edit"); val input = fixture("invalid.jpg"); val page = store.captured(book.id, input)
         val invalid = EditRecipe(frame = Frame(listOf(Vertex(0f, 0f))))
