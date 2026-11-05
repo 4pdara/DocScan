@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -66,6 +68,7 @@ fun CameraScreen(
     pages: List<PageEntity>, repository: DocumentRepository, gate: AutoCaptureGate,
     busy: Boolean, manualOnly: Boolean, onDone: () -> Unit, onReview: (String) -> Unit,
     onCapture: (File, DetectionMode, (Boolean) -> Unit) -> Unit, onFailure: () -> Unit,
+    onBusyChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current
@@ -95,7 +98,8 @@ fun CameraScreen(
     val detectionMode by rememberUpdatedState(if (angledDistance) DetectionMode.ANGLED_DISTANCE else DetectionMode.STANDARD)
     var options by remember { mutableStateOf(false) }
     var paused by rememberSaveable { mutableStateOf(false) }
-    val controller = remember(highQuality) { LifecycleCameraController(context).apply {
+    var retry by remember { mutableIntStateOf(0) }
+    val controller = remember(highQuality, retry) { LifecycleCameraController(context).apply {
         setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
         imageCaptureMode = if (highQuality) ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY else ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
         imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
@@ -110,6 +114,9 @@ fun CameraScreen(
     var cameraReady by remember(controller) { mutableStateOf(false) }
     var unavailable by remember(controller) { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
+    val busyChanged by rememberUpdatedState(onBusyChanged)
+    LaunchedEffect(capturing) { busyChanged(capturing) }
+    DisposableEffect(Unit) { onDispose { busyChanged(false) } }
     var torch by remember(controller) { mutableStateOf(false) }
     var resumed by remember { mutableStateOf(false) }
     var decision by remember { mutableStateOf(CaptureDecision(CaptureStatus.SEARCHING)) }
@@ -117,6 +124,10 @@ fun CameraScreen(
     var lastFrame by remember { mutableLongStateOf(0) }
     val feedback = LocalHapticFeedback.current
     val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+    LaunchedEffect(controller) {
+        delay(12_000)
+        if (!cameraReady) unavailable = true
+    }
 
     LifecycleResumeEffect(Unit) {
         resumed = true; gate.interrupt()
@@ -194,6 +205,7 @@ fun CameraScreen(
     }
     val statusText = when {
         capturing || busy -> R.string.scan_saving
+        !cameraReady && !unavailable -> R.string.camera_starting
         !automatic -> R.string.camera_hint
         paused -> R.string.scan_paused
         decision.status == CaptureStatus.WAIT_FOR_NEXT -> R.string.scan_replace_page
@@ -201,17 +213,14 @@ fun CameraScreen(
         else -> R.string.scan_find_page
     }
     val fastLabel = stringResource(R.string.fast_scan)
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().testTag("camera-screen").padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(fastLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.capture_automatic), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             Switch(automatic, modifier = Modifier.semantics { contentDescription = fastLabel }, enabled = !busy && !capturing && !manualOnly,
                 onCheckedChange = { automatic = it; paused = false; preferences.edit { putBoolean("automatic", it) } })
             Box {
                 IconButton(enabled = !busy && !capturing, onClick = { options = true }) { AppIcon(R.drawable.ic_more, stringResource(R.string.more_options)) }
                 DropdownMenu(options, onDismissRequest = { options = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.high_quality_capture)) }, trailingIcon = { Checkbox(highQuality, onCheckedChange = null) }, onClick = {
-                        highQuality = !highQuality; preferences.edit { putBoolean("high-quality", highQuality) }; options = false
-                    })
                     val angleLabel = stringResource(R.string.angle_distance_detection)
                     DropdownMenuItem(text = { Text(angleLabel) }, trailingIcon = {
                         Checkbox(angledDistance, modifier = Modifier.semantics { contentDescription = angleLabel }, onCheckedChange = {
@@ -226,16 +235,31 @@ fun CameraScreen(
             }
             Text(stringResource(R.string.page_count, pages.size), style = MaterialTheme.typography.labelLarge)
         }
-        Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
-            if (!unavailable) AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-            else Text(stringResource(R.string.camera_unavailable), color = Color.White, modifier = Modifier.padding(24.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.capture_quality), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+            FilterChip(!highQuality, onClick = { highQuality = false; preferences.edit { putBoolean("high-quality", false) } },
+                enabled = !busy && !capturing, label = { Text(stringResource(R.string.capture_fast)) }, modifier = Modifier.testTag("quality-fast"))
+            FilterChip(highQuality, onClick = { highQuality = true; preferences.edit { putBoolean("high-quality", true) } },
+                enabled = !busy && !capturing, label = { Text(stringResource(R.string.capture_high)) },
+                modifier = Modifier.testTag("quality-high").semantics { contentDescription = context.getString(R.string.high_quality_capture) })
+        }
+        Box(Modifier.weight(1f).fillMaxWidth().testTag("camera-preview").clip(DesignCorner).background(Color.Black), contentAlignment = Alignment.Center) {
+            // AndroidView.factory is invoked once for a composed node. Replacing only
+            // the remembered PreviewView left the old surface on screen after a quality
+            // switch. Key the native host to the actual controller/view being observed.
+            if (!unavailable) key(controller) {
+                AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+            } else Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(stringResource(R.string.camera_unavailable), color = Color.White)
+                TextButton(onClick = { retry++ }) { Text(stringResource(R.string.camera_retry)) }
+            }
             Canvas(Modifier.matchParentSize()) {
                 if (outline.size == 4) {
                     val path = Path().apply {
                         moveTo(outline[0].x, outline[0].y)
                         outline.drop(1).forEach { lineTo(it.x, it.y) }; close()
                     }
-                    drawPath(path, Color(0xFF50E0C2), style = Stroke(3.dp.toPx()))
+                    drawPath(path, if (DesignConfig.fixedTabs) Color(0xFFFF5544) else Color(0xFF82A8FF), style = Stroke(3.dp.toPx()))
                     outline.forEach { drawCircle(Color.White, 5.dp.toPx(), it) }
                 }
             }
@@ -272,12 +296,15 @@ fun CameraScreen(
                 val desired = !torch; val future = controller.enableTorch(desired)
                 future.addListener({ try { future.get(); torch = desired } catch (_: Exception) { onFailure() } }, mainExecutor)
             }) { AppIcon(R.drawable.ic_flash, stringResource(R.string.flashlight)) }
+            Spacer(Modifier.weight(1f))
             Button(enabled = cameraReady && !busy && !capturing && !unavailable && resumed,
-                modifier = Modifier.weight(1f).heightIn(min = 56.dp), onClick = { capturePage() }) {
+                modifier = Modifier.size(68.dp).testTag("capture-button").semantics { contentDescription = context.getString(R.string.capture) },
+                shape = CircleShape, contentPadding = PaddingValues(0.dp), onClick = { capturePage() }) {
                 if (capturing || busy) CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                else { AppIcon(R.drawable.ic_camera, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.capture)) }
+                else AppIcon(R.drawable.ic_camera, null, Modifier.size(30.dp))
             }
-            TextButton(enabled = !busy && !capturing, onClick = onDone) { Text(stringResource(if (manualOnly) R.string.cancel else R.string.done)) }
+            Spacer(Modifier.weight(1f))
+            FilledTonalButton(enabled = !busy && !capturing, shape = DesignCorner, onClick = onDone) { Text(stringResource(if (manualOnly) R.string.cancel else R.string.done)) }
         }
     }
 }

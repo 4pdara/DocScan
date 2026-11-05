@@ -35,8 +35,8 @@ import kotlin.math.roundToInt
 
 @Composable
 fun EditorTool(icon: Int, label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    OutlinedButton(onClick, modifier.heightIn(min = 72.dp), enabled = enabled,
-        contentPadding = PaddingValues(8.dp), shape = RoundedCornerShape(16.dp)) {
+    OutlinedButton(onClick, modifier.heightIn(min = 56.dp), enabled = enabled,
+        contentPadding = PaddingValues(6.dp), shape = DesignCorner) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             AppIcon(icon, null)
             Spacer(Modifier.height(4.dp))

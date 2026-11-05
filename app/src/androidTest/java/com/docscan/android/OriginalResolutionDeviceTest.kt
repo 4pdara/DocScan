@@ -138,16 +138,18 @@ class OriginalResolutionDeviceTest {
         ui.onNodeWithText(text(R.string.apply)).performScrollTo().performClick()
         ui.activityRule.scenario.recreate()
         ui.waitUntil(15_000) { ui.onAllNodesWithText(qualityText(R.string.quality_high)).fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithContentDescription(text(R.string.share_options)).performClick()
         ui.waitUntil(15_000) {
             ui.onAllNodes(hasText(text(R.string.save_gallery)) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
         }
-        ui.onNodeWithText(text(R.string.save_gallery)).assertIsEnabled().performClick()
+        ui.onNodeWithText(text(R.string.save_gallery)).performScrollTo().assertIsEnabled().performClick()
         ui.waitUntil(30_000) { !model.busy.value && galleryFiles().size == 1 }
         assertEquals(3200, bounds(galleryFiles().single()).first)
         ui.onNodeWithText(qualityText(R.string.quality_high)).performClick()
         ui.onNodeWithText(text(R.string.quality_original)).performClick()
         ui.onNodeWithText(text(R.string.apply)).performScrollTo().performClick()
-        ui.onNodeWithText(text(R.string.save_gallery)).performClick()
+        ui.onNodeWithContentDescription(text(R.string.share_options)).performClick()
+        ui.onNodeWithText(text(R.string.save_gallery)).performScrollTo().performClick()
         ui.waitUntil(30_000) { !model.busy.value && galleryFiles().size == 2 }
         assertEquals(setOf(3200, 4500), galleryFiles().map { bounds(it).first }.toSet())
     }

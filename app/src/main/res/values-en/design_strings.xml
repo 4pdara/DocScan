@@ -1,0 +1,29 @@
+<resources>
+    <string name="design_settings">Settings</string>
+    <string name="nav_documents">Documents</string>
+    <string name="nav_capture">Capture</string>
+    <string name="nav_pages">Pages</string>
+    <string name="save_and_share">Save and share</string>
+    <string name="capture_fast">Fast</string>
+    <string name="capture_high">Quality</string>
+    <string name="capture_quality">Capture quality</string>
+    <string name="capture_automatic">Automatic</string>
+    <string name="camera_starting">Preparing the camera…</string>
+    <string name="camera_retry">Try again</string>
+    <string name="settings_capture">Capture</string>
+    <string name="settings_output">Export</string>
+    <string name="settings_archive">Backup and restore</string>
+    <string name="settings_language">The interface follows the device language: Hebrew or English.</string>
+    <string name="preview_identity">Design %1$s preview · separate storage from the regular app</string>
+    <string name="no_selected_document">Choose a document from the library</string>
+    <string name="no_selected_document_hint">Its pages will appear here. You can also start a new scan.</string>
+    <string name="choose_document">Open document library</string>
+    <string name="document_tools">Manage pages</string>
+    <string name="output_save">Save to device</string>
+    <string name="output_share">Share and print</string>
+    <string name="output_images">JPEG images</string>
+    <string name="output_pdf">PDF</string>
+    <string name="output_both">PDF and images</string>
+    <string name="share_selected_format">Share</string>
+    <string name="source_copy_note">Sources and edits are stored separately. Original quality is the default.</string>
+</resources>
