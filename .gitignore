@@ -35,3 +35,10 @@ research/elf_inventory.json
 research/jni_signatures.json
 research/dex_classes.json
 research/__pycache__/
+
+native-app/
+research/probe/res/
+research/unidbg/target/
+research/unidbg/classpath.txt
+research/lab-meta.json
+research/unidbg-*.png

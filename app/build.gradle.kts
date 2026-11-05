@@ -1,25 +1,50 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.kapt")
 }
+
+val camScannerNativeDir = providers.gradleProperty("camScannerNativeDir").orNull
+val camScannerNative = camScannerNativeDir != null
+if (camScannerNative) {
+    val expected = mapOf(
+        "libopencv.so" to "9df94cd8f94f0f6818ce700104b6337259c7c95eb95cd98552d27105d5d8320a",
+        "libncnn.so" to "b1841e5a3ea32d7120bbd0cd53e9609c2181441414a961d55fd0c422c11e1dc0",
+        "libMNN.so" to "e03bbcbc0f26b7f2753a2284580b0feab1ac92a629f138fd214c8a5a12f049e9",
+        "libCVNN.so" to "81634fe554a8622eb238dca6a200c18c3e95730fe24474302f809ade12277ddd",
+        "libmagicenhancer.so" to "4fecd50628352cc4d88fba220ee1059e8104857166014f8b5d6e8a13e9c92599"
+    )
+    expected.forEach { (name, digest) ->
+        val library = file("$camScannerNativeDir/arm64-v8a/$name")
+        require(library.isFile) { "Missing research engine library: $name" }
+        val actual = MessageDigest.getInstance("SHA-256")
+            .digest(library.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+        require(actual == digest) { "Unexpected research engine library: $name" }
+    }
+}
+
 android {
     namespace = "com.docscan.rebuild"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.docscan.rebuild"
+        applicationId = if (camScannerNative) "com.docscan.rebuild.csnative" else "com.docscan.rebuild"
+        buildConfigField("boolean", "CAMSCANNER_NATIVE", camScannerNative.toString())
+        manifestPlaceholders["docscanAppLabel"] = if (camScannerNative) "@string/native_app_name" else "@string/app_name"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0-rebuild"
+        versionName = if (camScannerNative) "0.1.1-native-research" else "0.1.0-rebuild"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        ndk { abiFilters += if (camScannerNative) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
+    if (camScannerNative) sourceSets.getByName("main").jniLibs.srcDir(requireNotNull(camScannerNativeDir))
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     testOptions { animationsDisabled = true }
     lint { abortOnError = true }

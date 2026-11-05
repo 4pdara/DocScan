@@ -63,4 +63,6 @@
     <string name="title_scan">סריקה %1$s</string>
     <plurals name="pages"><item quantity="one">%1$d עמוד</item><item quantity="two">%1$d עמודים</item><item quantity="many">%1$d עמודים</item><item quantity="other">%1$d עמודים</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d עמוד נשמר</item><item quantity="two">%1$d עמודים נשמרו</item><item quantity="many">%1$d עמודים נשמרו</item><item quantity="other">%1$d עמודים נשמרו</item></plurals>
+    <string name="native_app_name">DocScan ניסוי Native</string>
+    <string name="native_paper">CamScanner</string>
 </resources>

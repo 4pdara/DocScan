@@ -6,6 +6,7 @@ Process.attachModuleObserver({
   onAdded(module) {
     if (!/^lib(scannercs|mainstone|magicenhancer|imageprocessor|pagescanner)\.so$/.test(module.name)) return;
     event({event:'module',name:module.name,size:module.size,arch:Process.arch});
+    if(Process.arch!=='arm64'){event({event:'native_trace_deferred',reason:'ARM64 native tracing requires the emulated realm'});return;}
     for (const symbol of module.enumerateExports()) {
       if (symbol.type !== 'function' || !/^Java_com_intsig_(scanner_ScannerEngine|nativelib_(MagicEnhancer|ImageProcessor|PageScanner))_/.test(symbol.name)) continue;
       const key=module.name+'!'+symbol.name;
@@ -79,3 +80,15 @@ Java.perform(function() {
  }
  event({event:'hooks_ready',arch:Process.arch});
 });
+
+setTimeout(function(){
+ if(fixtureScheduled)return;
+ Java.perform(function(){
+  try{
+   const Engine=Java.use('com.intsig.scanner.ScannerEngine');
+   const handle=Engine.initThreadContext();
+   event({event:'late_context_probe',handle:handle});
+   if(handle>0){Engine.destroyThreadContext(handle);fixtureScheduled=true;setTimeout(fixture,1);}
+  }catch(e){event({event:'late_context_unavailable',message:String(e)});}
+ });
+},60000);

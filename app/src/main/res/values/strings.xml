@@ -63,4 +63,6 @@
     <string name="title_scan">Scan %1$s</string>
     <plurals name="pages"><item quantity="one">%1$d page</item><item quantity="other">%1$d pages</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d page saved</item><item quantity="other">%1$d pages saved</item></plurals>
+    <string name="native_app_name">DocScan Native Test</string>
+    <string name="native_paper">CamScanner</string>
 </resources>

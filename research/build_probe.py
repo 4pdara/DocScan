@@ -23,12 +23,14 @@ for c in json.loads((root/'research/jni_signatures.json').read_text()):
   args,ret=m['descriptor'][1:].split(')');params=', '.join(t+' p'+str(i) for i,t in enumerate(types(args)))
   lines.append(' public static native '+types(ret)[0]+' '+m['name']+'('+params+');')
  lines+=['}'];p=src/pkg/(simple+'.java');p.parent.mkdir(parents=True,exist_ok=True);p.write_text('\n'.join(lines))
-manifest='''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.docscan.engineprobe"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28"/><application android:label="DocScan JNI Research" android:debuggable="true" android:allowBackup="false" android:extractNativeLibs="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"><activity android:name=".ProbeActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'''
+manifest='''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.docscan.engineprobe"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28"/><application android:label="@string/app_name" android:debuggable="true" android:allowBackup="false" android:extractNativeLibs="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"><activity android:name=".ProbeActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'''
 (out/'AndroidManifest.xml').write_text(manifest)
 jdk=root/'runtime/jdk/usr/lib/jvm/java-21-openjdk-amd64/bin';sdk=root/'runtime/buildsdk';bt=sdk/'android-15';android=sdk/'android-36/android.jar'
 subprocess.run([str(jdk/'javac'),'-source','8','-target','8','-cp',str(android),'-d',str(classes)]+[str(p) for p in src.rglob('*.java')],check=True)
 subprocess.run([str(bt/'d8'),'--min-api','26','--lib',str(android),'--output',str(dex)]+[str(p) for p in classes.rglob('*.class')],env={**__import__('os').environ,'JAVA_HOME':str(jdk.parent),'PATH':str(jdk)+':'+__import__('os').environ['PATH']},check=True)
-subprocess.run([str(bt/'aapt2'),'link','-I',str(android),'--manifest',str(out/'AndroidManifest.xml'),'-o',str(out/'unsigned.apk'),'--version-code','1','--version-name','0.1-research'],check=True)
+res=out/'res/values';res.mkdir(parents=True,exist_ok=True);(res/'strings.xml').write_text('<resources><string name="app_name">DocScan JNI Research</string></resources>')
+subprocess.run([str(bt/'aapt2'),'compile','--dir',str(out/'res'),'-o',str(out/'res.zip')],check=True)
+subprocess.run([str(bt/'aapt2'),'link','-I',str(android),'--manifest',str(out/'AndroidManifest.xml'),str(out/'res.zip'),'-o',str(out/'unsigned.apk'),'--version-code','1','--version-name','0.1-research'],check=True)
 libraries=['libscannercs.so','libmainstone.so','libmagicenhancer.so','libimageprocessor.so','libpagescanner.so','libopencv.so','libncnn.so','libMNN.so','libCVNN.so']
 with zipfile.ZipFile(out/'unsigned.apk','a',zipfile.ZIP_DEFLATED) as z:
  for p in dex.glob('*.dex'):z.write(p,p.name)
@@ -36,5 +38,5 @@ with zipfile.ZipFile(out/'unsigned.apk','a',zipfile.ZIP_DEFLATED) as z:
 subprocess.run([str(bt/'zipalign'),'-f','4',str(out/'unsigned.apk'),str(out/'aligned.apk')],check=True)
 key=out/'research.keystore'
 if not key.exists():subprocess.run([str(jdk/'keytool'),'-genkeypair','-keystore',str(key),'-storepass','android','-keypass','android','-alias','research','-dname','CN=DocScan JNI Research','-keyalg','RSA','-validity','365'],check=True)
-subprocess.run([str(bt/'apksigner'),'sign','--ks',str(key),'--ks-pass','pass:android','--out',str(out/'docscan-jni-probe.apk'),str(out/'aligned.apk')],env={**__import__('os').environ,'JAVA_HOME':str(jdk.parent),'PATH':str(jdk)+':'+__import__('os').environ['PATH']},check=True)
+subprocess.run([str(bt/'apksigner'),'sign','--v1-signing-enabled','true','--ks',str(key),'--ks-pass','pass:android','--out',str(out/'docscan-jni-probe.apk'),str(out/'aligned.apk')],env={**__import__('os').environ,'JAVA_HOME':str(jdk.parent),'PATH':str(jdk)+':'+__import__('os').environ['PATH']},check=True)
 print('probe_apk',str(out/'docscan-jni-probe.apk'))

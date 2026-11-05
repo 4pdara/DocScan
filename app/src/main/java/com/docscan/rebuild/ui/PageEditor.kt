@@ -1,5 +1,6 @@
 package com.docscan.rebuild.ui
 
+import com.docscan.rebuild.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -43,7 +44,7 @@ fun fitImageRect(size: Size, aspect: Float): Rect {
 }
 
 private fun Treatment.label(): Int = when (this) {
-    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> R.string.paper
+    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (BuildConfig.CAMSCANNER_NATIVE) R.string.native_paper else R.string.paper
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -1,5 +1,6 @@
 package com.docscan.rebuild.imaging
 
+import com.docscan.rebuild.BuildConfig
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -74,6 +75,14 @@ object ImagePipeline {
                     finally { gray.release() }
                 }
                 Treatment.PAPER -> {
+                    if (BuildConfig.CAMSCANNER_NATIVE) {
+                        val work = Bitmap.createBitmap(current.cols(), current.rows(), Bitmap.Config.ARGB_8888)
+                        try {
+                            Utils.matToBitmap(current, work)
+                            NativeCamScannerEnhancer.applyInPlace(work)
+                            Utils.bitmapToMat(work, result)
+                        } finally { work.recycle() }
+                    } else {
                     // Local illumination correction, not a learned restoration or book dewarp model.
                     val background = Mat(); val rgb = Mat(); val reduced = Mat()
                     try {
@@ -85,6 +94,7 @@ object ImagePipeline {
                         Core.max(background, Scalar(1.0, 1.0, 1.0), background)
                         Core.divide(rgb, background, result, 245.0)
                     } finally { background.release(); rgb.release(); reduced.release() }
+                    }
                 }
             }
             if (recipe.brightness != 0f || recipe.contrast != 1f) result.convertTo(result, -1, recipe.contrast.toDouble(), recipe.brightness.toDouble())
