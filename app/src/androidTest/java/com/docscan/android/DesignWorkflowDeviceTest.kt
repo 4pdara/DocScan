@@ -110,7 +110,8 @@ class DesignWorkflowDeviceTest {
 
     @Test fun emptyNewScanBackReturnsToLibraryWithoutChangingAnExistingDocument() {
         val title = "Existing ${UUID.randomUUID()}"; val id = create(title)
-        ui.waitUntil(15_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+        ui.waitUntil(15_000) { model.documents.value.any { it.document.title == title } }
+        ui.onNodeWithTag("library-documents").performScrollToNode(hasText(title))
         ui.onNodeWithText(title).performScrollTo().performClick()
         ui.onNodeWithContentDescription(text(R.string.back)).performClick()
         val before = runBlocking { app.database.documents().allDocuments().map { it.id }.toSet() }
@@ -145,7 +146,8 @@ class DesignWorkflowDeviceTest {
 
     @Test fun previewNavigationSettingsAndUnifiedOutputRemainReachable() {
         val title = "סריקת ספר"; val id = create(title); create("סיכומי לימוד")
-        ui.waitUntil(15_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+        ui.waitUntil(15_000) { model.documents.value.any { it.document.title == title } }
+        ui.onNodeWithTag("library-documents").performScrollToNode(hasText(title))
         if (DesignConfig.fixedTabs) ui.onNodeWithTag("nav-documents").assertIsSelected()
         else ui.onNodeWithTag("nav-documents").assertDoesNotExist()
         screenshot("library")

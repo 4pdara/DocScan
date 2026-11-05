@@ -94,8 +94,9 @@ class DocumentWorkflowUiTest {
         }
         ui.onNodeWithText(text(R.string.select_documents)).performClick()
         for (suffix in listOf("B", "A")) {
-            ui.waitUntil(15_000) { ui.onAllNodesWithText("$prefix $suffix").fetchSemanticsNodes().isNotEmpty() }
-            ui.onNodeWithText("$prefix $suffix").performScrollTo().performClick()
+            ui.waitUntil(15_000) { androidx.lifecycle.ViewModelProvider(ui.activity)[DocScanViewModel::class.java].documents.value.any { it.document.title == "$prefix $suffix" } }
+            ui.onNodeWithTag("library-documents").performScrollToNode(hasText("$prefix $suffix"))
+            ui.onNodeWithText("$prefix $suffix").performClick()
         }
         ui.onNodeWithText(text(R.string.merge_documents)).performClick()
         ui.onNodeWithText(text(R.string.document_name)).performTextInput("$prefix merged")

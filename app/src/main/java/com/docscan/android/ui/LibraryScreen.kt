@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,7 +34,7 @@ fun LibraryScreen(documents: List<DocumentSummary>, vm: DocScanViewModel, busy: 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(stringResource(R.string.library_count, documents.size), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -59,10 +60,10 @@ fun LibraryScreen(documents: List<DocumentSummary>, vm: DocScanViewModel, busy: 
             TextButton(enabled = !busy && vm.selectedDocuments.size >= 2, onClick = { merging = true }) { Text(stringResource(R.string.merge_documents)) }
         }
         if (visible.isEmpty()) EmptyState(stringResource(R.string.empty_title), stringResource(R.string.empty_body), Modifier.weight(1f))
-        else if (vm.libraryGrid) LazyVerticalGrid(GridCells.Adaptive(148.dp), Modifier.weight(1f),
+        else if (vm.libraryGrid) LazyVerticalGrid(GridCells.Adaptive(128.dp), Modifier.weight(1f).testTag("library-documents"),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(visible, key = { it.document.id }) { summary -> LibraryCard(summary, vm, busy, true, onOpen, onDelete) }
-        } else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
+        } else LazyColumn(Modifier.weight(1f).testTag("library-documents"), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(visible, key = { it.document.id }) { summary -> LibraryCard(summary, vm, busy, false, onOpen, onDelete) }
         }
     }
