@@ -162,7 +162,7 @@ fun ScanApp(store: ScanStore) {
             "editor" -> pages.firstOrNull { it.id == pageId }?.let { page ->
                 PageEditor(store, page, vm.busy, onBack = { route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe); route = "document" } },
                     onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") })
-            } ?: LaunchedEffect(Unit) { route = "document" }
+            } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
                 onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onShare = ::sharePdf,

@@ -105,6 +105,8 @@ class RebuildFlowTest {
     }
 
     @Test fun editorHasInlineFiltersAndActionsAboveSystemNavigation() {
+        val language = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("locale", "en")
+        assertEquals(if (language == "he") android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR, compose.activity.resources.configuration.layoutDirection)
         val store = (compose.activity.application as ScanApplication).store
         val title = "UI fixture ${System.nanoTime()}"
         val page = runBlocking { val book = store.create(title); store.captured(book.id, fixture("ui.jpg")) }
@@ -124,6 +126,8 @@ class RebuildFlowTest {
         val toolbar = compose.onNodeWithTag("editor-toolbar").fetchSemanticsNode().boundsInRoot
         assertTrue("Save remains visible", save.top >= 0 && save.bottom < root.bottom - navBottom)
         assertTrue("App toolbar reserves navigation inset", toolbar.bottom <= root.bottom - navBottom + 1)
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("save-edit").performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.page(page.id)?.edit()?.treatment == Treatment.GRAY } }
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
