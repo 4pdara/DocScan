@@ -126,6 +126,8 @@ class ArchiveWorkflowDeviceTest {
         ui.onNodeWithText(he.getString(R.string.archive_choose_destination)).performClick()
         ui.waitUntil(25_000) { !vm.busy.value && file.length() > 0 }
         assertEquals(Intent.ACTION_CREATE_DOCUMENT, intents[0].action); assertEquals("application/zip", intents[0].type)
+        // Wait for the completion snackbar to leave the settings touch targets before the next operation.
+        ui.waitUntil(10_000) { vm.message.value == null }
         runBlocking { app.repository.deleteDocument(id) }
         ui.waitUntil(15_000) { ui.onAllNodesWithText(prefix).fetchSemanticsNodes().isEmpty() }
         open(he.getString(R.string.archive_restore), he.getString(R.string.design_settings))
