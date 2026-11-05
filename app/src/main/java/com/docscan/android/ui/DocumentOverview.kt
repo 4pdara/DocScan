@@ -1,5 +1,6 @@
 package com.docscan.android.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed as listItemsIndexed
@@ -31,6 +32,7 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
     var batchFilter by remember { mutableStateOf(false) }
     var batchDelete by remember { mutableStateOf(false) }
     var qualitySheet by remember { mutableStateOf(false) }
+    BackHandler(batchFilter) { batchFilter = false }
     val ids = vm.selectedPageIds.toList()
     val canOutput = !busy && pages.isNotEmpty() && (!vm.selectingPages || ids.isNotEmpty())
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -83,7 +85,12 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
             }
         }
         val shareLabel = stringResource(R.string.share_options)
-        Button(onShare, enabled = canOutput, shape = DesignCorner,
+        val batchPreview = pages.firstOrNull { it.id in ids }
+        if (batchFilter && batchPreview != null) BatchFilterBar(batchPreview, vm.repository,
+            onApply = { filter, strength ->
+                batchFilter = false; document?.let { vm.batchFilter(it.id, ids, filter, strength) }
+            }, onDismiss = { batchFilter = false })
+        else Button(onShare, enabled = canOutput, shape = DesignCorner,
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).heightIn(min = 52.dp).semantics { contentDescription = shareLabel }) {
             AppIcon(R.drawable.ic_share, null)
             Spacer(Modifier.width(8.dp))
@@ -92,9 +99,6 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
     }
     if (qualitySheet) ExportQualitySheet(vm.exportQuality,
         onApply = { vm.chooseExportQuality(it); qualitySheet = false }, onDismiss = { qualitySheet = false })
-    if (batchFilter) BatchFilterSheet(onApply = { filter, strength ->
-        batchFilter = false; document?.let { vm.batchFilter(it.id, ids, filter, strength) }
-    }, onDismiss = { batchFilter = false })
     if (batchDelete) AlertDialog(onDismissRequest = { batchDelete = false }, title = { Text(stringResource(R.string.delete_pages_title)) },
         text = { Text(stringResource(R.string.delete_page_body)) }, confirmButton = {
             TextButton(onClick = { batchDelete = false; document?.let { vm.batchDelete(it.id, ids) } }) { Text(stringResource(R.string.delete)) }

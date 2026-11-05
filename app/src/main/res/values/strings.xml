@@ -8,7 +8,7 @@
     <string name="page_grid">תצוגת רשת</string>
     <string name="refine_bounds">שפר חיתוך</string>
     <string name="google_review_hint">בדוק שהדף כולו בתוך החיתוך. אפשר לשפר את הגבולות בכל עמוד; תוצאת Google המקורית נשמרת.</string>
-    <string name="app_name">DocScan 01</string>
+    <string name="app_name">DocScan 01.1</string>
     <string name="library_title">המסמכים שלי</string>
     <string name="library_subtitle">כל הדפים שלך. במקום אחד.</string>
     <string name="new_scan">סריקה חדשה</string>

@@ -8,7 +8,7 @@
     <string name="page_grid">Page grid</string>
     <string name="refine_bounds">Refine crop</string>
     <string name="google_review_hint">Check that the whole page is inside the crop. Refine any page; the original Google result is preserved.</string>
-    <string name="app_name">DocScan 01</string>
+    <string name="app_name">DocScan 01.1</string>
     <string name="library_title">My documents</string>
     <string name="library_subtitle">Your pages, all together.</string>
     <string name="new_scan">New scan</string>

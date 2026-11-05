@@ -14,17 +14,16 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.docscan.android.R
+import com.docscan.android.data.DocumentRepository
+import com.docscan.android.data.PageEntity
 import com.docscan.android.data.DocumentSummary
 import com.docscan.android.export.ShareFormat
 import com.docscan.android.processing.ScanFilter
-import com.docscan.android.processing.ProDocumentFilters
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,33 +87,15 @@ fun ShareSheet(onShare: (ShareFormat) -> Unit, onPrint: () -> Unit, onDismiss: (
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BatchFilterSheet(onApply: (ScanFilter, Int) -> Unit, onDismiss: () -> Unit) {
+fun BatchFilterBar(page: PageEntity, repository: DocumentRepository,
+    onApply: (ScanFilter, Int) -> Unit, onDismiss: () -> Unit) {
     var chosen by rememberSaveable { mutableStateOf(ScanFilter.CLEAN_COLOR.name) }
     var strength by rememberSaveable { mutableIntStateOf(70) }
-    val height = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .8f).toDp() }
-    val description = stringResource(R.string.filters_label)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().heightIn(max = height).padding(horizontal = 20.dp).navigationBarsPadding()) {
-            Text(stringResource(R.string.batch_filters), style = MaterialTheme.typography.titleLarge)
-            LazyColumn(Modifier.weight(1f).semantics { contentDescription = description }) {
-                items(ScanFilter.entries) { filter ->
-                    Surface(onClick = { chosen = filter.name }) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(chosen == filter.name, onClick = { chosen = filter.name })
-                            Text(filterLabel(filter))
-                        }
-                    }
-                }
-            }
-            val filter = ScanFilter.valueOf(chosen)
-            if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT || filter == ScanFilter.AUTO_DOCUMENT) {
-                AdjustmentControl(stringResource(R.string.filter_strength), strength, 0..100, true) { strength = it }
-            }
-            Button(onClick = { onApply(ScanFilter.valueOf(chosen), strength) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.apply)) }
-        }
-    }
+    FilterStrip(page.copy(filter = chosen, filterStrength = strength), repository, false,
+        onFilter = { chosen = it.name }, onStrength = { strength = it }, onDismiss = onDismiss,
+        onApplyToAll = { onApply(ScanFilter.valueOf(chosen), strength) },
+        applyLabel = R.string.apply, dismissLabel = R.string.cancel)
 }
 
 @Composable
