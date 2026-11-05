@@ -97,8 +97,10 @@ class RebuildFlowTest {
             val original = ImagePipeline.render(file, EditRecipe())
             assertEquals(1800, original.width); assertEquals(2400, original.height); original.recycle()
             for (treatment in Treatment.entries) {
-                val result = ImagePipeline.render(file, EditRecipe(frame = detected, turns = 1, treatment = treatment))
-                assertTrue(result.width > 1800); assertTrue(result.height > 1300); result.recycle()
+                val result = ImagePipeline.render(file, EditRecipe(frame = detected, turns = 1, treatment = treatment, brightness = -12f, contrast = .8f))
+                assertTrue(result.width > 1800); assertTrue(result.height > 1300)
+                assertEquals(255, Color.alpha(result.getPixel(result.width / 2, result.height / 2)))
+                result.recycle()
             }
         } finally { file.delete() }
     }

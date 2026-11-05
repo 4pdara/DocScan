@@ -46,7 +46,7 @@ object ImagePipeline {
 
     fun transform(bitmap: Bitmap, recipe: EditRecipe): Bitmap {
         ensureAvailable(); require(recipe.frame.valid())
-        val source = Mat(); val current = Mat(); val result = Mat()
+        val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
             Utils.bitmapToMat(bitmap, source)
             if (recipe.frame == Frame.FULL) source.copyTo(current) else {
@@ -88,8 +88,13 @@ object ImagePipeline {
                 }
             }
             if (recipe.brightness != 0f || recipe.contrast != 1f) result.convertTo(result, -1, recipe.contrast.toDouble(), recipe.brightness.toDouble())
+            // Brightness and contrast operate on color; retain the cropped source alpha.
+            if (result.channels() == 4) {
+                Core.extractChannel(current, alpha, 3)
+                Core.insertChannel(alpha, result, 3)
+            }
             return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { Utils.matToBitmap(result, it) }
-        } finally { source.release(); current.release(); result.release() }
+        } finally { source.release(); current.release(); result.release(); alpha.release() }
     }
 
     fun detect(file: File): Frame? {
