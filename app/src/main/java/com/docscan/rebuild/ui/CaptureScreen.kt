@@ -88,8 +88,8 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         controller?.isAppearanceLightStatusBars = false
         controller?.isAppearanceLightNavigationBars = false
         onDispose {
-            if (previousStatus != null) controller.isAppearanceLightStatusBars = previousStatus
-            if (previousNavigation != null) controller.isAppearanceLightNavigationBars = previousNavigation
+            if (previousStatus != null) controller?.isAppearanceLightStatusBars = previousStatus
+            if (previousNavigation != null) controller?.isAppearanceLightNavigationBars = previousNavigation
         }
     }
     DisposableEffect(allowed, lifecycle, preview) {
