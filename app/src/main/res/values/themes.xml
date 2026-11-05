@@ -1,7 +1,0 @@
-<resources>
-    <style name="Theme.DocScan" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:colorAccent">#137C70</item>
-    </style>
-</resources>

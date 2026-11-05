@@ -1,7 +1,9 @@
-# DocScan project instructions
+# הוראות הענף החדש
 
-- Communicate with the owner in Hebrew. Inspect the current code, Git status and repository documentation before editing; preserve existing work and stay within the requested milestone.
-- The owner has explicitly authorized uploading ongoing project code and documentation to `4pdara/DocScan` on GitHub. Do not ask again merely to push this project's work. Follow the requested branch, validation, merge and release workflow; this authorization does not cover unrelated repositories, secrets or private reference binaries.
-- Validate relevant changes with `testDebugUnitTest`, `lintDebug`, `assembleDebug` and `assembleDebugAndroidTest`, then verify the Android emulator checks in GitHub Actions. Review the diff and update documentation before committing. Use a clean build when diagnosing stale incremental compiler output.
-- Do not publish proprietary reference APK/APKS/APKM files, extracted code, models or uploaded videos. Keep their analysis outside the repository; commit only findings and original integrations through documented public APIs.
-- Distinguish verified results, device-testing limitations and planned features. A successful build is not evidence of real-camera quality or support for every Google Play services configuration.
+- דבר עם בעל הפרויקט בעברית.
+- האפליקציה נבנית מאפס. אין להעתיק, לייבא, לקשר או לשלב קוד, משאבים, סכמת נתונים, מסננים או תשתית בנייה מ־DocScan הישן או מענפי העיצוב שלו.
+- מחקר CamScanner וחומרי ההפניה יכולים לשמש להבנת יכולות והתנהגות. יש להפריד ממצא שנבדק מהסקה ומיכולת עתידית.
+- קובצי APK/APKS של צד שלישי, קוד מפורק, ספריות native, מודלים וסודות אינם נכנסים למאגר. שמור רק ממצאי ניתוח ומימושים מקוריים או רכיבים עם רישוי שנבדק.
+- מיין בדיקות לסטטיות, אמולטור וטלפון אמיתי. אין להכריז על איכות זהה ל־CamScanner בלי מדידה.
+- שמור מקורות ללא שינוי, עיבוד ברזולוציה מקורית כברירת מחדל, עריכות בנפרד ומזהה חבילה נפרד. אין לשנות נתוני התקנה קיימת.
+- העבודה מורשית בריפו 4pdara/DocScan ובענף rebuild/camscanner-reference. אין לשנות main או ענפי עבודה אחרים.
