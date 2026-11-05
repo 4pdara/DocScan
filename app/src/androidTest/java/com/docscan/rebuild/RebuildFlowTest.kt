@@ -194,8 +194,11 @@ class RebuildFlowTest {
         }
         compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(title).performClick()
-        compose.waitUntil(20000) { compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).fetchSemanticsNodes().isEmpty() }
-        val image = compose.onNodeWithTag("page-image-${page.id}").getUnclippedBoundsInRoot()
+        compose.waitUntil(20000) {
+            compose.onAllNodesWithTag("page-image-${page.id}", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithContentDescription(compose.activity.getString(R.string.page_number, 1), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        val image = compose.onNodeWithTag("page-image-${page.id}", useUnmergedTree = true).getUnclippedBoundsInRoot()
         assertEquals(.64, (image.right - image.left).value.toDouble()/(image.bottom - image.top).value, .01)
         compose.onNodeWithTag("export-menu").performClick()
         compose.onNodeWithTag("save-gallery").assertIsDisplayed()
