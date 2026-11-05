@@ -385,7 +385,7 @@ private fun PageEditor(initialPage: PageEntity, pages: List<PageEntity>, vm: Doc
     var filterPicker by rememberSaveable { mutableStateOf(false) }
     var adjusting by remember { mutableStateOf(false) }
     BackHandler(filterPicker && !adjusting) { filterPicker = false }
-    Column(Modifier.fillMaxSize().testTag("page-editor").padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxSize().testTag("page-editor").padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (pages.size > 1) Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(stringResource(R.string.page_position, pager.currentPage + 1, pages.size))
             Text(stringResource(R.string.swipe_pages), style = MaterialTheme.typography.labelSmall)
@@ -398,9 +398,9 @@ private fun PageEditor(initialPage: PageEntity, pages: List<PageEntity>, vm: Doc
                 onZoomChanged = { if (item.id == page.id) zoomed = it })
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EditorTool(R.drawable.ic_crop, stringResource(R.string.crop_title), !blocked && !showOriginal, Modifier.weight(1f)) { onCrop(page) }
-            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !blocked && !showOriginal, Modifier.weight(1f)) { filterPicker = !filterPicker }
-            EditorTool(R.drawable.ic_tune, stringResource(R.string.image_adjustments), !blocked && !showOriginal, Modifier.weight(1f)) { adjusting = true }
+            EditorTool(R.drawable.ic_crop, stringResource(R.string.crop_title), !blocked && !showOriginal, Modifier.weight(1f), compact = filterPicker) { onCrop(page) }
+            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !blocked && !showOriginal, Modifier.weight(1f), compact = filterPicker) { filterPicker = !filterPicker }
+            EditorTool(R.drawable.ic_tune, stringResource(R.string.image_adjustments), !blocked && !showOriginal, Modifier.weight(1f), compact = filterPicker) { adjusting = true }
         }
         if (filterPicker) key(page.id) {
             FilterStrip(page, vm.repository, blocked,

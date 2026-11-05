@@ -35,10 +35,16 @@ import com.docscan.android.processing.ScanFilter
 import kotlin.math.roundToInt
 
 @Composable
-fun EditorTool(icon: Int, label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    OutlinedButton(onClick, modifier.heightIn(min = 56.dp), enabled = enabled,
+fun EditorTool(icon: Int, label: String, enabled: Boolean, modifier: Modifier,
+    compact: Boolean = false, onClick: () -> Unit) {
+    OutlinedButton(onClick, modifier.heightIn(min = if (compact) 48.dp else 56.dp), enabled = enabled,
         contentPadding = PaddingValues(6.dp), shape = DesignCorner) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (compact) {
+            AppIcon(icon, null, Modifier.size(20.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, maxLines = 2,
+                overflow = TextOverflow.Ellipsis)
+        } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             AppIcon(icon, null)
             Spacer(Modifier.height(4.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 2)
@@ -86,7 +92,7 @@ fun FilterStrip(page: PageEntity, repository: DocumentRepository, busy: Boolean,
             else -> null
         }
         if (hint != null) Text(stringResource(hint), style = MaterialTheme.typography.bodySmall,
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
