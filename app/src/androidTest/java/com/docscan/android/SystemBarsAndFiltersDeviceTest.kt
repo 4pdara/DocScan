@@ -119,8 +119,8 @@ class SystemBarsAndFiltersDeviceTest {
             ui.onNodeWithText(text(R.string.filter_auto_document)).performClick()
             ui.waitUntil(15_000) { !model.busy.value }
             assertSafe(); assertSafe(ui.onNodeWithTag("filter-strip"))
-            ui.onNodeWithTag("page-pager").assertHeightIsAtLeast(96.dp)
             screenshot(mode, "filters")
+            ui.onNodeWithTag("page-pager").assertHeightIsAtLeast(96.dp)
             ui.onNodeWithText(text(R.string.done)).performClick()
             ui.onNodeWithText(text(R.string.crop_title)).performClick()
             assertSafe(); assertSafe(ui.onNodeWithText(text(R.string.apply_crop)))
