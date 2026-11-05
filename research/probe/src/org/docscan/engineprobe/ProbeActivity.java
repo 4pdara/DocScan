@@ -40,9 +40,9 @@ public final class ProbeActivity extends Activity {
    try{line("magic.version="+MagicEnhancer.GetVersion());}catch(Throwable t){line("magic.version.error="+t);}
    try{line("processor.version="+ImageProcessor.GetVersion());}catch(Throwable t){line("processor.version.error="+t);}
    try{line("page.version="+PageScanner.GetVersion());}catch(Throwable t){line("page.version.error="+t);}
-   int init=ScannerEngine.initEngine(getApplicationContext(),"");
-   line("initEngine.empty_license.result="+init);
-   int context=ScannerEngine.initThreadContext();line("initThreadContext.result="+context);
+   line("initEngine=skipped; valid SDK initialization data not supplied");
+   int init=-1;
+   int context=0;
    if(init!=0||context<=0){line("processing=blocked_by_normal_initialization; no verification result modified");magicProbe();line("DONE");return;}
    try {
     Bitmap source=Bitmap.createBitmap(384,512,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(source);canvas.drawColor(Color.rgb(70,70,80));Paint p=new Paint();p.setColor(Color.rgb(210,202,183));canvas.drawRect(32,24,352,488,p);p.setColor(Color.rgb(40,35,30));p.setTextSize(12);for(int i=0;i<24;i++)canvas.drawText("DocScan JNI fixture 0123456789",42,52+i*16,p);

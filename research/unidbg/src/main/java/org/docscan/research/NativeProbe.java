@@ -40,7 +40,7 @@ public final class NativeProbe extends AbstractJni {
    DvmClass engine=vm.resolveClass("com/intsig/scanner/ScannerEngine");
    System.out.println("SCANNER_VERSION="+engine.callStaticJniMethodObject(emu,"GetVersion()Ljava/lang/String;").getValue());
    DvmObject<?> context=vm.resolveClass("android/content/Context").newObject(null);
-   try {
+   if(java.util.Arrays.asList(args).contains("--probe-invalid-key")) try {
     int status=engine.callStaticJniMethodInt(emu,"initEngine(Landroid/content/Context;Ljava/lang/String;)I",context,new StringObject(vm,""));
     System.out.println("EMPTY_LICENSE_INIT="+status);
     System.out.println("THREAD_CONTEXT="+engine.callStaticJniMethodInt(emu,"initThreadContext()I"));
@@ -54,8 +54,8 @@ public final class NativeProbe extends AbstractJni {
    System.out.println("MAGIC_MODEL_SESSION="+session);
    if(session>=0) {
     try {
-     for(int mode:new int[]{1,3}) {
-      int width=96,height=128;BufferedImage image=new BufferedImage(width,height,BufferedImage.TYPE_4BYTE_ABGR);
+     for(int mode:new int[]{1}) {
+      int width=Integer.getInteger("probe.width",96),height=Integer.getInteger("probe.height",128);BufferedImage image=new BufferedImage(width,height,BufferedImage.TYPE_4BYTE_ABGR);
       for(int y=0;y<height;y++)for(int x=0;x<width;x++) {
        int value=(y%12<3&&x>8&&x<84)?25:(130+x*110/width);
        image.setRGB(x,y,0xff000000|(value<<16)|(value<<8)|value);

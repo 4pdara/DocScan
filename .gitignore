@@ -42,3 +42,8 @@ research/unidbg/target/
 research/unidbg/classpath.txt
 research/lab-meta.json
 research/unidbg-*.png
+
+deliverables/
+.library-upload-tools/
+research/*.json
+research/unidbg-*.png

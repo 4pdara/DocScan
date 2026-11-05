@@ -1,5 +1,5 @@
 # DocScan חדש — בנייה עצמאית
-אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. חבילת CamScanner נותחה כמקור מחקר; המנוע שלה אינו משולב כאן.
+אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. הפרופיל הרגיל משתמש בעיבוד העצמאי. נוסף פרופיל Native מחקרי שמפעיל את רכיב הסרת הצללים MagicEnhancer מהחבילה שסופקה; אין כאן העברה מלאה של מנוע CamScanner.
 
 ## גרסת הניסוי הראשונה 0.1.0
 - ספרייה מקומית, חיפוש, שינוי שם, ייבוא תמונות וסידור עמודים.
@@ -12,6 +12,18 @@
 מזהה החבילה `com.docscan.rebuild` והשם **DocScan חדש** מאפשרים התקנה לצד האפליקציה הקיימת. אין צורך להסיר את DocScan הקיים ואין גישה לנתונים שלו. גרסה זו היא Debug לניסוי; היא אינה גרסת חנות או הוכחה לאיכות מצלמה מול CamScanner.
 
 [מה מומש, בדיקות ומגבלות](docs/REBUILD_0.1_HE.md) · [תכנון](docs/REBUILD_CAMSCANNER_REFERENCE_HE.md) · [בדיקת APKTool/JADX/Ghidra](docs/REFERENCE_RECHECK_20261105_HE.md) · [תלויות ורישוי](NOTICE.md).
+
+## ניסוי Native — רכיב הסרת הצללים של CamScanner
+[הורדת APK Native](https://chatgpt.com/library?file_id=libfile_47331e9ace8c8191855a422bb07736b6&account_id=e5ab30f5-f7c8-4dad-b0d8-9fb6a7126f95) · [סכום ביקורת](https://chatgpt.com/library?file_id=libfile_4eef57c8f25c8191941e56b973e40c28&account_id=e5ab30f5-f7c8-4dad-b0d8-9fb6a7126f95) · [ממצאים, בדיקות ומגבלות](docs/JNI_ENGINE_RESEARCH_HE.md).
+
+התקינו בשם ״DocScan ניסוי Native״ לצד היישומים הקיימים. לאחר צילום/ייבוא פתחו עריכה ובחרו **CamScanner** בפס המסננים. רק מסנן זה מפעיל את הרכיב המקורי; שאר המסננים והזיהוי נשארו מהמימוש העצמאי החדש.
+
+ה־APK נבנה, עבר 5 מבחני יחידה ו־Lint, וספריותיו וחתימתו אומתו. הרכיב עיבד תמונות סינתטיות 96×128 ו־768×1024 באמולציית ARM64 דרך JNI. האפליקציה המלאה עם הרכיב **טרם נבדקה ב־Android פעיל או בטלפון**; בדיקת Frida של CamScanner עצמה לא הושלמה בגלל סביבת ההרצה הלא יציבה. זו גרסת Debug מחקרית, לא Release לחנות.
+
+לבניית הפרופיל נדרשת תיקייה פרטית עם חמש הספריות המדויקות בתת־תיקייה `arm64-v8a`, כפי שמפורט בדוח. הן אינן ב־Git:
+```sh
+./gradlew -PcamScannerNativeDir=/absolute/private/directory testDebugUnitTest lintDebug assembleDebug
+```
 
 ## בנייה
 נדרשים JDK 17, Android SDK Platform 36 ו־Build Tools 35.0.0. הגדירו `ANDROID_HOME` או `sdk.dir` בקובץ מקומי.
