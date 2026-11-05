@@ -48,7 +48,7 @@ private fun Treatment.label(): Int = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onOriginal: () -> Unit) {
+fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onOriginal: () -> Unit) {
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
@@ -57,7 +57,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, onBack: () -> Unit,
     var zoom by remember { mutableFloatStateOf(1f) }; var pan by remember { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
     BackHandler(!busy) { onBack() }
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium) },
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium) },
         navigationIcon = { IconButton(onBack, enabled = !busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.cancel)) } },
         actions = { IconButton(onOriginal, enabled = !busy) { Icon(Icons.Outlined.Download, stringResource(R.string.source_export)) }; Button(onClick = { onSave(edit) }, enabled = !busy, modifier = Modifier.padding(end = 12.dp).testTag("save-edit")) { Text(stringResource(R.string.save)) } }) },
         bottomBar = {

@@ -6,7 +6,6 @@
     <string name="empty_title">Your new document library</string>
     <string name="empty_hint">Scan a page or import photos to get started.</string>
     <string name="search">Search documents</string>
-    <string name="pages">%1$d pages</string>
     <string name="back">Back</string>
     <string name="done">Done</string>
     <string name="save">Save</string>
@@ -60,7 +59,8 @@
     <string name="reorder">Reorder</string>
     <string name="view_original">Show original</string>
     <string name="show_result">Show result</string>
-    <string name="saved_count">%1$d saved</string>
     <string name="camera_starting">Opening camera…</string>
     <string name="title_scan">Scan %1$s</string>
+    <plurals name="pages"><item quantity="one">%1$d page</item><item quantity="other">%1$d pages</item></plurals>
+    <plurals name="saved_count"><item quantity="one">%1$d page saved</item><item quantity="other">%1$d pages saved</item></plurals>
 </resources>

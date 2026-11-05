@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
@@ -154,21 +155,21 @@ fun ScanApp(store: ScanStore) {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "camera" -> bookId?.let { id ->
-                CaptureScreen(store, pages, vm.busy, onDone = { route = "document" }, onCaptured = { file, complete ->
+                CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { route = "document" }, onCaptured = { file, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
                     else vm.perform { var ok = false; try { vm.receive(id, file); ok = true } finally { complete(ok) } }
                 })
             }
             "editor" -> pages.firstOrNull { it.id == pageId }?.let { page ->
-                PageEditor(store, page, vm.busy, onBack = { route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe); route = "document" } },
+                PageEditor(store, page, vm.busy, snack = snack, onBack = { route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe); route = "document" } },
                     onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
                 onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onShare = ::sharePdf,
                 onMove = { page, direction -> bookId?.let { id -> vm.perform { store.move(id, page.id, direction) } } },
-                onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } })
-            else -> LibraryScreen(store, books, onScan = ::startScan, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" })
+                onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack)
+            else -> LibraryScreen(store, books, onScan = ::startScan, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" }, snack = snack)
         }
         if (vm.busy) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .12f)).clickable(enabled = true, onClick = {}), contentAlignment = Alignment.Center) {
@@ -177,15 +178,14 @@ fun ScanApp(store: ScanStore) {
                 }
             }
         }
-        SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp))
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LibraryScreen(store: ScanStore, entries: List<LibraryEntry>, onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit) {
+private fun LibraryScreen(store: ScanStore, entries: List<LibraryEntry>, onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit, snack: SnackbarHostState) {
     var search by rememberSaveable { mutableStateOf("") }
-    Scaffold(topBar = { TopAppBar(title = { Column { Text("DocScan", style = MaterialTheme.typography.titleLarge); Text(stringResource(R.string.library), style = MaterialTheme.typography.labelMedium) } },
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Column { Text("DocScan", style = MaterialTheme.typography.titleLarge); Text(stringResource(R.string.library), style = MaterialTheme.typography.labelMedium) } },
         actions = { IconButton(onImport) { Icon(Icons.Outlined.FileOpen, stringResource(R.string.import_images)) } }) },
         floatingActionButton = { ExtendedFloatingActionButton(onClick = onScan, icon = { Icon(Icons.Outlined.DocumentScanner, null) }, text = { Text(stringResource(R.string.new_scan)) }, modifier = Modifier.testTag("new-scan")) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).testTag("library")) {
@@ -200,7 +200,7 @@ private fun LibraryScreen(store: ScanStore, entries: List<LibraryEntry>, onScan:
                     val cover = documentPages.firstOrNull()
                     Row(Modifier.fillMaxWidth().clickable { onOpen(item.book.id) }.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         Surface(Modifier.size(62.dp, 82.dp), shape = RoundedCornerShape(7.dp), tonalElevation = 2.dp) { cover?.let { PagePicture(store, it, edge = 160) } }
-                        Column(Modifier.weight(1f)) { Text(item.book.title, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.pages, item.pageCount), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Column(Modifier.weight(1f)) { Text(item.book.title, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(6.dp)); Text(pluralStringResource(R.plurals.pages, item.pageCount, item.pageCount), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Icon(Icons.Outlined.ChevronLeft, null, tint = MaterialTheme.colorScheme.primary)
                     }
                     HorizontalDivider(Modifier.padding(horizontal = 20.dp))
@@ -212,12 +212,12 @@ private fun LibraryScreen(store: ScanStore, entries: List<LibraryEntry>, onScan:
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit) {
+private fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }; var newTitle by remember(title) { mutableStateOf(title) }
     if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) }, text = { OutlinedTextField(newTitle, { newTitle = it }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
         confirmButton = { TextButton(onClick = { if (newTitle.isNotBlank()) { onRename(newTitle); rename = false } }) { Text(stringResource(R.string.save)) } }, dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
-    Scaffold(topBar = { TopAppBar(title = { Column(Modifier.clickable { rename = true }) { Text(title, maxLines = 1); Text(stringResource(R.string.pages, pages.size), style = MaterialTheme.typography.labelMedium) } },
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Column(Modifier.clickable { rename = true }) { Text(title, maxLines = 1); Text(pluralStringResource(R.plurals.pages, pages.size, pages.size), style = MaterialTheme.typography.labelMedium) } },
         navigationIcon = { IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } },
         actions = { IconButton(onImport) { Icon(Icons.Outlined.FileOpen, stringResource(R.string.import_images)) }; IconButton(onClick = { reorder = !reorder }) { Icon(Icons.Outlined.SwapVert, stringResource(R.string.reorder)) } }) },
         bottomBar = { Surface(shadowElevation = 6.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(10.dp).testTag("document-actions"), horizontalArrangement = Arrangement.SpaceEvenly) {

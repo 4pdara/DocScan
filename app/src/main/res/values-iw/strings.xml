@@ -6,7 +6,6 @@
     <string name="empty_title">ספריית המסמכים החדשה שלך</string>
     <string name="empty_hint">אפשר לצלם עמוד או לייבא תמונות כדי להתחיל.</string>
     <string name="search">חיפוש מסמכים</string>
-    <string name="pages">%1$d עמודים</string>
     <string name="back">חזרה</string>
     <string name="done">סיום</string>
     <string name="save">שמירה</string>
@@ -60,7 +59,8 @@
     <string name="reorder">סידור</string>
     <string name="view_original">הצגת מקור</string>
     <string name="show_result">הצגת תוצאה</string>
-    <string name="saved_count">%1$d עמודים נשמרו</string>
     <string name="camera_starting">פותח מצלמה…</string>
     <string name="title_scan">סריקה %1$s</string>
+    <plurals name="pages"><item quantity="one">%1$d עמוד</item><item quantity="other">%1$d עמודים</item></plurals>
+    <plurals name="saved_count"><item quantity="one">%1$d עמוד נשמר</item><item quantity="other">%1$d עמודים נשמרו</item></plurals>
 </resources>

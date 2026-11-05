@@ -1,6 +1,7 @@
 package com.docscan.rebuild.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -30,10 +31,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Observer
+import androidx.core.view.WindowCompat
 import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.imaging.ImagePipeline
@@ -49,7 +53,7 @@ import kotlin.math.max
 private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
 
 @Composable
-fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, onDone: () -> Unit, onCaptured: (File, (Boolean) -> Unit) -> Unit) {
+fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onCaptured: (File, (Boolean) -> Unit) -> Unit) {
     val context = LocalContext.current; val lifecycle = LocalLifecycleOwner.current
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
@@ -59,6 +63,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, onDone: (
     var automatic by rememberSaveable { mutableStateOf(true) }; SideEffect { autoFlag.set(automatic) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }; var camera by remember { mutableStateOf<Camera?>(null) }
     var observation by remember { mutableStateOf(CameraObservation(null, .75f, 0f, emptyList(), false)) }
+    var streaming by remember { mutableStateOf(false) }
     var taking by remember { mutableStateOf(false) }; var error by remember { mutableStateOf(false) }; var torch by remember { mutableStateOf(false) }
     val latestCaptured by rememberUpdatedState(onCaptured)
     fun shoot() {
@@ -75,8 +80,22 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, onDone: (
     }
     val latestShoot by rememberUpdatedState({ shoot() })
     BackHandler { if (!taking && !busy) onDone() }
+    DisposableEffect(context) {
+        val activity = context as? Activity
+        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        val previousStatus = controller?.isAppearanceLightStatusBars
+        val previousNavigation = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            if (previousStatus != null) controller.isAppearanceLightStatusBars = previousStatus
+            if (previousNavigation != null) controller.isAppearanceLightNavigationBars = previousNavigation
+        }
+    }
     DisposableEffect(allowed, lifecycle, preview) {
         var disposed = false; var provider: ProcessCameraProvider? = null
+        val streamObserver = Observer<PreviewView.StreamState> { streaming = it == PreviewView.StreamState.STREAMING }
+        preview.previewStreamState.observe(lifecycle, streamObserver)
         val executor = Executors.newSingleThreadExecutor()
         var previewUseCase: Preview? = null; var photoUseCase: ImageCapture? = null; var analysisUseCase: ImageAnalysis? = null
         if (allowed) {
@@ -114,7 +133,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, onDone: (
             }, main)
         }
         onDispose {
-            disposed = true; analysisUseCase?.clearAnalyzer()
+            disposed = true; preview.previewStreamState.removeObserver(streamObserver); streaming = false; analysisUseCase?.clearAnalyzer()
             val cases = listOfNotNull(previewUseCase, photoUseCase, analysisUseCase).toTypedArray()
             if (cases.isNotEmpty()) provider?.unbind(*cases)
             executor.shutdown(); capture = null
@@ -138,25 +157,26 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, onDone: (
                         points.forEach { drawCircle(Color.White, 5.dp.toPx(), it) }
                     }
                 }
-                if (capture == null && !error) Text(stringResource(R.string.camera_starting), color = Color.White)
+                if ((capture == null || !streaming) && !error) Text(stringResource(R.string.camera_starting), color = Color.White)
             } else Column(Modifier.padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(stringResource(R.string.camera_permission), color = Color.White)
                 Button(onClick = { permission.launch(Manifest.permission.CAMERA) }, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.grant_camera)) }
             }
             if (error) Text(stringResource(R.string.camera_error), Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = .8f)).padding(12.dp), color = Color.White)
+            SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
         LinearProgressIndicator(progress = { observation.progress }, modifier = Modifier.fillMaxWidth(), color = Color(0xFF00DBBE))
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(automatic, { automatic = it; gate.failed() }, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary, uncheckedColor = Color.White))
             Text(stringResource(R.string.auto_capture), color = Color.White)
-            Spacer(Modifier.weight(1f)); Text(stringResource(R.string.saved_count, pages.size), color = Color.White, style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.weight(1f)); Text(pluralStringResource(R.plurals.saved_count, pages.size, pages.size), color = Color.White, style = MaterialTheme.typography.labelSmall)
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.height(62.dp)) {
             items(pages.takeLast(12), key = { it.id }) { page -> PagePicture(store, page, Modifier.size(44.dp, 60.dp).background(Color.White), edge = 120) }
         }
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.labelSmall)
-            FilledIconButton(onClick = { shoot() }, enabled = capture != null && !taking && !busy, modifier = Modifier.size(70.dp)) { Icon(Icons.Outlined.CameraAlt, stringResource(R.string.capture), Modifier.size(34.dp)) }
+            FilledIconButton(onClick = { shoot() }, enabled = capture != null && streaming && !taking && !busy, modifier = Modifier.size(70.dp)) { Icon(Icons.Outlined.CameraAlt, stringResource(R.string.capture), Modifier.size(34.dp)) }
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { Button(onClick = onDone, enabled = !taking && !busy) { Text(stringResource(R.string.done)) } }
         }
     }

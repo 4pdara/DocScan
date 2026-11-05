@@ -40,12 +40,10 @@ class RebuildFlowTest {
     }
     private fun hash(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).toList()
     private fun screenshot(name: String) {
-        val image = compose.onRoot().captureToImage()
+        val image = requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         val output = File(compose.activity.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        val pixels = IntArray(image.width * image.height); image.readPixels(pixels)
-        Bitmap.createBitmap(pixels, image.width, image.height, Bitmap.Config.ARGB_8888).also { result ->
-            File(output, "$name.png").outputStream().use { result.compress(Bitmap.CompressFormat.PNG, 100, it) }; result.recycle()
-        }
+        try { File(output, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+        finally { image.recycle() }
     }
 
     @Test fun cameraCapturesDurablePageAndDoneOpensDocument() {
@@ -156,6 +154,11 @@ class RebuildFlowTest {
         compose.onNodeWithTag("save-edit").performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.page(page.id)?.edit()?.treatment == Treatment.GRAY } }
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
+        val notices = compose.onAllNodesWithText(compose.activity.getString(R.string.saved)).fetchSemanticsNodes()
+        if (notices.isNotEmpty()) {
+            val actions = compose.onNodeWithTag("document-actions").fetchSemanticsNode().boundsInRoot
+            assertTrue("Feedback stays above document actions", notices.single().boundsInRoot.bottom <= actions.top)
+        }
         screenshot("document")
     }
 }
