@@ -17,6 +17,7 @@ import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -26,6 +27,7 @@ import java.security.MessageDigest
 @RunWith(AndroidJUnit4::class)
 class RebuildFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val cameraPermission = androidx.test.rule.GrantPermissionRule.grant(android.Manifest.permission.CAMERA)
     private val context: Context get() = ApplicationProvider.getApplicationContext()
     private fun fixture(name: String = "fixture.jpg"): File {
         val bitmap = Bitmap.createBitmap(1800, 2400, Bitmap.Config.ARGB_8888)
@@ -44,6 +46,27 @@ class RebuildFlowTest {
         Bitmap.createBitmap(pixels, image.width, image.height, Bitmap.Config.ARGB_8888).also { result ->
             File(output, "$name.png").outputStream().use { result.compress(Bitmap.CompressFormat.PNG, 100, it) }; result.recycle()
         }
+    }
+
+    @Test fun cameraCapturesDurablePageAndDoneOpensDocument() {
+        val store = (compose.activity.application as ScanApplication).store
+        val existing = runBlocking { store.dao.library().first().map { it.book.id }.toSet() }
+        compose.onNodeWithTag("new-scan").performClick()
+        val shutter = hasContentDescription(compose.activity.getString(R.string.capture)) and isEnabled()
+        compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(isToggleable()).performClick()
+        screenshot("camera")
+        compose.onNode(shutter).performClick()
+        var captured: Sheet? = null
+        compose.waitUntil(30000) {
+            captured = runBlocking { store.dao.library().first().firstOrNull { it.book.id !in existing }?.let { store.dao.snapshot(it.book.id).firstOrNull() } }
+            captured != null
+        }
+        val page = requireNotNull(captured)
+        assertTrue(store.source(page).length() > 0); assertTrue(minOf(page.width, page.height) >= 480 && maxOf(page.width, page.height) >= 640)
+        compose.waitUntil(30000) { compose.onAllNodes(hasText(compose.activity.getString(R.string.done)) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
+        compose.onNodeWithTag("document-pages").assertIsDisplayed()
     }
 
     @Test fun sourceRecipeAndOrderSurviveDatabaseReopen() = runBlocking {
