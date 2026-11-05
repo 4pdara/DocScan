@@ -99,7 +99,7 @@ class RebuildFlowTest {
             assertEquals(.1f, detected.points[0].x, .035f); assertEquals(.092f, detected.points[0].y, .035f)
             val original = ImagePipeline.render(file, EditRecipe())
             assertEquals(1800, original.width); assertEquals(2400, original.height); original.recycle()
-            for (treatment in Treatment.entries) {
+            for (treatment in Treatment.entries.filter { BuildConfig.CAMSCANNER_NATIVE || !it.requiresReferenceEngine }) {
                 val result = ImagePipeline.render(file, EditRecipe(frame = detected, turns = 1, treatment = treatment, brightness = -12f, contrast = .8f))
                 assertTrue(result.width > 1800); assertTrue(result.height > 1300)
                 assertEquals(255, Color.alpha(result.getPixel(result.width / 2, result.height / 2)))
@@ -121,6 +121,47 @@ class RebuildFlowTest {
         } }
         assertEquals(digest, hash(store.source(first))); assertEquals(digest, hash(store.source(second)))
         pdf.delete(); input.delete(); store.source(first).delete(); store.source(second).delete(); db.close()
+    }
+
+    @Test fun referenceRecipesRoundTripAndNeverFallBackToAnotherFilter() {
+        val input = Bitmap.createBitmap(96, 128, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(100, 140, 180)) }
+        try {
+            for (treatment in Treatment.entries.filter { it.requiresReferenceEngine }) {
+                val recipe = EditRecipe(treatment = treatment, brightness = 6f, outputAspect = .75f)
+                assertEquals(recipe, RecipeCodec.decode(RecipeCodec.encode(recipe)))
+                if (!BuildConfig.CAMSCANNER_NATIVE) {
+                    try { ImagePipeline.transform(input, recipe).recycle(); fail("Reference filter must not fall back") }
+                    catch (expected: IllegalStateException) { assertTrue(expected.message.orEmpty().contains("not bundled")) }
+                }
+            }
+            assertEquals(Color.rgb(100, 140, 180), input.getPixel(40, 50))
+        } finally { input.recycle() }
+    }
+
+    @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
+        Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
+        val input = Bitmap.createBitmap(96, 128, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
+        val paint = Paint().apply { color = Color.rgb(25, 30, 20) }
+        repeat(8) { canvas.drawRect(10f, 12f + it * 12, 85f, 15f + it * 12, paint) }
+        val before = IntArray(96 * 128).also { input.getPixels(it, 0, 96, 0, 0, 96, 128) }
+        try {
+            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.requiresReferenceEngine }) {
+                val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
+                try {
+                    assertEquals(96, output.width); assertEquals(128, output.height)
+                    var changed = false
+                    for (y in 0 until 128) for (x in 0 until 96) {
+                        val color = output.getPixel(x, y)
+                        assertEquals(255, Color.alpha(color))
+                        if (color != before[y * 96 + x]) changed = true
+                    }
+                    assertTrue("No effect from $treatment", changed)
+                } finally { output.recycle() }
+            }
+            val after = IntArray(96 * 128).also { input.getPixels(it, 0, 96, 0, 0, 96, 128) }
+            assertArrayEquals(before, after)
+        } finally { input.recycle() }
     }
 
     @Test fun invalidCropCannotOverwriteSourceOrSavedRecipe(): Unit = runBlocking {

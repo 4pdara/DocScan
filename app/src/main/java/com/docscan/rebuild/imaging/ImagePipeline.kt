@@ -77,12 +77,13 @@ object ImagePipeline {
                     try { Imgproc.cvtColor(current, gray, Imgproc.COLOR_RGBA2GRAY); Imgproc.adaptiveThreshold(gray, result, 255.0, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 51, 13.0) }
                     finally { gray.release() }
                 }
-                Treatment.PAPER -> {
-                    if (BuildConfig.CAMSCANNER_NATIVE) {
+                Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW,
+                Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL -> {
+                    if (BuildConfig.CAMSCANNER_NATIVE || recipe.treatment.requiresReferenceEngine) {
                         val work = Bitmap.createBitmap(current.cols(), current.rows(), Bitmap.Config.ARGB_8888)
                         try {
                             Utils.matToBitmap(current, work)
-                            NativeCamScannerEnhancer.applyInPlace(work)
+                            NativeCamScannerEnhancer.applyInPlace(work, recipe.treatment)
                             Utils.bitmapToMat(work, result)
                         } finally { work.recycle() }
                     } else {

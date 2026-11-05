@@ -89,5 +89,9 @@
     <string name="restored">המסמכים שוחזרו</string>
     <string name="empty_trash">סל המחזור ריק</string>
     <string name="trash_hint">בחרו מסמכים לשחזור. המקורות והעריכות נשמרים בסל, ללא מחיקה אוטומטית.</string>
+    <string name="native_magic_color">Magic Color</string>
+    <string name="native_no_shadow">ללא צללים</string>
+    <string name="native_invert">היפוך צבעים</string>
+    <string name="native_pro_local">Pro מקומי</string>
 </resources>
 

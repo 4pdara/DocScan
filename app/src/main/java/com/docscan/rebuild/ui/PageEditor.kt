@@ -45,6 +45,10 @@ fun fitImageRect(size: Size, aspect: Float): Rect {
 
 private fun Treatment.label(): Int = when (this) {
     Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (BuildConfig.CAMSCANNER_NATIVE) R.string.native_paper else R.string.paper
+    Treatment.NATIVE_MAGIC_COLOR -> R.string.native_magic_color
+    Treatment.NATIVE_NO_SHADOW -> R.string.native_no_shadow
+    Treatment.NATIVE_INVERT -> R.string.native_invert
+    Treatment.NATIVE_PRO_LOCAL -> R.string.native_pro_local
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +81,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
                     when (tool) {
                         "filters" -> LazyRow(Modifier.fillMaxWidth().testTag("filter-strip"), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(Treatment.entries) { treatment ->
+                            items(Treatment.entries.filter { BuildConfig.CAMSCANNER_NATIVE || !it.requiresReferenceEngine }) { treatment ->
                                 val selected = edit.treatment == treatment
                                 Column(Modifier.width(76.dp).selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     PagePicture(store, page, Modifier.size(64.dp, 76.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment), edge = 160)

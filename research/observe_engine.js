@@ -6,7 +6,7 @@ Process.attachModuleObserver({
   onAdded(module) {
     if (!/^lib(scannercs|mainstone|magicenhancer|imageprocessor|pagescanner)\.so$/.test(module.name)) return;
     event({event:'module',name:module.name,size:module.size,arch:Process.arch});
-    if(Process.arch!=='arm64'){event({event:'native_trace_deferred',reason:'ARM64 native tracing requires the emulated realm'});return;}
+    if(Process.arch!=='arm64' && Process.arch!=='arm'){event({event:'native_trace_deferred',reason:'Native tracing requires an ARM realm'});return;}
     for (const symbol of module.enumerateExports()) {
       if (symbol.type !== 'function' || !/^Java_com_intsig_(scanner_ScannerEngine|nativelib_(MagicEnhancer|ImageProcessor|PageScanner))_/.test(symbol.name)) continue;
       const key=module.name+'!'+symbol.name;
@@ -36,7 +36,7 @@ function fixture() {
   event({event:'fixture_context',handle:handle});
   if(handle<=0){source.recycle();return;}
   try {
-   for(const mode of [10,13,19,17]) {
+   for(const mode of [10,15,16,19,17]) {
     const bitmap=source.copy(BitmapConfig.ARGB_8888.value,true);const start=Date.now();
     const result=Engine.enhanceBitmap(handle,bitmap,mode);
     const filename=File.$new(dir,'mode-'+mode+'.png');const stream=Output.$new(filename);

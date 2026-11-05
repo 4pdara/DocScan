@@ -15,7 +15,8 @@ if (camScannerNative) {
         "libncnn.so" to "b1841e5a3ea32d7120bbd0cd53e9609c2181441414a961d55fd0c422c11e1dc0",
         "libMNN.so" to "e03bbcbc0f26b7f2753a2284580b0feab1ac92a629f138fd214c8a5a12f049e9",
         "libCVNN.so" to "81634fe554a8622eb238dca6a200c18c3e95730fe24474302f809ade12277ddd",
-        "libmagicenhancer.so" to "4fecd50628352cc4d88fba220ee1059e8104857166014f8b5d6e8a13e9c92599"
+        "libmagicenhancer.so" to "4fecd50628352cc4d88fba220ee1059e8104857166014f8b5d6e8a13e9c92599",
+        "libimageprocessor.so" to "0ccf18b6323ff23a076dc860dcd76e84097d031427ab056b52a4c7d8ffa28353"
     )
     expected.forEach { (name, digest) ->
         val library = file("$camScannerNativeDir/arm64-v8a/$name")
@@ -35,8 +36,8 @@ android {
         manifestPlaceholders["docscanAppLabel"] = if (camScannerNative) "@string/native_app_name" else "@string/app_name"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = if (camScannerNative) "0.1.2-native-research" else "0.1.2-rebuild"
+        versionCode = 3
+        versionName = if (camScannerNative) "0.1.3-native-research" else "0.1.3-rebuild"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }

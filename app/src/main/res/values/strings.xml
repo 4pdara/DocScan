@@ -89,5 +89,9 @@
     <string name="restored">Documents restored</string>
     <string name="empty_trash">Trash is empty</string>
     <string name="trash_hint">Select documents to restore. Originals and edits stay in trash; no automatic deletion.</string>
+    <string name="native_magic_color">Magic Color</string>
+    <string name="native_no_shadow">No Shadow</string>
+    <string name="native_invert">Invert</string>
+    <string name="native_pro_local">Local Pro</string>
 </resources>
 

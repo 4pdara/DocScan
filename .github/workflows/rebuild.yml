@@ -30,12 +30,12 @@ jobs:
       - name: Prepare installable preview
         run: |
           mkdir -p preview
-          cp app/build/outputs/apk/debug/app-debug.apk preview/DocScan-New-0.1.2.apk
+          cp app/build/outputs/apk/debug/app-debug.apk preview/DocScan-New-0.1.3.apk
           cd preview
-          sha256sum DocScan-New-0.1.2.apk > SHA256SUMS.txt
+          sha256sum DocScan-New-0.1.3.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: DocScan-New-0.1.2
+          name: DocScan-New-0.1.3
           path: preview/
           retention-days: 30
       - uses: actions/upload-artifact@v4
@@ -53,7 +53,7 @@ jobs:
         include:
           - api: 28
             locale: en
-            emulator_build: '6855416'
+            emulator_build: '10696886'
           - api: 29
             locale: en
             emulator_build: ''
@@ -85,7 +85,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          # The latest host renderer aborted API 28 camera capture with "Unknown format: 0x18".
+          # Latest: API 28 camera format abort; 30.1.5: ADB did not stabilize. Try 32.1.15.
           emulator-build: ${{ matrix.emulator_build }}
           api-level: ${{ matrix.api }}
           arch: x86_64
