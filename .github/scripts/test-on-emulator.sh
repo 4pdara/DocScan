@@ -32,8 +32,8 @@ fi
 ./gradlew connectedDebugAndroidTest --console=plain "${test_args[@]}"
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb logcat -c
-adb shell am start -W -n io.github.user4pdara.docscan.design06.debug/com.docscan.android.MainActivity
+adb shell am start -W -n io.github.user4pdara.docscan.design06.r2.debug/com.docscan.android.MainActivity
 adb shell input keyevent 82
 sleep 3
-adb shell pidof io.github.user4pdara.docscan.design06.debug
+adb shell pidof io.github.user4pdara.docscan.design06.r2.debug
 adb exec-out screencap -p > app/build/reports/screenshots/home.png

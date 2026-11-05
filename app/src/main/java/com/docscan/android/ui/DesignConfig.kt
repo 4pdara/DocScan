@@ -4,5 +4,5 @@ package com.docscan.android.ui
 object DesignConfig {
     const val number = "06"
     const val fixedTabs = true
-    const val appName = "DocScan 06"
+    const val appName = "DocScan 06.1"
 }

@@ -164,6 +164,10 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     }
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
         Scaffold(
+            // Apply safe areas outside Scaffold: an empty custom bottomBar must not
+            // make Scaffold assume that navigation insets have already been handled.
+            modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("safe-app"),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
@@ -378,15 +382,16 @@ private fun PageEditor(initialPage: PageEntity, pages: List<PageEntity>, vm: Doc
     val blocked = busy || pager.isScrollInProgress
     LaunchedEffect(page.id) { vm.pageId = page.id; zoomed = false }
     var showOriginal by rememberSaveable(page.id) { mutableStateOf(false) }
-    var filterPicker by remember { mutableStateOf(false) }
+    var filterPicker by rememberSaveable { mutableStateOf(false) }
     var adjusting by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    BackHandler(filterPicker && !adjusting) { filterPicker = false }
+    Column(Modifier.fillMaxSize().testTag("page-editor").padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (pages.size > 1) Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(stringResource(R.string.page_position, pager.currentPage + 1, pages.size))
             Text(stringResource(R.string.swipe_pages), style = MaterialTheme.typography.labelSmall)
         }
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().testTag("page-pager"),
-            key = { pages[it].id }, userScrollEnabled = !busy && !zoomed && !filterPicker && !adjusting) { index ->
+            key = { pages[it].id }, userScrollEnabled = !busy && !zoomed && !adjusting) { index ->
             val item = pages[index]
             PagePreview(if (showOriginal && item.id == page.id) item.withoutEdits() else item, vm.repository,
                 Modifier.fillMaxSize(), edge = 1400, zoomable = item.id == page.id,
@@ -394,26 +399,30 @@ private fun PageEditor(initialPage: PageEntity, pages: List<PageEntity>, vm: Doc
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             EditorTool(R.drawable.ic_crop, stringResource(R.string.crop_title), !blocked && !showOriginal, Modifier.weight(1f)) { onCrop(page) }
-            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !blocked && !showOriginal, Modifier.weight(1f)) { filterPicker = true }
+            EditorTool(R.drawable.ic_image, stringResource(R.string.open_filters), !blocked && !showOriginal, Modifier.weight(1f)) { filterPicker = !filterPicker }
             EditorTool(R.drawable.ic_tune, stringResource(R.string.image_adjustments), !blocked && !showOriginal, Modifier.weight(1f)) { adjusting = true }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(showOriginal, onCheckedChange = { showOriginal = it })
-                Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.show_original), style = MaterialTheme.typography.labelMedium)
+        if (filterPicker) key(page.id) {
+            FilterStrip(page, vm.repository, blocked,
+                onFilter = { vm.filter(page.id, it) }, onStrength = { vm.filterStrength(page.id, it) },
+                onDismiss = { filterPicker = false },
+                onApplyToAll = if (pages.size > 1) ({ vm.applyFilterToDocument(page.id) }) else null)
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(showOriginal, onCheckedChange = { showOriginal = it })
+                    Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.show_original), style = MaterialTheme.typography.labelMedium)
+                }
+                TextButton(enabled = !blocked && !showOriginal, onClick = { onRetake(page.id) }) { Text(stringResource(R.string.retake)) }
+                IconButton(enabled = !blocked && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
             }
-            TextButton(enabled = !blocked && !showOriginal, onClick = { onRetake(page.id) }) { Text(stringResource(R.string.retake)) }
-            IconButton(enabled = !blocked && !showOriginal, onClick = { vm.rotate(page.id) }) { AppIcon(R.drawable.ic_rotate, stringResource(R.string.rotate)) }
+            Text(stringResource(R.string.editor_summary, filterLabel(ScanFilter.valueOf(page.filter)),
+                pageFormatLabel(com.docscan.android.processing.PageFormat.fromKey(page.pageFormat)), page.sharpness),
+                style = MaterialTheme.typography.labelMedium)
+            if (vm.repository.source(page).extension == "pdf") Text(stringResource(R.string.pdf_edit_hint), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.original_preserved), style = MaterialTheme.typography.bodySmall)
         }
-        Text(stringResource(R.string.editor_summary, filterLabel(ScanFilter.valueOf(page.filter)),
-            pageFormatLabel(com.docscan.android.processing.PageFormat.fromKey(page.pageFormat)), page.sharpness),
-            style = MaterialTheme.typography.labelMedium)
-        if (vm.repository.source(page).extension == "pdf") Text(stringResource(R.string.pdf_edit_hint), style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.original_preserved), style = MaterialTheme.typography.bodySmall)
     }
-    if (filterPicker) FilterPicker(page, vm.repository, busy,
-        onFilter = { vm.filter(page.id, it) }, onStrength = { vm.filterStrength(page.id, it) }, onDismiss = { filterPicker = false },
-        onApplyToAll = if (pages.size > 1) ({ vm.applyFilterToDocument(page.id); filterPicker = false }) else null)
     if (adjusting) AdjustmentSheet(page, vm.repository,
         onApply = { vm.adjustments(page.id, it); adjusting = false }, onDismiss = { adjusting = false })
 }

@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -45,46 +46,47 @@ fun EditorTool(icon: Int, label: String, enabled: Boolean, modifier: Modifier, o
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilterPicker(page: PageEntity, repository: DocumentRepository, busy: Boolean,
-    onFilter: (ScanFilter) -> Unit, onStrength: (Int) -> Unit, onDismiss: () -> Unit, onApplyToAll: (() -> Unit)? = null) {
+fun FilterStrip(page: PageEntity, repository: DocumentRepository, busy: Boolean,
+    onFilter: (ScanFilter) -> Unit, onStrength: (Int) -> Unit, onDismiss: () -> Unit,
+    onApplyToAll: (() -> Unit)? = null, applyLabel: Int = R.string.apply_filter_all, dismissLabel: Int = R.string.done) {
     val filtersLabel = stringResource(R.string.filters_label)
     val thumbnails = rememberLazyListState(initialFirstVisibleItemIndex = ScanFilter.entries.indexOfFirst { it.name == page.filter }.coerceAtLeast(0))
-    val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .85f).toDp() }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.open_filters), style = MaterialTheme.typography.titleLarge)
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PagePreview(page, repository, Modifier.fillMaxWidth().height(160.dp), edge = 900)
-            LazyRow(Modifier.semantics { contentDescription = filtersLabel }, state = thumbnails, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(ScanFilter.entries, key = { it.name }) { filter ->
-                    val selected = page.filter == filter.name
-                    val label = filterLabel(filter)
-                    Column(Modifier.width(88.dp).border(if (selected) 2.dp else 1.dp,
-                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                        RoundedCornerShape(14.dp)).selectable(selected, enabled = !busy, role = Role.RadioButton,
-                        onClick = { onFilter(filter) }).padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        PagePreview(page.copy(filter = filter.name), repository, Modifier.fillMaxWidth().height(64.dp), edge = 160)
-                        Text(label, Modifier.padding(top = 6.dp).heightIn(min = 32.dp), maxLines = 2,
-                            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-                    }
+    Column(Modifier.fillMaxWidth().testTag("filter-strip"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        HorizontalDivider()
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(filtersLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            if (onApplyToAll != null) TextButton(onApplyToAll, enabled = !busy) {
+                Text(stringResource(applyLabel), style = MaterialTheme.typography.labelSmall, maxLines = 2)
+            }
+            TextButton(onDismiss) { Text(stringResource(dismissLabel)) }
+        }
+        LazyRow(Modifier.fillMaxWidth().semantics { contentDescription = filtersLabel }, state = thumbnails,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(ScanFilter.entries, key = { it.name }) { filter ->
+                val selected = page.filter == filter.name
+                Column(Modifier.width(80.dp).testTag("filter-${filter.name}").border(if (selected) 2.dp else 1.dp,
+                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                    DesignCorner).selectable(selected, enabled = !busy, role = Role.RadioButton,
+                    onClick = { onFilter(filter) }).padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    PagePreview(page.copy(filter = filter.name), repository, Modifier.fillMaxWidth().height(48.dp), edge = 160)
+                    Text(filterLabel(filter), Modifier.padding(top = 4.dp).heightIn(min = 28.dp), maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                 }
             }
-            val filter = ScanFilter.valueOf(page.filter)
-            if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT || filter == ScanFilter.AUTO_DOCUMENT) {
-                AdjustmentControl(stringResource(R.string.filter_strength), page.filterStrength, 0..100, !busy, onStrength)
-            }
-            Text(stringResource(when (filter) {
-                ScanFilter.AUTO_DOCUMENT -> R.string.auto_document_hint
-                ScanFilter.ADAPTIVE_MONO -> R.string.adaptive_hint
-                ScanFilter.BLACKBOARD -> R.string.blackboard_hint
-                else -> R.string.original_preserved
-            }), style = MaterialTheme.typography.bodySmall)
-            }
-            if (onApplyToAll != null) OutlinedButton(onApplyToAll, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.apply_filter_all)) }
-            TextButton(onDismiss, Modifier.align(Alignment.End)) { Text(stringResource(R.string.done)) }
         }
+        val filter = ScanFilter.valueOf(page.filter)
+        if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT || filter == ScanFilter.AUTO_DOCUMENT) {
+            AdjustmentControl(stringResource(R.string.filter_strength), page.filterStrength, 0..100, !busy, onStrength)
+        }
+        val hint = when (filter) {
+            ScanFilter.AUTO_DOCUMENT -> R.string.auto_document_hint
+            ScanFilter.ADAPTIVE_MONO -> R.string.adaptive_hint
+            ScanFilter.BLACKBOARD -> R.string.blackboard_hint
+            else -> null
+        }
+        if (hint != null) Text(stringResource(hint), style = MaterialTheme.typography.bodySmall,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

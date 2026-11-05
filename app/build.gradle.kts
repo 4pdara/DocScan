@@ -12,12 +12,12 @@ android {
         applicationId = "io.github.user4pdara.docscan"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.10.0"
+        versionCode = 11
+        versionName = "0.10.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
-        debug { applicationIdSuffix = ".design06.debug"; versionNameSuffix = "-design06" }
+        debug { applicationIdSuffix = ".design06.r2.debug"; versionNameSuffix = "-design06" }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

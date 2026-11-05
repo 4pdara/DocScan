@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
@@ -117,6 +118,9 @@ class ScanEditingFlowTest {
             ui.onNodeWithText(title).performScrollTo().performClick()
             ui.onNodeWithText(text(R.string.edit)).performClick()
             ui.onNodeWithText(text(R.string.open_filters)).performClick()
+            ui.onNodeWithTag("filter-strip").assertIsDisplayed()
+            ui.onAllNodes(isDialog()).assertCountEquals(0)
+            ui.onNodeWithTag("page-pager").assertHeightIsAtLeast(96.dp)
             ui.onNodeWithContentDescription(text(R.string.filters_label))
                 .performScrollToNode(hasText(text(R.string.clean_color)))
             ui.onNodeWithText(text(R.string.clean_color)).performClick()
@@ -129,7 +133,7 @@ class ScanEditingFlowTest {
             ui.onNodeWithContentDescription(text(R.string.back)).performClick()
             ui.onNodeWithText(text(R.string.edit)).performClick()
             ui.onNodeWithText(text(R.string.open_filters)).performClick()
-            ui.onNodeWithText("25%").performScrollTo().assertIsDisplayed()
+            ui.onNodeWithText("25%").assertIsDisplayed()
             assertEquals("CLEAN_COLOR", runBlocking { app.database.documents().page(page.id)?.filter })
             assertArrayEquals(original, app.repository.source(page).readBytes())
         } finally { runBlocking { app.repository.deleteDocument(id) }; input.delete() }
