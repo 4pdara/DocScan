@@ -82,11 +82,12 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
                 DocumentPageCard(index, page, pages.size, vm, busy, false, onEdit, onDelete, onCrop)
             }
         }
-        Row(Modifier.fillMaxWidth().navigationBarsPadding(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EditorTool(R.drawable.ic_pdf, stringResource(R.string.save_pdf), canOutput, Modifier.weight(1f), onExport)
-            EditorTool(R.drawable.ic_image, stringResource(R.string.save_gallery), canOutput, Modifier.weight(1f), onGallery)
-            val shareLabel = stringResource(R.string.share_options)
-            EditorTool(R.drawable.ic_share, shareLabel, canOutput, Modifier.weight(1f).semantics { contentDescription = shareLabel }, onShare)
+        val shareLabel = stringResource(R.string.share_options)
+        Button(onShare, enabled = canOutput, shape = DesignCorner,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).heightIn(min = 52.dp).semantics { contentDescription = shareLabel }) {
+            AppIcon(R.drawable.ic_share, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.save_and_share))
         }
     }
     if (qualitySheet) ExportQualitySheet(vm.exportQuality,
@@ -103,7 +104,7 @@ fun DocumentOverview(document: DocumentEntity?, pages: List<PageEntity>, vm: Doc
 @Composable
 private fun DocumentPageCard(index: Int, page: PageEntity, count: Int, vm: DocScanViewModel, busy: Boolean, compact: Boolean,
     onEdit: (String) -> Unit, onDelete: (PageEntity) -> Unit, onCrop: (PageEntity) -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    OutlinedCard(Modifier.fillMaxWidth(), shape = DesignCorner) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.page_label, index + 1), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
             if (!compact) TextButton(enabled = !busy, onClick = { onCrop(page) }) { Text(stringResource(R.string.refine_bounds)) }

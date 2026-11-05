@@ -87,9 +87,10 @@ class ArchiveWorkflowDeviceTest {
         ui.waitUntil(15_000) { !vm.busy.value }; ui.waitForIdle()
         return vm
     }
-    private fun open(action: String, more: String = text(R.string.more_options)) {
-        ui.onNodeWithContentDescription(more).performClick()
-        ui.onNodeWithText(action).performClick()
+    private fun open(action: String, more: String = text(R.string.design_settings)) {
+        if (ui.onAllNodesWithContentDescription(more).fetchSemanticsNodes().isNotEmpty())
+            ui.onNodeWithContentDescription(more).performClick()
+        ui.onNodeWithText(action).performScrollTo().performClick()
     }
     private fun screenshot() {
         if (Build.VERSION.SDK_INT < 29) return
@@ -119,7 +120,7 @@ class ArchiveWorkflowDeviceTest {
         val vm = installRegistry(registry(uri, intents), hebrew = true)
         val he = ui.activity.createConfigurationContext(Configuration(ui.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag("he")) }).resources
         ui.waitUntil(15_000) { ui.onAllNodesWithText(prefix).fetchSemanticsNodes().isNotEmpty() }
-        open(he.getString(R.string.archive_backup), he.getString(R.string.more_options))
+        open(he.getString(R.string.archive_backup), he.getString(R.string.design_settings))
         ui.onNodeWithText(he.getString(R.string.archive_backup_hint)).assertExists()
         screenshot()
         ui.onNodeWithText(he.getString(R.string.archive_choose_destination)).performClick()
@@ -127,7 +128,7 @@ class ArchiveWorkflowDeviceTest {
         assertEquals(Intent.ACTION_CREATE_DOCUMENT, intents[0].action); assertEquals("application/zip", intents[0].type)
         runBlocking { app.repository.deleteDocument(id) }
         ui.waitUntil(15_000) { ui.onAllNodesWithText(prefix).fetchSemanticsNodes().isEmpty() }
-        open(he.getString(R.string.archive_restore), he.getString(R.string.more_options))
+        open(he.getString(R.string.archive_restore), he.getString(R.string.design_settings))
         ui.onNodeWithText(he.getString(R.string.archive_choose_file)).performClick()
         ui.waitUntil(25_000) { !vm.busy.value && documents().size == 1 }
         assertEquals(Intent.ACTION_OPEN_DOCUMENT, intents[1].action)

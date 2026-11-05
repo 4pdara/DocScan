@@ -41,6 +41,40 @@ fun ImportSheet(onImages: () -> Unit, onPdf: () -> Unit, onDismiss: () -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun DocumentOutputSheet(onShare: (ShareFormat) -> Unit, onPrint: () -> Unit, onDismiss: () -> Unit,
+    quality: ExportQuality, onSavePdf: () -> Unit, onSaveImages: () -> Unit, onSaveSources: () -> Unit, onGallery: () -> Unit) {
+    var format by rememberSaveable { mutableStateOf(ShareFormat.PDF.name) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(stringResource(R.string.save_and_share), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.export_quality_current, exportQualityLabel(quality)), style = MaterialTheme.typography.bodySmall)
+            Button(onSavePdf, Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = DesignCorner) { Text(stringResource(R.string.save_pdf)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onGallery, Modifier.weight(1f), shape = DesignCorner) { Text(stringResource(R.string.save_gallery)) }
+                OutlinedButton(onSaveImages, Modifier.weight(1f), shape = DesignCorner) { Text(stringResource(R.string.save_images)) }
+            }
+            TextButton(onSaveSources) { Text(stringResource(R.string.save_sources)) }
+            HorizontalDivider()
+            Text(stringResource(R.string.output_share), style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(ShareFormat.PDF to R.string.share_pdf, ShareFormat.IMAGES to R.string.share_images,
+                    ShareFormat.BOTH to R.string.share_both).forEach { (value, label) ->
+                    FilterChip(format == value.name, onClick = { format = value.name }, modifier = Modifier.weight(1f),
+                        label = { Text(stringResource(label), style = MaterialTheme.typography.labelSmall) })
+                }
+            }
+            OutlinedButton(onClick = { onShare(ShareFormat.valueOf(format)) }, Modifier.fillMaxWidth(), shape = DesignCorner) {
+                AppIcon(R.drawable.ic_share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.share_selected_format))
+            }
+            TextButton(onPrint) { Text(stringResource(R.string.print_document)) }
+            TextButton(onDismiss, Modifier.align(Alignment.End)) { Text(stringResource(R.string.done)) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun ShareSheet(onShare: (ShareFormat) -> Unit, onPrint: () -> Unit, onDismiss: () -> Unit, quality: ExportQuality = ExportQuality.ORIGINAL) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -75,7 +109,7 @@ fun BatchFilterSheet(onApply: (ScanFilter, Int) -> Unit, onDismiss: () -> Unit) 
                 }
             }
             val filter = ScanFilter.valueOf(chosen)
-            if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT) {
+            if (filter in ProDocumentFilters.supported || filter == ScanFilter.CLEAN_COLOR || filter == ScanFilter.CLEAN_TEXT || filter == ScanFilter.AUTO_DOCUMENT) {
                 AdjustmentControl(stringResource(R.string.filter_strength), strength, 0..100, true) { strength = it }
             }
             Button(onClick = { onApply(ScanFilter.valueOf(chosen), strength) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.apply)) }

@@ -147,7 +147,7 @@ class ScanEditingFlowTest {
             val page = runBlocking { app.repository.importImage(id, Uri.fromFile(input)) }
             ui.waitUntil(10_000) { ui.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(title).performScrollTo().performClick()
-            ui.onNodeWithText(text(R.string.save_gallery)).assertIsDisplayed()
+            ui.onNodeWithText(text(R.string.save_and_share)).assertIsDisplayed()
             ui.onNodeWithText(text(R.string.add_pages)).performClick()
             ui.waitUntil(10_000) { ui.onAllNodesWithText(ui.activity.getString(R.string.page_label, 1)).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(ui.activity.getString(R.string.page_label, 1)).performClick()
@@ -167,11 +167,12 @@ class ScanEditingFlowTest {
         assumeFalse(GoogleScanner.isAvailable(ui.activity))
         val before = runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() }
         try {
-            ui.onNodeWithContentDescription(text(R.string.more_options)).performClick()
-            ui.onNodeWithText(text(R.string.scan_google)).performClick()
+            ui.onNodeWithContentDescription(text(R.string.design_settings)).performClick()
+            ui.onNodeWithText(text(R.string.scan_google)).performScrollTo().performClick()
             ui.waitUntil(10_000) { ui.onAllNodesWithText(text(R.string.google_scan_failed)).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithText(text(R.string.google_scan_failed)).assertIsDisplayed()
             assertEquals(before, runBlocking { app.repository.observeDocuments().first().map { it.document.id }.toSet() })
+            ui.onNodeWithContentDescription(text(R.string.back)).performClick()
             ui.onNodeWithText(text(R.string.new_scan)).performClick()
             ui.waitUntil(10_000) { ui.onAllNodesWithContentDescription(text(R.string.fast_scan)).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithContentDescription(text(R.string.fast_scan)).assertIsOn()

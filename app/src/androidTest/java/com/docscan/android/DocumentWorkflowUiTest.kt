@@ -80,7 +80,8 @@ class DocumentWorkflowUiTest {
         ui.waitUntil(15_000) { ui.onAllNodesWithContentDescription(ui.activity.getString(R.string.page_select_desc, 1)).fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithContentDescription(ui.activity.getString(R.string.page_select_desc, 1)).assertIsOn()
         screenshot("workflow-selected-pages.png")
-        ui.onNodeWithText(text(R.string.save_gallery)).performClick()
+        ui.onNodeWithContentDescription(text(R.string.share_options)).performClick()
+        ui.onNodeWithText(text(R.string.save_gallery)).performScrollTo().performClick()
         ui.waitUntil(20_000) { ui.onAllNodesWithText(ui.activity.getString(R.string.saved_gallery, 1)).fetchSemanticsNodes().isNotEmpty() }
         ui.activity.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Images.Media._ID),
             "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ? AND ${MediaStore.Images.Media.IS_PENDING} = 0", arrayOf("$prefix%"), null)!!.use { assertEquals(1, it.count) }
@@ -91,7 +92,6 @@ class DocumentWorkflowUiTest {
             app.repository.rotate(a.second.single().id)
             app.repository.setFilter(b.second.single().id, com.docscan.android.processing.ScanFilter.GRAYSCALE)
         }
-        ui.onNodeWithContentDescription(text(R.string.more_options)).performClick()
         ui.onNodeWithText(text(R.string.select_documents)).performClick()
         for (suffix in listOf("B", "A")) {
             ui.waitUntil(15_000) { ui.onAllNodesWithText("$prefix $suffix").fetchSemanticsNodes().isNotEmpty() }
@@ -122,9 +122,9 @@ class DocumentWorkflowUiTest {
         ui.onNodeWithText(text(R.string.apply)).performClick()
         ui.waitUntil(15_000) { runBlocking { app.database.documents().pages(created.first).map { it.filter } == listOf("INVERT", "ORIGINAL", "INVERT") } }
         ui.onNodeWithContentDescription(text(R.string.share_options)).performClick()
-        ui.onNodeWithText(text(R.string.share_pdf)).assertIsDisplayed()
-        ui.onNodeWithText(text(R.string.share_images)).assertIsDisplayed()
-        ui.onNodeWithText(text(R.string.share_both)).assertIsDisplayed()
+        ui.onNodeWithText(text(R.string.share_pdf)).performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText(text(R.string.share_images)).performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText(text(R.string.share_both)).performScrollTo().assertIsDisplayed()
         screenshot("workflow-share-options.png")
     }
 

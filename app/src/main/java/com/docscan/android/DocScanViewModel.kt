@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.io.FileOutputStream
 import android.provider.DocumentsContract
 import com.docscan.android.data.ArchiveProgress
+import com.docscan.android.ui.DesignConfig
 
 @OptIn(SavedStateHandleSaveableApi::class)
 class DocScanViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
@@ -52,6 +53,7 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var pageId by savedState.saveable { mutableStateOf<String?>(null) }
     var retakePageId by savedState.saveable { mutableStateOf<String?>(null) }
     var returnToCamera by savedState.saveable { mutableStateOf(false) }
+    var scanSession by savedState.saveable { mutableStateOf(0) }
     var importTarget by savedState.saveable { mutableStateOf<String?>(null) }
     var exportTarget by savedState.saveable { mutableStateOf<String?>(null) }
     var imageExportTarget by savedState.saveable { mutableStateOf<String?>(null) }
@@ -70,7 +72,7 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
     var selectingPages by savedState.saveable { mutableStateOf(false) }
     var libraryQuery by savedState.saveable { mutableStateOf("") }
     var librarySort by savedState.saveable { mutableStateOf("UPDATED") }
-    var libraryGrid by savedState.saveable { mutableStateOf(false) }
+    var libraryGrid by savedState.saveable { mutableStateOf(!DesignConfig.fixedTabs) }
     var documentGrid by savedState.saveable { mutableStateOf(false) }
 
     fun openDocument(id: String) {
@@ -78,6 +80,38 @@ class DocScanViewModel(application: Application, savedState: SavedStateHandle) :
         selectedPageIds = arrayListOf(); selectingPages = false
     }
     fun togglePage(id: String) { selectedPageIds = ArrayList(if (id in selectedPageIds) selectedPageIds - id else selectedPageIds + id) }
+    fun startNewScan() {
+        if (_busy.value) return
+        documentId = null; pageId = null; retakePageId = null; returnToCamera = false
+        selectingDocuments = false; selectedDocuments = arrayListOf()
+        selectingPages = false; selectedPageIds = arrayListOf(); scanSession++; screen = "camera"
+    }
+    fun addCameraPages(id: String) {
+        if (_busy.value) return
+        documentId = id; retakePageId = null; returnToCamera = false; scanSession++; screen = "camera"
+    }
+    fun finishCamera() {
+        screen = if (retakePageId != null) { retakePageId = null; "editor" }
+            else if (documentId == null) "home" else "document"
+        documentGrid = false
+    }
+    /** A new document is published only after a first captured source is saved. */
+    fun captureInSession(file: File, mode: DetectionMode, onSaved: (Boolean) -> Unit) {
+        val current = documentId
+        if (current != null) { capture(current, file, mode, onSaved); return }
+        var saved = false
+        task(finallyAction = { file.delete(); onSaved(saved) }) {
+            val id = repository.create(defaultTitle())
+            try {
+                val page = repository.importImage(id, Uri.fromFile(file), enhanceCapture = true, detectionMode = mode)
+                documentId = id; saved = true
+                if (page.crop == null) _message.value = app.getString(R.string.capture_crop_review)
+            } catch (failure: Throwable) {
+                withContext(NonCancellable) { repository.deleteDocument(id) }
+                throw failure
+            }
+        }
+    }
     fun toggleDocument(id: String) { selectedDocuments = ArrayList(if (id in selectedDocuments) selectedDocuments - id else selectedDocuments + id) }
 
     fun beginCrop(page: PageEntity, detectBounds: Boolean = false) {

@@ -68,7 +68,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
     var pageId by vm::pageId
     var retakePageId by vm::retakePageId
     var returnToCamera by vm::returnToCamera
-    val captureGate = remember(documentId) { AutoCaptureGate() }
+    val captureGate = remember(vm.scanSession) { AutoCaptureGate() }
+    var cameraCapturing by remember { mutableStateOf(false) }
     var importTarget by vm::importTarget
     var exportTarget by vm::exportTarget
     var imageExportTarget by vm::imageExportTarget
@@ -145,12 +146,13 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
         imageExportTarget = null; vm.outputPageIds = arrayListOf(); vm.sourceExportPending = false
     }
     fun navigateBack() {
+        if (busy || cameraCapturing) return
         if (screen == "document" && vm.selectingPages) { vm.selectingPages = false; vm.selectedPageIds = arrayListOf(); return }
         if (screen == "home" && vm.selectingDocuments) { vm.selectingDocuments = false; vm.selectedDocuments = arrayListOf(); return }
         if (screen == "crop") vm.clearCropDraft()
         screen = when (screen) {
             "crop" -> "editor"
-            "camera" -> if (retakePageId != null) { retakePageId = null; "editor" } else "document"
+            "camera" -> if (retakePageId != null) { retakePageId = null; "editor" } else if (documentId == null) "home" else "document"
             "editor" -> if (returnToCamera) "camera" else "document"
             else -> "home"
         }
@@ -165,11 +167,16 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
-                    title = { Text("DocScan", style = MaterialTheme.typography.titleLarge) },
+                    title = { Text(DesignConfig.appName, style = MaterialTheme.typography.titleLarge) },
                     navigationIcon = {
-                        if (screen != "home") IconButton(onClick = { navigateBack() }) { AppIcon(R.drawable.ic_back, stringResource(R.string.back)) }
+                        if (screen != "home") IconButton(enabled = !busy && !cameraCapturing,
+                            onClick = { navigateBack() }) { AppIcon(R.drawable.ic_back, stringResource(R.string.back)) }
                     },
-                    actions = { if (busy) CircularProgressIndicator(Modifier.padding(16.dp).size(22.dp), strokeWidth = 2.dp) },
+                    actions = {
+                        if (busy) CircularProgressIndicator(Modifier.padding(16.dp).size(22.dp), strokeWidth = 2.dp)
+                        if (screen != "camera" && screen != "crop" && screen != "settings") IconButton(enabled = !busy,
+                            onClick = { screen = "settings" }) { AppIcon(R.drawable.ic_settings, stringResource(R.string.design_settings)) }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 )
             },
@@ -179,22 +186,31 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                     Modifier.navigationBarsPadding().padding(bottom = 88.dp) else Modifier)
             },
             bottomBar = {
-                if (screen == "home") Surface(tonalElevation = 1.dp) {
+                Column {
+                if (screen == "home") Surface(tonalElevation = 0.dp) {
                     Row(
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
+                        OutlinedButton(enabled = !busy, onClick = { importTarget = null; importing = true },
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp), shape = DesignCorner) {
+                            Text(stringResource(R.string.import_files))
+                        }
                         Button(
                             enabled = !busy,
-                            onClick = { vm.create { id -> documentId = id; screen = "camera" } },
-                            modifier = Modifier.heightIn(min = 56.dp),
-                            shape = RoundedCornerShape(20.dp),
+                            onClick = vm::startNewScan,
+                            modifier = Modifier.weight(1.3f).heightIn(min = 52.dp),
+                            shape = DesignCorner,
                         ) {
                             AppIcon(R.drawable.ic_camera, null)
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.new_scan))
                         }
                     }
+                }
+                if (DesignConfig.fixedTabs && screen != "crop") DesignNavigation(screen, !busy && !cameraCapturing,
+                    onLibrary = { screen = "home" }, onCapture = { if (screen != "camera") vm.startNewScan() },
+                    onPages = { screen = if (documentId == null) "pages-empty" else "document" })
                 }
             },
         ) { padding ->
@@ -207,13 +223,23 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         onDelete = { pendingDeleteDocument = it },
                         onBackup = { archiveAction = "backup" }, onRestore = { archiveAction = "restore" },
                     )
-                    "camera" -> documentId?.let { id ->
+                    "settings" -> SettingsScreen(vm, busy, documents.isNotEmpty(),
+                        onBackup = { archiveAction = "backup" }, onRestore = { archiveAction = "restore" },
+                        onGoogleScan = googleScan.launch, googlePreparing = googleScan.preparing, onCancelGoogle = googleScan.cancel)
+                    "pages-empty" -> Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center) {
+                        Text(stringResource(R.string.no_selected_document), style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.no_selected_document_hint), Modifier.padding(vertical = 16.dp))
+                        Button(onClick = { screen = "home" }) { Text(stringResource(R.string.choose_document)) }
+                    }
+                    "camera" -> {
                         val target = retakePageId
                         CameraScreen(
-                        pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = { vm.documentGrid = false; navigateBack() },
+                        pages, vm.repository, captureGate, busy, manualOnly = target != null, onDone = vm::finishCamera,
+                        onBusyChanged = { cameraCapturing = it },
                         onReview = { pageId = it; returnToCamera = true; screen = "editor" },
                         onCapture = { file, detectionMode, onSaved ->
-                            if (target == null) vm.capture(id, file, detectionMode, onSaved)
+                            if (target == null) vm.captureInSession(file, detectionMode, onSaved)
                             else if (screen != "camera" || retakePageId != target) { file.delete(); onSaved(false) }
                             else vm.retake(target, file, detectionMode) { saved ->
                                 onSaved(saved)
@@ -257,7 +283,7 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
                     else -> if (loadedPages != null) DocumentOverview(document, pages, vm, busy,
-                        onCamera = { screen = "camera" },
+                        onCamera = { documentId?.let(vm::addCameraPages) },
                         onImport = { importTarget = documentId; importing = true },
                         onEdit = { pageId = it; returnToCamera = false; screen = "editor" },
                         onDelete = { pendingDeletePage = it },
@@ -292,13 +318,32 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                 vm.outputPageIds = ArrayList(outputIds().orEmpty()); imageExportTarget = documentId; imageFolderPicker.launch(null)
             }) { Text(stringResource(R.string.choose_folder)) } },
             dismissButton = { TextButton(onClick = { sourceExportConfirmation = false }) { Text(stringResource(R.string.cancel)) } })
-        if (sharing) ShareSheet(onShare = { format ->
+        if (sharing) DocumentOutputSheet(onShare = { format ->
             sharing = false; documentId?.let { id -> vm.share(id, format, outputIds()) { intent ->
                 context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_options)))
             } }
         }, onPrint = {
             sharing = false; documentId?.let { id -> vm.print(id, outputIds()) { file -> PrintExport.launch(context, file, document?.title.orEmpty()) } }
-        }, onDismiss = { sharing = false }, quality = vm.exportQuality)
+        }, onDismiss = { sharing = false }, quality = vm.exportQuality,
+            onSavePdf = {
+                sharing = false; vm.outputPageIds = ArrayList(outputIds().orEmpty()); exportTarget = documentId
+                exportPicker.launch(ExportNames.pdf(document?.title.orEmpty()))
+            }, onSaveImages = {
+                sharing = false; vm.sourceExportPending = false; vm.outputPageIds = ArrayList(outputIds().orEmpty())
+                imageExportTarget = documentId; imageFolderPicker.launch(null)
+            }, onSaveSources = { sharing = false; sourceExportConfirmation = true },
+            onGallery = {
+                sharing = false
+                documentId?.let { id ->
+                    val ids = outputIds()
+                    if (Build.VERSION.SDK_INT <= 28 && listOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE).any {
+                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                    }) {
+                        vm.galleryTarget = id; vm.outputPageIds = ArrayList(ids.orEmpty())
+                        galleryPermission.launch(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE))
+                    } else vm.saveGallery(id, ids)
+                }
+            })
         if (pendingDeleteDocument != null || pendingDeletePage != null) {
             val wholeDocument = pendingDeleteDocument != null
             AlertDialog(

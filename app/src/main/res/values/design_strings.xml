@@ -1,0 +1,29 @@
+<resources>
+    <string name="design_settings">הגדרות</string>
+    <string name="nav_documents">מסמכים</string>
+    <string name="nav_capture">צילום</string>
+    <string name="nav_pages">עמודים</string>
+    <string name="save_and_share">שמירה ושיתוף</string>
+    <string name="capture_fast">מהיר</string>
+    <string name="capture_high">איכותי</string>
+    <string name="capture_quality">איכות צילום</string>
+    <string name="capture_automatic">אוטומטי</string>
+    <string name="camera_starting">מכין את המצלמה…</string>
+    <string name="camera_retry">נסה שוב</string>
+    <string name="settings_capture">צילום</string>
+    <string name="settings_output">ייצוא</string>
+    <string name="settings_archive">גיבוי ושחזור</string>
+    <string name="settings_language">שפת הממשק מותאמת לשפת המכשיר: עברית או אנגלית.</string>
+    <string name="preview_identity">גרסת עיצוב %1$s להתנסות · אחסון נפרד מהאפליקציה הרגילה</string>
+    <string name="no_selected_document">בחר מסמך מהספרייה</string>
+    <string name="no_selected_document_hint">העמודים של המסמך שתבחר יופיעו כאן. אפשר גם להתחיל סריקה חדשה.</string>
+    <string name="choose_document">לספריית המסמכים</string>
+    <string name="document_tools">ניהול עמודים</string>
+    <string name="output_save">שמירה למכשיר</string>
+    <string name="output_share">שיתוף והדפסה</string>
+    <string name="output_images">תמונות JPEG</string>
+    <string name="output_pdf">PDF</string>
+    <string name="output_both">PDF ותמונות</string>
+    <string name="share_selected_format">שתף</string>
+    <string name="source_copy_note">המקור והעריכות נשמרים בנפרד. איכות מקורית היא ברירת המחדל.</string>
+</resources>
