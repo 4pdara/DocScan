@@ -53,7 +53,7 @@ import kotlin.math.max
 private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
 
 @Composable
-fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onCaptured: (File, (Boolean) -> Unit) -> Unit) {
+fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onCaptured: (File, Boolean, (Boolean) -> Unit) -> Unit) {
     val context = LocalContext.current; val lifecycle = LocalLifecycleOwner.current
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
@@ -61,6 +61,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     val main = remember { ContextCompat.getMainExecutor(context) }
     val gate = remember { CaptureStability() }; val capturing = remember { AtomicBoolean(false) }; val autoFlag = remember { AtomicBoolean(true) }
     var automatic by rememberSaveable { mutableStateOf(true) }; SideEffect { autoFlag.set(automatic) }
+    var detectBounds by rememberSaveable { mutableStateOf(true) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }; var camera by remember { mutableStateOf<Camera?>(null) }
     var observation by remember { mutableStateOf(CameraObservation(null, .75f, 0f, emptyList(), false)) }
     var streaming by remember { mutableStateOf(false) }
@@ -70,10 +71,11 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         val imageCapture = capture ?: return
         if (busy || !capturing.compareAndSet(false, true)) return
         taking = true; gate.markCaptured(observation.signature)
+        val cropCaptured = detectBounds
         val file = File(context.cacheDir, "capture-${UUID.randomUUID()}.jpg")
         imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                latestCaptured(file) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
+                latestCaptured(file, cropCaptured) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
             }
             override fun onError(exception: ImageCaptureException) { file.delete(); taking = false; capturing.set(false); gate.failed(); error = true }
         })
@@ -150,7 +152,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                 AndroidView({ preview }, Modifier.fillMaxSize())
                 Canvas(Modifier.fillMaxSize()) {
                     val rect = fitImageRect(size, observation.aspect)
-                    observation.frame?.let { frame ->
+                    observation.frame?.takeIf { detectBounds }?.let { frame ->
                         val points = frame.points.map { Offset(rect.left + it.x * rect.width, rect.top + it.y * rect.height) }
                         val path = Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) }; close() }
                         drawPath(path, Color(0xFF00DBBE), style = Stroke(2.dp.toPx()))
@@ -167,7 +169,12 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         }
         LinearProgressIndicator(progress = { observation.progress }, modifier = Modifier.fillMaxWidth(), color = Color(0xFF00DBBE))
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(automatic, { automatic = it; gate.failed() }, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary, uncheckedColor = Color.White))
+            FilterChip(selected = detectBounds, onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() },
+                label = { Text(stringResource(if (detectBounds) R.string.detect_bounds else R.string.full_photo)) })
+            Text(stringResource(R.string.detect_bounds_hint), Modifier.padding(start = 10.dp).weight(1f), color = Color.White, style = MaterialTheme.typography.labelSmall)
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(automatic, { automatic = it; if (it) detectBounds = true; gate.failed() }, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary, uncheckedColor = Color.White))
             Text(stringResource(R.string.auto_capture), color = Color.White)
             Spacer(Modifier.weight(1f)); Text(pluralStringResource(R.plurals.saved_count, pages.size, pages.size), color = Color.White, style = MaterialTheme.typography.labelSmall)
         }
@@ -187,18 +194,33 @@ private fun inspectFrame(image: ImageProxy, gate: CaptureStability, automatic: B
     val plane = image.planes[0]; val bytes = plane.buffer.duplicate(); val step = max(1, image.width / 720)
     val width = (image.width + step - 1) / step; val height = (image.height + step - 1) / step
     val pixels = ByteArray(width * height)
-    for (y in 0 until height) for (x in 0 until width) pixels[y * width + x] = bytes.get(y * step * plane.rowStride + x * step * plane.pixelStride)
+    val colours = ByteArray(width * height * 4)
+    val u = image.planes[1]; val v = image.planes[2]
+    val ub = u.buffer.duplicate(); val vb = v.buffer.duplicate()
+    for (y in 0 until height) for (x in 0 until width) {
+        val px = x * step; val py = y * step; val index = y * width + x
+        val luminance = bytes.get(bytes.position() + py * plane.rowStride + px * plane.pixelStride)
+        pixels[index] = luminance
+        val uu = (ub.get(ub.position() + (py / 2) * u.rowStride + (px / 2) * u.pixelStride).toInt() and 255) - 128
+        val vv = (vb.get(vb.position() + (py / 2) * v.rowStride + (px / 2) * v.pixelStride).toInt() and 255) - 128
+        val yy = luminance.toInt() and 255
+        colours[index * 4] = (yy + 1.402 * vv).toInt().coerceIn(0,255).toByte()
+        colours[index * 4 + 1] = (yy - .344136 * uu - .714136 * vv).toInt().coerceIn(0,255).toByte()
+        colours[index * 4 + 2] = (yy + 1.772 * uu).toInt().coerceIn(0,255).toByte()
+        colours[index * 4 + 3] = 255.toByte()
+    }
     val gray = Mat(height, width, CvType.CV_8UC1); gray.put(0, 0, pixels)
+    val rgba = Mat(height, width, CvType.CV_8UC4); rgba.put(0, 0, colours)
     val laplace = Mat(); val mean = MatOfDouble(); val deviation = MatOfDouble()
     try {
-        val frame = ImagePipeline.detectGray(gray)
+        val frame = ImagePipeline.detectGray(gray, rgba)
         Imgproc.Laplacian(gray, laplace, CvType.CV_64F); Core.meanStdDev(laplace, mean, deviation)
         val sharp = deviation.toArray().firstOrNull()?.let { it * it >= 45 } ?: false
         val signature = if (frame == null) emptyList() else fingerprint(gray, frame)
         val decision = if (automatic && (sharp || frame == null)) gate.sample(frame, signature, now) else { gate.unstable(); CaptureStability.Decision(0f, false) }
         val rotation = image.imageInfo.rotationDegrees
         return CameraObservation(frame?.turned(rotation), if (rotation % 180 == 0) width.toFloat() / height else height.toFloat() / width, decision.progress, signature, decision.capture)
-    } finally { gray.release(); laplace.release(); mean.release(); deviation.release() }
+    } finally { gray.release(); rgba.release(); laplace.release(); mean.release(); deviation.release() }
 }
 
 private fun fingerprint(gray: Mat, frame: Frame): List<Float> {
@@ -210,3 +232,4 @@ private fun fingerprint(gray: Mat, frame: Frame): List<Float> {
         return (0 until 64).map { cell -> val region = small.submat(Rect((cell % 8) * 8, (cell / 8) * 8, 8, 8)); try { Core.mean(region).`val`[0].toFloat() } finally { region.release() } }
     } finally { from.release(); to.release(); transform.release(); small.release() }
 }
+

@@ -65,4 +65,29 @@
     <plurals name="saved_count"><item quantity="one">%1$d page saved</item><item quantity="other">%1$d pages saved</item></plurals>
     <string name="native_app_name">DocScan Native Test</string>
     <string name="native_paper">CamScanner</string>
+    <string name="save_gallery">Save images to gallery</string>
+    <string name="gallery_saved">Images saved to the DocScan album in your gallery</string>
+    <string name="gallery_permission_denied">Storage permission is needed to save to the gallery on this Android version.</string>
+    <string name="full_photo">Full photo</string>
+    <string name="aspect_auto">Page proportions: Auto</string>
+    <string name="aspect_photo">Photo proportions</string>
+    <string name="aspect_square">Square</string>
+    <string name="aspect_adjust">Adjust page proportions</string>
+    <string name="detect_bounds">Detect edges</string>
+    <string name="detect_bounds_hint">Detect a page, book cover or rectangular object. Turn off for a full photo.</string>
+    <string name="export_scan">Export edited scan</string>
+    <string name="save_jpeg">Save edited scan as JPEG</string>
+    <string name="image_saved">Edited scan saved</string>
+    <string name="scan_tab">Scan</string>
+    <string name="pages_tab">Pages</string>
+    <string name="select_documents">Select documents</string>
+    <string name="select_all">Select all</string>
+    <string name="trash">Trash</string>
+    <string name="move_to_trash">Move to trash</string>
+    <string name="moved_to_trash">Documents moved to trash</string>
+    <string name="restore">Restore</string>
+    <string name="restored">Documents restored</string>
+    <string name="empty_trash">Trash is empty</string>
+    <string name="trash_hint">Select documents to restore. Originals and edits stay in trash; no automatic deletion.</string>
 </resources>
+

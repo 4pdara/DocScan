@@ -65,4 +65,29 @@
     <plurals name="saved_count"><item quantity="one">%1$d עמוד נשמר</item><item quantity="two">%1$d עמודים נשמרו</item><item quantity="many">%1$d עמודים נשמרו</item><item quantity="other">%1$d עמודים נשמרו</item></plurals>
     <string name="native_app_name">DocScan ניסוי Native</string>
     <string name="native_paper">CamScanner</string>
+    <string name="save_gallery">שמירת תמונות לגלריה</string>
+    <string name="gallery_saved">התמונות נשמרו בגלריה באלבום DocScan</string>
+    <string name="gallery_permission_denied">לשמירה בגלריה בגרסת Android זו נדרשת הרשאת אחסון.</string>
+    <string name="full_photo">צילום מלא</string>
+    <string name="aspect_auto">יחס העמוד: אוטומטי</string>
+    <string name="aspect_photo">יחס הצילום</string>
+    <string name="aspect_square">ריבוע</string>
+    <string name="aspect_adjust">התאמת פרופורציות העמוד</string>
+    <string name="detect_bounds">זיהוי גבולות</string>
+    <string name="detect_bounds_hint">זיהוי דף, כריכה או חפץ מלבני. כבו לצילום מלא של כל חפץ.</string>
+    <string name="export_scan">שמירת הסריקה המעובדת</string>
+    <string name="save_jpeg">שמירת הסריקה כ־JPEG</string>
+    <string name="image_saved">הסריקה המעובדת נשמרה</string>
+    <string name="scan_tab">צילום</string>
+    <string name="pages_tab">עמודים</string>
+    <string name="select_documents">בחירת מסמכים</string>
+    <string name="select_all">בחירת הכול</string>
+    <string name="trash">סל מחזור</string>
+    <string name="move_to_trash">העברה לסל מחזור</string>
+    <string name="moved_to_trash">המסמכים הועברו לסל המחזור</string>
+    <string name="restore">שחזור</string>
+    <string name="restored">המסמכים שוחזרו</string>
+    <string name="empty_trash">סל המחזור ריק</string>
+    <string name="trash_hint">בחרו מסמכים לשחזור. המקורות והעריכות נשמרים בסל, ללא מחיקה אוטומטית.</string>
 </resources>
+

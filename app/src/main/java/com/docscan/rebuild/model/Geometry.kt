@@ -34,7 +34,7 @@ data class Frame(val points: List<Vertex>) {
 }
 
 enum class Treatment { ORIGINAL, COLOR, GRAY, INK, PAPER }
-data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f)
+data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null)
 
 /** A capture is latched until the content changes or the paper leaves the frame. */
 class CaptureStability {
@@ -74,3 +74,4 @@ class CaptureStability {
         }
     }
 }
+

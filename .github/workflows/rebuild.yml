@@ -30,12 +30,12 @@ jobs:
       - name: Prepare installable preview
         run: |
           mkdir -p preview
-          cp app/build/outputs/apk/debug/app-debug.apk preview/DocScan-New-0.1.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk preview/DocScan-New-0.1.2.apk
           cd preview
-          sha256sum DocScan-New-0.1.0.apk > SHA256SUMS.txt
+          sha256sum DocScan-New-0.1.2.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: DocScan-New-0.1.0
+          name: DocScan-New-0.1.2
           path: preview/
           retention-days: 30
       - uses: actions/upload-artifact@v4
@@ -51,6 +51,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - api: 28
+            locale: en
           - api: 29
             locale: en
           - api: 35
@@ -97,3 +99,4 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             screenshots/
+

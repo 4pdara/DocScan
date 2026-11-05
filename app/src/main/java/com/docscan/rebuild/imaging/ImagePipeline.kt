@@ -42,19 +42,22 @@ object ImagePipeline {
 
     fun render(file: File, recipe: EditRecipe, previewEdge: Int? = null): Bitmap {
         val bitmap = decode(file, previewEdge)
-        return try { transform(bitmap, recipe) } finally { bitmap.recycle() }
+        val focalToDiagonal = runCatching {
+            ExifInterface(file).getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, 0.0)
+                .takeIf { it > 0.0 }?.div(hypot(36.0, 24.0))
+        }.getOrNull()
+        return try { transform(bitmap, recipe, focalToDiagonal) } finally { bitmap.recycle() }
     }
 
-    fun transform(bitmap: Bitmap, recipe: EditRecipe): Bitmap {
+    fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null): Bitmap {
         ensureAvailable(); require(recipe.frame.valid())
         val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
             Utils.bitmapToMat(bitmap, source)
-            if (recipe.frame == Frame.FULL) source.copyTo(current) else {
+            if (recipe.frame == Frame.FULL && recipe.outputAspect == null) source.copyTo(current) else {
                 val p = recipe.frame.points.map { Point((it.x * (source.cols() - 1)).toDouble(), (it.y * (source.rows() - 1)).toDouble()) }
-                fun length(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)
-                val width = max(length(p[0], p[1]), length(p[3], p[2])).roundToInt().coerceAtLeast(2)
-                val height = max(length(p[0], p[3]), length(p[1], p[2])).roundToInt().coerceAtLeast(2)
+                val dimensions = CropGeometry.dimensions(recipe.frame, source.cols(), source.rows(), recipe.outputAspect, focalToDiagonal)
+                val width = dimensions.width; val height = dimensions.height
                 val from = MatOfPoint2f(*p.toTypedArray()); val to = MatOfPoint2f(Point(0.0, 0.0), Point((width - 1).toDouble(), 0.0), Point((width - 1).toDouble(), (height - 1).toDouble()), Point(0.0, (height - 1).toDouble()))
                 val homography = Imgproc.getPerspectiveTransform(from, to)
                 try { Imgproc.warpPerspective(source, current, homography, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
@@ -110,12 +113,12 @@ object ImagePipeline {
     fun detect(file: File): Frame? {
         ensureAvailable()
         val bitmap = decode(file, 1000); val rgba = Mat(); val gray = Mat()
-        return try { ensureAvailable(); Utils.bitmapToMat(bitmap, rgba); Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY); detectGray(gray) }
+        return try { Utils.bitmapToMat(bitmap, rgba); Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY); detectGray(gray, rgba) }
         finally { bitmap.recycle(); rgba.release(); gray.release() }
     }
 
-    /** Contour proposals from both gradients and thresholded paper. No proprietary scanner components. */
-    fun detectGray(input: Mat): Frame? {
+    /** Bright pages, dark covers and colour boundaries. Proposals still require four visible corners. */
+    fun detectGray(input: Mat, rgba: Mat? = null): Frame? {
         ensureAvailable()
         val blurred = Mat(); val edges = Mat(); val mask = Mat(); val hierarchy = Mat()
         val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
@@ -127,15 +130,33 @@ object ImagePipeline {
             Imgproc.findContours(edges, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
             Imgproc.threshold(blurred, mask, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
             val bright = mutableListOf<MatOfPoint>(); Imgproc.findContours(mask, bright, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE); contours.addAll(bright)
+            // Inverse threshold also finds dark book covers on a light table.
+            Imgproc.threshold(blurred, mask, 0.0, 255.0, Imgproc.THRESH_BINARY_INV or Imgproc.THRESH_OTSU)
+            val dark = mutableListOf<MatOfPoint>(); Imgproc.findContours(mask, dark, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE); contours.addAll(dark)
+            if (rgba != null) {
+                val channel = Mat()
+                try {
+                    // Equal-luminance coloured covers may have no boundary in the camera's Y plane.
+                    for (index in 0..2) {
+                        Core.extractChannel(rgba, channel, index)
+                        Imgproc.GaussianBlur(channel, channel, Size(5.0, 5.0), 0.0)
+                        Imgproc.Canny(channel, edges, 25.0, 85.0)
+                        Imgproc.morphologyEx(edges, edges, Imgproc.MORPH_CLOSE, kernel)
+                        val coloured = mutableListOf<MatOfPoint>()
+                        Imgproc.findContours(edges, coloured, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
+                        contours.addAll(coloured)
+                    }
+                } finally { channel.release() }
+            }
             var best: Frame? = null; var bestArea = 0.0
             for (contour in contours) {
                 val area = abs(Imgproc.contourArea(contour)) / (input.cols().toDouble() * input.rows())
-                if (area !in .15.. .97 || area <= bestArea) continue
+                if (area !in .06.. .97 || area <= bestArea) continue
                 val curve = MatOfPoint2f(*contour.toArray()); val approximation = MatOfPoint2f()
                 try {
                     Imgproc.approxPolyDP(curve, approximation, Imgproc.arcLength(curve, true) * .025, true)
                     if (approximation.total() != 4L) continue
-                    val raw = approximation.toArray().map { Vertex((it.x / input.cols()).toFloat(), (it.y / input.rows()).toFloat()) }
+                    val raw = approximation.toArray().map { Vertex((it.x / (input.cols() - 1)).toFloat(), (it.y / (input.rows() - 1)).toFloat()) }
                     val cx = raw.map { it.x }.average(); val cy = raw.map { it.y }.average()
                     val clockwise = raw.sortedBy { atan2(it.y - cy, it.x - cx) }
                     val start = clockwise.indices.minBy { clockwise[it].x + clockwise[it].y }
@@ -148,3 +169,4 @@ object ImagePipeline {
         } finally { contours.forEach { it.release() }; blurred.release(); edges.release(); mask.release(); hierarchy.release(); kernel.release() }
     }
 }
+

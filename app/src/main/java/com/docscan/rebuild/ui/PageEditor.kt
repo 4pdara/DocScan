@@ -49,18 +49,29 @@ private fun Treatment.label(): Int = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onOriginal: () -> Unit) {
+fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onExportImage: (EditRecipe) -> Unit, onGallery: (EditRecipe) -> Unit, onOriginal: () -> Unit) {
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
     var tool by rememberSaveable { mutableStateOf("filters") }
     var original by rememberSaveable { mutableStateOf(false) }
+    var export by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }; var pan by remember { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
     BackHandler(!busy) { onBack() }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium) },
         navigationIcon = { IconButton(onBack, enabled = !busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.cancel)) } },
-        actions = { IconButton(onOriginal, enabled = !busy) { Icon(Icons.Outlined.Download, stringResource(R.string.source_export)) }; Button(onClick = { onSave(edit) }, enabled = !busy, modifier = Modifier.padding(end = 12.dp).testTag("save-edit")) { Text(stringResource(R.string.save)) } }) },
+        actions = {
+            Box {
+                IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) { Icon(Icons.Outlined.Download, stringResource(R.string.export_scan)) }
+                DropdownMenu(expanded = export, onDismissRequest = { export = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.save_gallery)) }, onClick = { export = false; onGallery(edit) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.save_jpeg)) }, onClick = { export = false; onExportImage(edit) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.source_export)) }, onClick = { export = false; onOriginal() })
+                }
+            }
+            Button(onClick = { onSave(edit) }, enabled = !busy, modifier = Modifier.padding(end = 12.dp).testTag("save-edit")) { Text(stringResource(R.string.save)) }
+        }) },
         bottomBar = {
             Surface(shadowElevation = 6.dp) {
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
@@ -69,7 +80,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             items(Treatment.entries) { treatment ->
                                 val selected = edit.treatment == treatment
                                 Column(Modifier.width(76.dp).selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    PagePicture(store, page, Modifier.size(64.dp, 76.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = EditRecipe(treatment = treatment), edge = 160)
+                                    PagePicture(store, page, Modifier.size(64.dp, 76.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment), edge = 160)
                                     Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
                                 }
                             }
@@ -80,9 +91,20 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             Text(stringResource(R.string.contrast), style = MaterialTheme.typography.labelMedium)
                             Slider(edit.contrast, { change(edit.copy(contrast = it)) }, valueRange = .5f..1.8f)
                         }
-                        "crop" -> Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.crop_hint), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = { change(edit.copy(frame = Frame.FULL)) }) { Text(stringResource(R.string.reset)) }
+                        "crop" -> Column {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.crop_hint), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = { change(edit.copy(frame = Frame.FULL, outputAspect = null)) }) { Text(stringResource(R.string.full_photo)) }
+                            }
+                            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item { FilterChip(selected = edit.outputAspect == null, onClick = { change(edit.copy(outputAspect = null)) }, label = { Text(stringResource(R.string.aspect_auto)) }) }
+                                item { FilterChip(selected = edit.outputAspect == page.width.toFloat() / page.height, onClick = { change(edit.copy(outputAspect = page.width.toFloat() / page.height)) }, label = { Text(stringResource(R.string.aspect_photo)) }) }
+                                item { FilterChip(selected = edit.outputAspect == 210f / 297f, onClick = { change(edit.copy(outputAspect = 210f / 297f)) }, label = { Text("A4") }) }
+                                item { FilterChip(selected = edit.outputAspect == 1f, onClick = { change(edit.copy(outputAspect = 1f)) }, label = { Text(stringResource(R.string.aspect_square)) }) }
+                            }
+                            Text(stringResource(R.string.aspect_adjust), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelSmall)
+                            val ratio = edit.outputAspect ?: CropGeometry.dimensions(edit.frame, page.width, page.height).aspect
+                            Slider(ratio.coerceIn(.25f, 4f), { change(edit.copy(outputAspect = it)) }, valueRange = .25f..4f, modifier = Modifier.padding(horizontal = 16.dp).testTag("aspect-adjust"))
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("editor-toolbar"), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -142,3 +164,4 @@ private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.Ima
         Text(stringResource(label), style = MaterialTheme.typography.labelSmall)
     } }
 }
+

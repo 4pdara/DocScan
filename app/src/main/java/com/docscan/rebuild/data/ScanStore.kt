@@ -5,6 +5,8 @@ import android.net.Uri
 import android.graphics.BitmapFactory
 import androidx.exifinterface.media.ExifInterface
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -19,7 +21,7 @@ import java.io.InputStream
 import java.util.UUID
 
 @Entity(tableName = "notebooks")
-data class Notebook(@PrimaryKey val id: String, val title: String, val created: Long)
+data class Notebook(@PrimaryKey val id: String, val title: String, val created: Long, @ColumnInfo(defaultValue = "NULL") val trashedAt: Long? = null)
 
 @Entity(tableName = "sheets", foreignKeys = [ForeignKey(entity = Notebook::class, parentColumns = ["id"], childColumns = ["notebookId"], onDelete = ForeignKey.CASCADE)], indices = [Index("notebookId")])
 data class Sheet(@PrimaryKey val id: String, val notebookId: String, val position: Int, val source: String, val width: Int, val height: Int, val mime: String, val recipe: String = "{}") {
@@ -29,8 +31,8 @@ data class LibraryEntry(@Embedded val book: Notebook, val pageCount: Int, val co
 
 @Dao
 interface ScanQueries {
-    @Query("SELECT notebooks.*, COUNT(sheets.id) AS pageCount, (SELECT id FROM sheets s WHERE s.notebookId = notebooks.id ORDER BY position LIMIT 1) AS cover FROM notebooks LEFT JOIN sheets ON notebooks.id=sheets.notebookId GROUP BY notebooks.id ORDER BY created DESC")
-    fun library(): Flow<List<LibraryEntry>>
+    @Query("SELECT notebooks.*, COUNT(sheets.id) AS pageCount, (SELECT id FROM sheets s WHERE s.notebookId = notebooks.id ORDER BY position LIMIT 1) AS cover FROM notebooks LEFT JOIN sheets ON notebooks.id=sheets.notebookId WHERE (:trashed = 0 AND notebooks.trashedAt IS NULL) OR (:trashed = 1 AND notebooks.trashedAt IS NOT NULL) GROUP BY notebooks.id ORDER BY created DESC")
+    fun library(trashed: Boolean = false): Flow<List<LibraryEntry>>
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") fun pages(id: String): Flow<List<Sheet>>
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") suspend fun snapshot(id: String): List<Sheet>
     @Query("SELECT * FROM sheets WHERE id=:id") suspend fun page(id: String): Sheet?
@@ -40,13 +42,22 @@ interface ScanQueries {
     @Query("UPDATE sheets SET recipe=:recipe WHERE id=:id") suspend fun recipe(id: String, recipe: String)
     @Query("UPDATE notebooks SET title=:title WHERE id=:id") suspend fun rename(id: String, title: String)
     @Query("UPDATE sheets SET position=:position WHERE id=:id") suspend fun position(id: String, position: Int)
+    @Query("UPDATE notebooks SET trashedAt=:at WHERE id IN (:ids)") suspend fun trash(ids: List<String>, at: Long?)
 }
-@Database(entities = [Notebook::class, Sheet::class], version = 1, exportSchema = true)
-abstract class ScanDatabase : RoomDatabase() { abstract fun queries(): ScanQueries }
+@Database(entities = [Notebook::class, Sheet::class], version = 2, exportSchema = true)
+abstract class ScanDatabase : RoomDatabase() {
+    abstract fun queries(): ScanQueries
+    companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE notebooks ADD COLUMN trashedAt INTEGER DEFAULT NULL") }
+        }
+    }
+}
 
 object RecipeCodec {
     fun encode(r: EditRecipe): String = JSONObject().put("turns", r.turns).put("filter", r.treatment.name)
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
+        .put("outputAspect", r.outputAspect?.toDouble() ?: JSONObject.NULL)
         .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) })).toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
@@ -54,7 +65,8 @@ object RecipeCodec {
         EditRecipe(frame.takeIf { it.valid() } ?: Frame.FULL, o.optInt("turns").mod(4),
             runCatching { Treatment.valueOf(o.optString("filter", "ORIGINAL")) }.getOrDefault(Treatment.ORIGINAL),
             o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
-            o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f)
+            o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
+            o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f })
     }.getOrDefault(EditRecipe())
 }
 
@@ -93,11 +105,20 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             page
         } finally { temporary.delete() }
     }
-    suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) { require(edit.frame.valid()); dao.recipe(page.id, RecipeCodec.encode(edit)) }
+    suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
+        require(edit.frame.valid())
+        require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
+        dao.recipe(page.id, RecipeCodec.encode(edit))
+    }
     suspend fun move(bookId: String, id: String, direction: Int) = withContext(Dispatchers.IO) {
         lock.withLock { database.withTransaction {
             val pages = dao.snapshot(bookId); val i = pages.indexOfFirst { it.id == id }; val j = i + direction
             if (i >= 0 && j in pages.indices) { dao.position(pages[i].id, pages[j].position); dao.position(pages[j].id, pages[i].position) }
         } }
     }
+    /** Recoverable removal: never deletes original files, recipes or page order. */
+    suspend fun trash(ids: Set<String>, restore: Boolean = false) = withContext(Dispatchers.IO) {
+        lock.withLock { database.withTransaction { dao.trash(ids.toList(), if (restore) null else System.currentTimeMillis()) } }
+    }
 }
+
