@@ -167,7 +167,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
-                    title = { Text(DesignConfig.appName, style = MaterialTheme.typography.titleLarge) },
+                    title = { Text(if (screen == "camera") stringResource(R.string.new_scan) else DesignConfig.appName,
+                        style = MaterialTheme.typography.titleLarge) },
                     navigationIcon = {
                         if (screen != "home") IconButton(enabled = !busy && !cameraCapturing,
                             onClick = { navigateBack() }) { AppIcon(R.drawable.ic_back, stringResource(R.string.back)) }
@@ -189,7 +190,8 @@ fun DocScanApp(vm: DocScanViewModel = viewModel()) {
                 Column {
                 if (screen == "home") Surface(tonalElevation = 0.dp) {
                     Row(
-                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
+                        Modifier.fillMaxWidth().then(if (DesignConfig.fixedTabs) Modifier else Modifier.navigationBarsPadding())
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         OutlinedButton(enabled = !busy, onClick = { importTarget = null; importing = true },
