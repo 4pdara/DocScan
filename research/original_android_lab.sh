@@ -23,16 +23,22 @@ adb push /tmp/DocScan-Research-Input.png /sdcard/Download/DocScan-Research-Input
 # Fresh, unsigned-in lab guest. No personal scans, account, purchased entitlements or modified APK.
 adb shell svc wifi disable
 adb shell svc data disable
-frida -H 127.0.0.1:27042 -f com.intsig.camscanner -l research/observe_engine.js -q -t 100 > research-original-results/frida-java.txt 2>&1 &
-java_pid=$!
+# Let the application's own loader finish before attaching; compare ordinary startup with spawn.
+adb shell am start -W -n com.intsig.camscanner/com.intsig.camscanner.mainmenu.mainactivity.MainActivity > research-original-results/normal-start.txt 2>&1 || true
 sleep 20
-app_pid=$(adb shell pidof com.intsig.camscanner | tr -d '\r')
+adb logcat -d -v threadtime > research-original-results/normal-start-logcat.txt
+app_pid=$(adb shell pidof com.intsig.camscanner | tr -d '\r' || true)
 if [[ -n "$app_pid" ]]; then
- frida -H 127.0.0.1:27042 -p "$app_pid" --realm=emulated -l research/observe_native.js -q -t 70 > research-original-results/frida-arm.txt 2>&1 &
+ frida -H 127.0.0.1:27042 -p "$app_pid" -l research/observe_engine.js -q -t 100 > research-original-results/frida-java.txt 2>&1 &
+ java_pid=$!
+ sleep 10
+ frida -H 127.0.0.1:27042 -p "$app_pid" --realm=emulated -l research/observe_native.js -q -t 85 > research-original-results/frida-arm.txt 2>&1 &
  arm_pid=$!
  wait "$arm_pid" || true
+ wait "$java_pid" || true
+else
+ echo 'Original process exited during normal startup before Frida attach.' > research-original-results/frida-java.txt
 fi
-wait "$java_pid" || true
 adb exec-out screencap -p > research-original-results/original-state.png
 adb logcat -d -v threadtime > research-original-results/logcat.txt
 adb pull /data/local/tmp/frida-original.log research-original-results/frida-server.txt || true
