@@ -136,8 +136,10 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     }
     Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (!taking && !busy) onDone() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = Color.White) }
-            Text(stringResource(R.string.camera), Modifier.weight(1f), color = Color.White)
+            IconButton(onClick = { if (!taking && !busy) onDone() }) { Icon(Icons.Outlined.Close, stringResource(R.string.back), tint = Color.White) }
+            Text("HD", Modifier.border(1.dp, Color.White, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() }) { Icon(Icons.Outlined.DocumentScanner, stringResource(R.string.detect_bounds), tint = if (detectBounds) ScanMint else Color.White) }
             IconButton(onClick = { torch = !torch; camera?.cameraControl?.enableTorch(torch) }, enabled = camera?.cameraInfo?.hasFlashUnit() == true) { Icon(if (torch) Icons.Outlined.FlashOn else Icons.Outlined.FlashOff, stringResource(R.string.flash), tint = Color.White) }
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -159,6 +161,10 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                 Button(onClick = { permission.launch(Manifest.permission.CAMERA) }, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.grant_camera)) }
             }
             if (error) Text(stringResource(R.string.camera_error), Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = .8f)).padding(12.dp), color = Color.White)
+            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp).background(Color(0xFF292B2C), RoundedCornerShape(24.dp)).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = !batch, onClick = { batch = false }, enabled = !taking && !busy, label = { Text(stringResource(R.string.capture_single)) }, modifier = Modifier.testTag("capture-single"), shape = RoundedCornerShape(20.dp))
+            FilterChip(selected = batch, onClick = { batch = true }, enabled = !taking && !busy, label = { Text(stringResource(R.string.capture_batch)) }, modifier = Modifier.testTag("capture-batch"), shape = RoundedCornerShape(20.dp))
+        }
             SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
         LinearProgressIndicator(progress = { observation.progress }, modifier = Modifier.fillMaxWidth().height(2.dp), color = ScanMint, trackColor = Color(0xFF252727))
@@ -169,10 +175,6 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                 Checkbox(automatic, { automatic = it; if (it) detectBounds = true; gate.failed() })
                 Text(stringResource(R.string.auto_capture), style = MaterialTheme.typography.labelSmall)
             }
-        }
-        Row(Modifier.align(Alignment.CenterHorizontally).background(Color(0xFF292B2C), RoundedCornerShape(24.dp)).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = !batch, onClick = { batch = false }, enabled = !taking && !busy, label = { Text(stringResource(R.string.capture_single)) }, modifier = Modifier.testTag("capture-single"), shape = RoundedCornerShape(20.dp))
-            FilterChip(selected = batch, onClick = { batch = true }, enabled = !taking && !busy, label = { Text(stringResource(R.string.capture_batch)) }, modifier = Modifier.testTag("capture-batch"), shape = RoundedCornerShape(20.dp))
         }
         Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {

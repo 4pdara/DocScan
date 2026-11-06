@@ -30,7 +30,7 @@ function fixture() {
   const Format=Java.use('android.graphics.Bitmap$CompressFormat');
   const File=Java.use('java.io.File');const Output=Java.use('java.io.FileOutputStream');
   const context=ActivityThread.currentApplication().getApplicationContext();
-  const source=Factory.decodeFile('/sdcard/Download/DocScan-Research-Input.png');
+  const source=Factory.decodeFile(context.getFilesDir().getAbsolutePath()+'/docscan-research-input.png');
   if(source===null){event({event:'fixture_error',reason:'input_not_readable'});return;}
   const dir=File.$new(context.getFilesDir(),'docscan-research');dir.mkdirs();
   const handle=Engine.initThreadContext();

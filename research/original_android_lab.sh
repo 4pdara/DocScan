@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p research-original-results
+collect_evidence() {
+ status=$?
+ trap - EXIT
+ timeout 20s adb exec-out screencap -p > research-original-results/original-state.png || true
+ timeout 20s adb logcat -d -v threadtime > research-original-results/logcat.txt || true
+ timeout 20s adb pull /data/local/tmp/frida-original.log research-original-results/frida-server.txt || true
+ timeout 20s adb pull /data/user/0/com.intsig.camscanner/files/docscan-research research-original-results/synthetic-outputs || true
+ exit "$status"
+}
+trap collect_evidence EXIT
+adb shell getprop ro.boot.qemu > research-original-results/emulator-property.txt
+adb shell getprop ro.dalvik.vm.native.bridge > research-original-results/native-bridge.txt
+adb shell getconf _NPROCESSORS_ONLN > research-original-results/cpu-count.txt
 adb shell getprop ro.product.cpu.abilist > research-original-results/abilist.txt
 timeout 20s adb root
 timeout 30s adb wait-for-device
@@ -8,7 +21,7 @@ timeout 60s adb push /tmp/frida-server /data/local/tmp/frida-server
 timeout 15s adb shell chmod 755 /data/local/tmp/frida-server
 timeout 15s adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-original.log 2>&1 &'
 timeout 15s adb forward tcp:27042 tcp:27042
-timeout 90s adb install -r /tmp/CamScanner.apk
+timeout 120s adb install --no-streaming -r /tmp/CamScanner.apk
 for permission in android.permission.CAMERA android.permission.READ_EXTERNAL_STORAGE android.permission.WRITE_EXTERNAL_STORAGE; do
  adb shell pm grant com.intsig.camscanner "$permission" || true
 done
@@ -23,36 +36,33 @@ adb push /tmp/DocScan-Research-Input.png /sdcard/Download/DocScan-Research-Input
 # Fresh, unsigned-in lab guest. No personal scans, account, purchased entitlements or modified APK.
 adb shell svc wifi disable
 adb shell svc data disable
-# Let the application's own loader finish before attaching; compare ordinary startup with spawn.
-timeout 40s adb shell am start -W -n com.intsig.camscanner/com.intsig.camscanner.mainmenu.mainactivity.MainActivity > research-original-results/normal-start.txt 2>&1 || true
-sleep 20
+# Record ordinary launcher startup before using read-only Frida observers.
+timeout 10s adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER com.intsig.camscanner > research-original-results/launcher.txt
+launcher=$(tail -1 research-original-results/launcher.txt | tr -d '\r')
+[[ "$launcher" == com.intsig.camscanner/* ]]
+adb logcat -c
+timeout 40s adb shell am start -W -n "$launcher" > research-original-results/normal-start.txt 2>&1 || true
+sleep 8
 timeout 20s adb logcat -d -v threadtime > research-original-results/normal-start-logcat.txt
-app_pid=$(timeout 5s adb shell pidof com.intsig.camscanner | tr -d '\r' || true)
-if [[ -n "$app_pid" ]]; then
- timeout 115s frida -H 127.0.0.1:27042 -p "$app_pid" -l research/observe_engine.js -q -t 100 > research-original-results/frida-java.txt 2>&1 &
- java_pid=$!
- sleep 10
- timeout 115s frida -H 127.0.0.1:27042 -p "$app_pid" --realm=emulated -l research/observe_native.js -q -t 85 > research-original-results/frida-arm.txt 2>&1 &
- arm_pid=$!
- wait "$arm_pid" || true
- wait "$java_pid" || true
-else
- echo 'Original process exited during normal startup before Frida attach.' > research-original-results/frida-java.txt
-fi
-timeout 20s adb exec-out screencap -p > research-original-results/original-state.png
-timeout 20s adb logcat -d -v threadtime > research-original-results/logcat.txt
-timeout 20s adb pull /data/local/tmp/frida-original.log research-original-results/frida-server.txt || true
-timeout 20s adb pull /data/user/0/com.intsig.camscanner/files/docscan-research research-original-results/synthetic-outputs || true
+adb shell am force-stop com.intsig.camscanner
+# Synthetic input is placed in the fresh app sandbox, avoiding scoped-storage denial.
+adb shell mkdir -p /data/user/0/com.intsig.camscanner/files
+adb push /tmp/DocScan-Research-Input.png /data/user/0/com.intsig.camscanner/files/docscan-research-input.png
+owner=$(adb shell stat -c '%u:%g' /data/user/0/com.intsig.camscanner | tr -d '\r')
+[[ "$owner" =~ ^[0-9]+:[0-9]+$ ]]
+adb shell chown "$owner" /data/user/0/com.intsig.camscanner/files /data/user/0/com.intsig.camscanner/files/docscan-research-input.png
+adb shell restorecon -RF /data/user/0/com.intsig.camscanner/files
+timeout 190s python3 research/observe_original_startup.py > research-original-results/frida-startup.txt 2>&1 || true
 python3 - <<'PY'
 from pathlib import Path
 import json
 p=Path('research-original-results');events=[]
-for name in ['frida-java.txt','frida-arm.txt']:
+for name in ['frida-startup.txt']:
  if not (p/name).exists():continue
  for line in (p/name).read_text().splitlines():
   try: events.append(json.loads(line))
   except ValueError:pass
-summary={'apk_version':'7.28.0.2610220000','original_user_reference_version':'7.28.0.2610210000','signed_in':False,'network':'disabled','android_api':int(__import__('subprocess').check_output(['adb','shell','getprop','ro.build.version.sdk'],text=True).strip()),'hooks_ready':any(e.get('event')=='hooks_ready' for e in events),'java_calls':sum(e.get('event')=='java_return' for e in events),'native_calls':sum(e.get('event')=='arm_jni_return' for e in events),'fixture_done':any(e.get('event')=='fixture_done' for e in events),'fixtures':[e for e in events if e.get('event')=='fixture_result']}
+summary={'observation':'unmodified-official-reference','apk_version':'7.28.0.2610220000','original_user_reference_version':'7.28.0.2610210000','signed_in':False,'network':'disabled','android_api':int(__import__('subprocess').check_output(['adb','shell','getprop','ro.build.version.sdk'],text=True).strip()),'hooks_ready':any(e.get('event')=='hooks_ready' for e in events),'java_calls':sum(e.get('event')=='java_return' for e in events),'native_calls':sum(e.get('event')=='arm_jni_return' for e in events),'fixture_done':any(e.get('event')=='fixture_done' for e in events),'fixtures':[e for e in events if e.get('event')=='fixture_result']}
 (p/'events.json').write_text(json.dumps(events,indent=2));(p/'summary.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary))
-assert summary['hooks_ready'] and summary['fixture_done'], 'Original CamScanner did not complete the observed fixture path; inspect captured evidence'
+assert summary['hooks_ready'] and summary['fixture_done'] and len(summary['fixtures']) == 5, 'Original CamScanner did not complete the observed fixture path; inspect captured evidence'
 PY

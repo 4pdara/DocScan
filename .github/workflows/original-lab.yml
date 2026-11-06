@@ -2,22 +2,19 @@ name: Original CamScanner Frida observation
 on:
   push:
     branches: [rebuild/camscanner-reference]
-    paths: [research/original_android_lab.sh, .github/workflows/original-lab.yml]
+    paths: [research/original_android_lab.sh, research/observe_original_startup.py, research/observe_lifecycle.js, .github/workflows/original-lab.yml]
   workflow_dispatch:
 permissions:
   contents: read
-  actions: write
 jobs:
   original:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Stop superseded lab attempts from this task
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api -X POST repos/4pdara/DocScan/actions/runs/42145934099/cancel || true
-          gh api -X POST repos/4pdara/DocScan/actions/runs/42144840626/cancel || true
       - name: Reserve space for the ARM translation guest
         run: sudo rm -rf /usr/share/dotnet
       - uses: actions/checkout@v4
@@ -44,9 +41,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 8
+        timeout-minutes: 12
         with:
-          api-level: 35
+          api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           profile: pixel_2
@@ -57,5 +54,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: original-camscanner-frida-android-35
+          name: original-camscanner-frida-android-${{ matrix.api }}
           path: research-original-results/

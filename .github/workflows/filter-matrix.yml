@@ -48,6 +48,12 @@ jobs:
           curl -fL --retry 3 https://github.com/frida/frida/releases/download/17.26.0/frida-server-17.26.0-android-x86_64.xz -o /tmp/frida.xz
           echo '5507894927e23837d4099bcbfa026e9d227bfc47544a115971fd1a358fba7437  /tmp/frida.xz' | sha256sum -c -
           xz -dc /tmp/frida.xz > /tmp/frida-server
+      - name: Keep native build input for signing with the existing private research key
+        uses: actions/upload-artifact@v4
+        with:
+          name: Native-0.1.6-build-input-${{ matrix.api }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
