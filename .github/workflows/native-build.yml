@@ -1,0 +1,58 @@
+name: Native preview build input
+on:
+  push:
+    branches: [rebuild/camscanner-reference]
+    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, .github/workflows/native-build.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-preview-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Prepare existing private research inputs outside the source tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download native-v0.1.3-research --pattern DocScan-Native-0.1.3-debug.apk --dir /tmp/native-baseline
+          echo '6b9ad458d620295a28bdabc0e7db87829dda7bec16fbb73862de09605fc16a5a  /tmp/native-baseline/DocScan-Native-0.1.3-debug.apk' | sha256sum -c -
+          python3 - <<'PY'
+          import zipfile,pathlib
+          root=pathlib.Path('/tmp/native-build/arm64-v8a');root.mkdir(parents=True)
+          with zipfile.ZipFile('/tmp/native-baseline/DocScan-Native-0.1.3-debug.apk') as z:
+              for name in ['opencv','ncnn','MNN','CVNN','magicenhancer','imageprocessor']:
+                  filename='lib'+name+'.so';(root/filename).write_bytes(z.read('lib/arm64-v8a/'+filename))
+          PY
+      - name: Validate and compile the Native application
+        run: ./gradlew -PcamScannerNativeDir=/tmp/native-build testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Native-0.1.6-build-input
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-preview-build-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/

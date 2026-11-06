@@ -557,9 +557,9 @@ class RebuildFlowTest {
         compose.onNodeWithText(compose.activity.getString(R.string.save_jpeg)).assertIsDisplayed()
         compose.onNodeWithText(compose.activity.getString(R.string.source_export)).assertIsDisplayed()
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-        compose.waitForIdle()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("editor-export-sheet").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText(compose.activity.getString(R.string.gray)).performClick()
-        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val root = compose.onNodeWithTag("page-editor").fetchSemanticsNode().boundsInRoot
         val save = compose.onNodeWithTag("save-edit").fetchSemanticsNode().boundsInRoot
         var navBottom = 0
         compose.runOnUiThread { navBottom = ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0 }

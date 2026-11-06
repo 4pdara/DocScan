@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -116,15 +116,15 @@ fun LibraryScreen(
                     Text(stringResource(R.string.tools_tab), Modifier.padding(20.dp), style = MaterialTheme.typography.headlineSmall)
                     HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
                         onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
-                        onPdf = { entries.firstOrNull()?.let { onPdf(it.book.id) } ?: onScan() },
-                        onShare = { entries.firstOrNull()?.let { onShare(it.book.id) } ?: onScan() })
+                        onPdf = { entries.firstOrNull { it.pageCount > 0 }?.let { onPdf(it.book.id) } ?: onScan() },
+                        onShare = { entries.firstOrNull { it.pageCount > 0 }?.let { onShare(it.book.id) } ?: onScan() })
                 }
                 else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list"), contentPadding = PaddingValues(bottom = 96.dp)) {
                     if (section == "home" && !selection && !inTrash && search.isBlank()) item(key = "shortcuts") {
                         HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
                             onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
-                            onPdf = { entries.firstOrNull()?.let { onPdf(it.book.id) } ?: onScan() },
-                            onShare = { entries.firstOrNull()?.let { onShare(it.book.id) } ?: onScan() })
+                            onPdf = { entries.firstOrNull { it.pageCount > 0 }?.let { onPdf(it.book.id) } ?: onScan() },
+                            onShare = { entries.firstOrNull { it.pageCount > 0 }?.let { onShare(it.book.id) } ?: onScan() })
                     }
                     item(key = "heading") {
                         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +132,7 @@ fun LibraryScreen(
                                 Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
                             if (section == "home" && !selection) TextButton(onClick = ::files) {
                                 Text(stringResource(R.string.show_all), color = HomeMuted)
-                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, null, Modifier.size(17.dp), tint = HomeMuted)
+                                Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(17.dp), tint = HomeMuted)
                             }
                         }
                         if (inTrash) Text(stringResource(R.string.trash_hint), Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall)
@@ -146,7 +146,7 @@ fun LibraryScreen(
                         }
                     }
                     itemsIndexed(visible, key = { _, entry -> entry.book.id }) { index, entry ->
-                        RecentDocumentRow(store, entry, entry.book.id in selected, selection || inTrash,
+                        RecentDocumentRow(store, entry, entry.book.id in selected,
                             onOpen = { if (selection || inTrash) toggle(entry.book.id) else onOpen(entry.book.id) },
                             onSelect = { toggle(entry.book.id) })
                         if (index == 0 && section == "home" && !selection && !inTrash && search.isBlank() && entry.pageCount > 0) {
@@ -165,7 +165,7 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Boolean, selecting: Boolean, onOpen: () -> Unit, onSelect: () -> Unit) {
+private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Boolean, onOpen: () -> Unit, onSelect: () -> Unit) {
     val pages by remember(entry.book.id) { store.dao.pages(entry.book.id) }.collectAsState(emptyList())
     Row(Modifier.fillMaxWidth().background(if (checked) Color(0xFFE9F9F5) else Color.White)
         .combinedClickable(onClick = onOpen, onLongClick = onSelect).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {

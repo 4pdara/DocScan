@@ -83,7 +83,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         confirmButton = { TextButton(onClick = { onRename?.invoke(draftTitle.trim()); rename = false }, enabled = draftTitle.isNotBlank()) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
     val treatments = if (BuildConfig.CAMSCANNER_NATIVE) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD) else Treatment.entries.filter { !it.requiresReferenceEngine }
-    if (export) ModalBottomSheet(onDismissRequest = { export = false }) {
+    if (export) ModalBottomSheet(onDismissRequest = { export = false }, modifier = Modifier.testTag("editor-export-sheet")) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.export_scan), style = MaterialTheme.typography.titleLarge)
             TextButton(onClick = { export = false; onGallery(edit) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.PhotoLibrary, null); Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.save_gallery)) }
@@ -92,7 +92,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             TextButton(onClick = { export = false; onOriginal() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.source_export)) }
         }
     }
-    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
+    Scaffold(modifier = Modifier.testTag("page-editor"), snackbarHost = { SnackbarHost(snack) }, topBar = {
         TopAppBar(title = {
             if (title != null && onRename != null) TextButton(onClick = { draftTitle = title; rename = true }, enabled = !busy) {
                 Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -110,15 +110,15 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         })
     },
         bottomBar = {
-            Surface(shadowElevation = 6.dp) {
+            Surface(shadowElevation = 6.dp, shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)) {
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
                     when (tool) {
                         "filters" -> LazyRow(Modifier.fillMaxWidth().testTag("filter-strip"), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(treatments, key = { it.name }) { treatment ->
                                 val selected = edit.treatment == treatment
-                                Column(Modifier.width(82.dp).testTag("filter-${treatment.name}").selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Column(Modifier.width(82.dp).testTag("filter-${treatment.name}").selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).background(if (selected) ScanTeal else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     PagePicture(store, page, Modifier.size(72.dp, 82.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment), edge = 160)
-                                    Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+                                    Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp, bottom = 3.dp), color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                 }
                             }
                         }
@@ -151,6 +151,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                         EditorTool(R.string.crop, Icons.Outlined.Crop, tool == "crop", Modifier.weight(1f)) { tool = "crop"; original = false; zoom = 1f; pan = Offset.Zero }
                         EditorTool(if (tool == "adjust") R.string.filters else R.string.adjust, Icons.Outlined.Tune, tool == "adjust", Modifier.weight(1f)) { tool = if (tool == "adjust") "filters" else "adjust"; original = false }
                         Button(onClick = { onSave(edit) }, enabled = !busy, shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(contentColor = Color.White),
                             contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.height(50.dp).testTag("save-edit")) {
                             Icon(Icons.Outlined.Check, stringResource(R.string.save), Modifier.size(28.dp))
                         }
@@ -220,7 +221,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                         Icon(if (rtl) Icons.Outlined.ChevronLeft else Icons.Outlined.ChevronRight, stringResource(R.string.next_page))
                     }
                 }
-                FilledTonalButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop", shape = RoundedCornerShape(6.dp)) {
+                FilledTonalButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop", shape = RoundedCornerShape(6.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface)) {
                     Icon(Icons.Outlined.Compare, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text(stringResource(if (original) R.string.show_result else R.string.compare_original), style = MaterialTheme.typography.labelSmall)
                 }
@@ -233,7 +235,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
 private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     TextButton(onClick, modifier = modifier, contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(stringResource(label), color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     } }
 }
 
