@@ -77,9 +77,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
         else LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("document-pages"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
                 Column {
-                    Surface(Modifier.fillMaxWidth().clickable { onEdit(page) }, shadowElevation = 3.dp) {
-                        PagePicture(store, page, Modifier.fillMaxWidth().testTag("page-image-${page.id}"), naturalHeight = true, description = stringResource(R.string.page_number, index + 1))
-                    }
+
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { onEdit(page) }) { Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(stringResource(R.string.edit)) }
                         Spacer(Modifier.weight(1f))
@@ -88,6 +86,9 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                             IconButton(onClick = { onMove(page, 1) }, enabled = index < pages.lastIndex) { Icon(Icons.Outlined.KeyboardArrowDown, stringResource(R.string.move_down)) }
                         }
                         Text(stringResource(R.string.page_counter, index + 1, pages.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Surface(Modifier.fillMaxWidth().clickable { onEdit(page) }, shadowElevation = 3.dp) {
+                        PagePicture(store, page, Modifier.fillMaxWidth().testTag("page-image-${page.id}"), naturalHeight = true, description = stringResource(R.string.page_number, index + 1))
                     }
                 }
             }

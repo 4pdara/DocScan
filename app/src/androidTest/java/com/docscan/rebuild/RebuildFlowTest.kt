@@ -332,16 +332,18 @@ class RebuildFlowTest {
         val b = runBlocking { store.create("Selection B ${System.nanoTime()}") }
         compose.waitUntil(10000) { compose.onAllNodesWithText(a.title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.select_documents)).performClick()
-        compose.onNodeWithTag("select-${a.id}").performClick()
-        compose.onNodeWithTag("select-${b.id}").performClick()
+        compose.onNodeWithTag("library-list").performScrollToIndex(0)
+        compose.onNodeWithTag("select-${a.id}").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("select-${b.id}").assertIsDisplayed().performClick()
         screenshot("selection")
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.move_to_trash)).performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.book(a.id)!!.trashedAt != null && store.dao.book(b.id)!!.trashedAt != null } }
         compose.waitUntil(10000) { compose.onAllNodesWithContentDescription(compose.activity.getString(R.string.trash)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.trash)).performClick()
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.select_documents)).performClick()
-        compose.onNodeWithTag("select-${a.id}").performClick()
-        compose.onNodeWithTag("select-${b.id}").performClick()
+        compose.onNodeWithTag("library-list").performScrollToIndex(0)
+        compose.onNodeWithTag("select-${a.id}").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("select-${b.id}").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.restore)).performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.book(a.id)!!.trashedAt == null && store.dao.book(b.id)!!.trashedAt == null } }
     }

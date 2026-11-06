@@ -29,11 +29,14 @@ fun ScannerScreenTheme(dark: Boolean, content: @Composable () -> Unit) {
     val colors = if (dark) darkColorScheme(
         primary = ScanMint, onPrimary = Color(0xFF003F39), secondary = ScanMint,
         background = ScanCharcoal, surface = ScanCharcoal,
-        surfaceVariant = Color(0xFF2B2E2F), onSurfaceVariant = Color(0xFFD4DEDC)
+        surfaceVariant = Color(0xFF2B2E2F), onSurfaceVariant = Color(0xFFD4DEDC),
+        outline = Color(0xFF57615F), outlineVariant = Color(0xFF3C4543)
     ) else lightColorScheme(
         primary = ScanTeal, onPrimary = Color.White, secondary = ScanTeal,
         background = Color(0xFFF5F7F7), surface = Color.White,
-        primaryContainer = Color(0xFFDDF5F0), onPrimaryContainer = Color(0xFF004C45)
+        primaryContainer = Color(0xFFDDF5F0), onPrimaryContainer = Color(0xFF004C45),
+        surfaceVariant = Color(0xFFE9EEEE), onSurfaceVariant = Color(0xFF4C5C59),
+        outline = Color(0xFF9AA9A6), outlineVariant = Color(0xFFD6DFDD)
     )
     MaterialTheme(colorScheme = colors, content = content)
 }
