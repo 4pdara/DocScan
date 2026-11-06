@@ -38,7 +38,19 @@ def compressed_entry(apk, name):
     return data
 
 
-def restore(plan, baseline, payload, destination):
+def fallback_literals(plan, data):
+    spec = plan['fallback']
+    if len(data) != spec['size'] or hashlib.sha256(data).hexdigest() != spec['sha256']:
+        raise ValueError('Fallback transfer digest mismatch')
+    import io
+    with gzip.GzipFile(fileobj=io.BytesIO(data), mode='rb') as stream:
+        result = stream.read(spec['literal_size'] + 1)
+    if len(result) != spec['literal_size']:
+        raise ValueError('Fallback size mismatch')
+    return result
+
+
+def restore(plan, baseline, payload, destination, fallback=None):
     if payload.stat().st_size != plan['payload_size']:
         raise ValueError('Transfer size mismatch')
     if hashlib.sha256(payload.read_bytes()).hexdigest() != plan['payload_sha256']:
@@ -56,7 +68,12 @@ def restore(plan, baseline, payload, destination):
             if 'base_entry' in segment:
                 data = compressed_entry(baseline, segment['base_entry'])
                 if hashlib.sha256(data).hexdigest() != segment['sha256']:
-                    raise ValueError('Baseline differs for ' + segment['base_entry'])
+                    if fallback is None or 'fallback_offset' not in segment:
+                        raise ValueError('Baseline differs for ' + segment['base_entry'])
+                    start = segment['fallback_offset']
+                    data = fallback[start:start + segment['length']]
+                    if hashlib.sha256(data).hexdigest() != segment['sha256']:
+                        raise ValueError('Fallback differs for ' + segment['base_entry'])
             else:
                 start = segment['literal_offset']
                 if start < 0:
@@ -137,6 +154,7 @@ def main():
     parser.add_argument('--manifest', type=Path, default=Path('.github/native-release-0.1.3.json'))
     parser.add_argument('--baseline', type=Path, required=True)
     parser.add_argument('--local-payload', type=Path)
+    parser.add_argument('--local-fallback', type=Path)
     parser.add_argument('--output', type=Path, default=Path('release-output'))
     args = parser.parse_args()
     plan = json.loads(args.manifest.read_text())
@@ -144,7 +162,8 @@ def main():
         raise ValueError('Unexpected release artifact')
     args.output.mkdir(parents=True, exist_ok=True)
     if args.local_payload:
-        restore(plan, args.baseline, args.local_payload, args.output)
+        fallback = fallback_literals(plan, args.local_fallback.read_bytes()) if args.local_fallback else None
+        restore(plan, args.baseline, args.local_payload, args.output, fallback)
         return
     repository = os.environ['GITHUB_REPOSITORY']
     if repository != '4pdara/DocScan':
@@ -154,7 +173,9 @@ def main():
         raise ValueError('The exact app source has not passed its validation run')
     payload = args.output / 'native-transfer.gz'
     download_payload(plan, repository, payload)
-    apk, checksum = restore(plan, args.baseline, payload, args.output)
+    result = gh_json(f"repos/{repository}/git/blobs/{plan['fallback']['blob']}")
+    fallback = fallback_literals(plan, base64.b64decode(''.join(result['content'].split()), validate=True))
+    apk, checksum = restore(plan, args.baseline, payload, args.output, fallback)
     publish(plan, apk, checksum, repository)
 
 

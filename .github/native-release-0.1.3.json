@@ -35,7 +35,8 @@
     {
       "base_entry": "classes2.dex",
       "length": 46521,
-      "sha256": "c42c630913b40358e1cd6b3af2961f32059f68fc404e6ace628025c181b911a7"
+      "sha256": "c42c630913b40358e1cd6b3af2961f32059f68fc404e6ace628025c181b911a7",
+      "fallback_offset": 0
     },
     {
       "literal_offset": 266,
@@ -44,7 +45,8 @@
     {
       "base_entry": "classes4.dex",
       "length": 30725,
-      "sha256": "1cd1845e71dfc63158c70aee926c52e65d1f0d26d6f27fe88a364c0fda00fe71"
+      "sha256": "1cd1845e71dfc63158c70aee926c52e65d1f0d26d6f27fe88a364c0fda00fe71",
+      "fallback_offset": 46521
     },
     {
       "literal_offset": 210923,
@@ -53,7 +55,8 @@
     {
       "base_entry": "classes6.dex",
       "length": 13822,
-      "sha256": "c9032e4d4c32f906c1202cfcba6d59c78a25b1792d55bf3afb6c167793a4efbf"
+      "sha256": "c9032e4d4c32f906c1202cfcba6d59c78a25b1792d55bf3afb6c167793a4efbf",
+      "fallback_offset": 77246
     },
     {
       "literal_offset": 215242,
@@ -62,7 +65,8 @@
     {
       "base_entry": "classes8.dex",
       "length": 10713,
-      "sha256": "394277ff9940146aaca6e41a1da0305a00b2302d964c7e466d1952cad6543910"
+      "sha256": "394277ff9940146aaca6e41a1da0305a00b2302d964c7e466d1952cad6543910",
+      "fallback_offset": 91068
     },
     {
       "literal_offset": 216292,
@@ -80,7 +84,8 @@
     {
       "base_entry": "lib/arm64-v8a/libandroidx.graphics.path.so",
       "length": 10096,
-      "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6"
+      "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6",
+      "fallback_offset": 101781
     },
     {
       "literal_offset": 4528371,
@@ -98,7 +103,8 @@
     {
       "base_entry": "lib/arm64-v8a/libimage_processing_util_jni.so",
       "length": 32544,
-      "sha256": "f0e4611db0d6b68942d8ba6977519f3dd1cdbffa87b7fc16d8006696ba954af4"
+      "sha256": "f0e4611db0d6b68942d8ba6977519f3dd1cdbffa87b7fc16d8006696ba954af4",
+      "fallback_offset": 111877
     },
     {
       "literal_offset": 4536091,
@@ -116,7 +122,8 @@
     {
       "base_entry": "lib/arm64-v8a/libsurface_util_jni.so",
       "length": 4896,
-      "sha256": "6cb2eac3c68e6a82ce2a5ea5aba86749eb8c609914392e125f6cdfbc208992f8"
+      "sha256": "6cb2eac3c68e6a82ce2a5ea5aba86749eb8c609914392e125f6cdfbc208992f8",
+      "fallback_offset": 144421
     },
     {
       "literal_offset": 18705275,
@@ -125,7 +132,8 @@
     {
       "base_entry": "assets/licenses/OpenCV-LICENSE.txt",
       "length": 4430,
-      "sha256": "b2706a62b7ffa95ddaa48d322d21d2882dcfb5db048300ea18b177cbcff30cfd"
+      "sha256": "b2706a62b7ffa95ddaa48d322d21d2882dcfb5db048300ea18b177cbcff30cfd",
+      "fallback_offset": 149317
     },
     {
       "literal_offset": 18705339,
@@ -134,7 +142,8 @@
     {
       "base_entry": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
       "length": 2463,
-      "sha256": "0f8db605d63bf1d6d35fd647d592ac4e70c9a712ff5d1c2114c8d58a88b8228a"
+      "sha256": "0f8db605d63bf1d6d35fd647d592ac4e70c9a712ff5d1c2114c8d58a88b8228a",
+      "fallback_offset": 153747
     },
     {
       "literal_offset": 18808705,
@@ -143,7 +152,8 @@
     {
       "base_entry": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
       "length": 2834,
-      "sha256": "1f9538745cfd3209cc09ed451c198302aac3a1c5da41e87394377814b1bcc5ee"
+      "sha256": "1f9538745cfd3209cc09ed451c198302aac3a1c5da41e87394377814b1bcc5ee",
+      "fallback_offset": 156210
     },
     {
       "literal_offset": 18808798,
@@ -152,7 +162,8 @@
     {
       "base_entry": "res/drawable-xxhdpi-v4/abc_popup_background_mtrl_mult.9.png",
       "length": 2305,
-      "sha256": "e1a2b864d0114a8471662f8e30ffcbb2eb9ffd414d36239612def8c7792a450a"
+      "sha256": "e1a2b864d0114a8471662f8e30ffcbb2eb9ffd414d36239612def8c7792a450a",
+      "fallback_offset": 159044
     },
     {
       "literal_offset": 18821244,
@@ -161,7 +172,8 @@
     {
       "base_entry": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
       "length": 2505,
-      "sha256": "c367b73a33a933429e1d57d33fcfbf243f0274e7cdba221a0b983ee15b5baca9"
+      "sha256": "c367b73a33a933429e1d57d33fcfbf243f0274e7cdba221a0b983ee15b5baca9",
+      "fallback_offset": 161349
     },
     {
       "literal_offset": 18833151,
@@ -170,7 +182,8 @@
     {
       "base_entry": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
       "length": 2816,
-      "sha256": "b4af73e52266be570c2c163d987e64348066db311b41e7a382000529c0136c6b"
+      "sha256": "b4af73e52266be570c2c163d987e64348066db311b41e7a382000529c0136c6b",
+      "fallback_offset": 163854
     },
     {
       "literal_offset": 18833242,
@@ -179,7 +192,8 @@
     {
       "base_entry": "kotlin/kotlin.kotlin_builtins",
       "length": 5342,
-      "sha256": "d94711e75a621fa0423ad249cf2ff46e0db46a6d79b8351b29808614848e188b"
+      "sha256": "d94711e75a621fa0423ad249cf2ff46e0db46a6d79b8351b29808614848e188b",
+      "fallback_offset": 166670
     },
     {
       "literal_offset": 19659289,
@@ -262,5 +276,11 @@
       "size": 399680,
       "sha": "495d36c39ccc0cd2bfecd1029d6e6b7766ec28d8"
     }
-  ]
+  ],
+  "fallback": {
+    "size": 140818,
+    "literal_size": 172012,
+    "sha256": "3e3321670a84aa1be2459c39867ce156516fcfc03921544997eda4a2321de130",
+    "blob": "bbff1c81a6908f4fdb2016ece3981aa9a6c10c95"
+  }
 }
