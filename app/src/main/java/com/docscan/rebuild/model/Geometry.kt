@@ -35,7 +35,8 @@ data class Frame(val points: List<Vertex>) {
 
 enum class Treatment(val requiresReferenceEngine: Boolean = false) {
     ORIGINAL, COLOR, GRAY, INK, PAPER,
-    NATIVE_MAGIC_COLOR(true), NATIVE_NO_SHADOW(true), NATIVE_INVERT(true), NATIVE_PRO_LOCAL(true)
+    NATIVE_MAGIC_COLOR(true), NATIVE_NO_SHADOW(true), NATIVE_INVERT(true), NATIVE_PRO_LOCAL(true),
+    LIGHTEN, ECO, NATIVE_BOARD(true), NATIVE_BOARD_PAPER(true), NATIVE_INVERT_BOARD(true)
 }
 data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null)
 
@@ -77,4 +78,5 @@ class CaptureStability {
         }
     }
 }
+
 

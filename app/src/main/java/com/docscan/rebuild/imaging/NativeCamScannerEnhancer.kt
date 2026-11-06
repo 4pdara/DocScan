@@ -1,6 +1,7 @@
 package com.docscan.rebuild.imaging
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import com.docscan.rebuild.BuildConfig
 import com.docscan.rebuild.model.Treatment
 import com.intsig.nativelib.MagicEnhancer
@@ -32,8 +33,26 @@ internal object NativeCamScannerEnhancer {
                 checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmap(bitmap, 1))
             }
             Treatment.NATIVE_PRO_LOCAL -> checkStatus(MagicEnhancer.ImageSilverBulletBitmap(bitmap, 1, 1, 1))
+            Treatment.NATIVE_BOARD -> board(bitmap, paper = false)
+            Treatment.NATIVE_BOARD_PAPER -> board(bitmap, paper = true)
+            Treatment.NATIVE_INVERT_BOARD -> {
+                check(imageProcessorLoaded)
+                checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmap(bitmap, 1))
+                board(bitmap, paper = false)
+            }
             else -> error("This treatment does not use the reference engine")
         }
+    }
+
+    private fun board(bitmap: Bitmap, paper: Boolean) {
+        check(imageProcessorLoaded)
+        // PadLocalModelEnhance uses modes 2/3. These flat mattes are ours;
+        // no reference texture, drawable or model is copied into the application.
+        val background = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        try {
+            background.eraseColor(if (paper) Color.rgb(246, 243, 232) else Color.rgb(40, 74, 70))
+            checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmapBG(bitmap, background, if (paper) 3 else 2))
+        } finally { background.recycle() }
     }
 
     private fun checkStatus(status: Int) {
@@ -54,3 +73,4 @@ internal object NativeCamScannerEnhancer {
         }
     }
 }
+

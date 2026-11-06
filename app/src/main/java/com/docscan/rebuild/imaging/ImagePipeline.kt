@@ -71,14 +71,28 @@ object ImagePipeline {
             when (recipe.treatment) {
                 Treatment.ORIGINAL -> current.copyTo(result)
                 Treatment.COLOR -> current.convertTo(result, -1, 1.1, -7.0)
+                Treatment.LIGHTEN -> {
+                    // Independent local Lighten equivalent; not ScannerEngine mode 15.
+                    val curve = Mat(1, 256, CvType.CV_8UC1)
+                    try {
+                        curve.put(0, 0, ByteArray(256) { (255.0 * (it / 255.0).pow(.75)).roundToInt().toByte() })
+                        Core.LUT(current, curve, result)
+                    } finally { curve.release() }
+                }
                 Treatment.GRAY -> Imgproc.cvtColor(current, result, Imgproc.COLOR_RGBA2GRAY)
-                Treatment.INK -> {
+                Treatment.INK, Treatment.ECO -> {
                     val gray = Mat()
-                    try { Imgproc.cvtColor(current, gray, Imgproc.COLOR_RGBA2GRAY); Imgproc.adaptiveThreshold(gray, result, 255.0, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 51, 13.0) }
+                    try {
+                        Imgproc.cvtColor(current, gray, Imgproc.COLOR_RGBA2GRAY)
+                        Imgproc.adaptiveThreshold(gray, result, 255.0, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 51, 13.0)
+                        // Grey ink on white retains thin strokes; this is our Eco equivalent.
+                        if (recipe.treatment == Treatment.ECO) result.convertTo(result, -1, .82, 255.0 * .18)
+                    }
                     finally { gray.release() }
                 }
                 Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW,
-                Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL -> {
+                Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.NATIVE_BOARD,
+                Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD -> {
                     if (BuildConfig.CAMSCANNER_NATIVE || recipe.treatment.requiresReferenceEngine) {
                         val work = Bitmap.createBitmap(current.cols(), current.rows(), Bitmap.Config.ARGB_8888)
                         try {
@@ -170,4 +184,5 @@ object ImagePipeline {
         } finally { contours.forEach { it.release() }; blurred.release(); edges.release(); mask.release(); hierarchy.release(); kernel.release() }
     }
 }
+
 

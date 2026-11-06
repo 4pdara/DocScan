@@ -49,6 +49,11 @@ private fun Treatment.label(): Int = when (this) {
     Treatment.NATIVE_NO_SHADOW -> R.string.native_no_shadow
     Treatment.NATIVE_INVERT -> R.string.native_invert
     Treatment.NATIVE_PRO_LOCAL -> R.string.native_pro_local
+    Treatment.LIGHTEN -> R.string.lighten
+    Treatment.ECO -> R.string.eco
+    Treatment.NATIVE_BOARD -> R.string.native_board
+    Treatment.NATIVE_BOARD_PAPER -> R.string.native_board_paper
+    Treatment.NATIVE_INVERT_BOARD -> R.string.native_invert_board
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,7 +68,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     var zoom by remember { mutableFloatStateOf(1f) }; var pan by remember { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
     BackHandler(!busy) { onBack() }
-    val treatments = if (BuildConfig.CAMSCANNER_NATIVE) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.GRAY, Treatment.INK) else Treatment.entries.filter { !it.requiresReferenceEngine }
+    val treatments = if (BuildConfig.CAMSCANNER_NATIVE) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD) else Treatment.entries.filter { !it.requiresReferenceEngine }
     if (export) ModalBottomSheet(onDismissRequest = { export = false }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.export_scan), style = MaterialTheme.typography.titleLarge)
@@ -174,4 +179,5 @@ private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.Ima
         Text(stringResource(label), style = MaterialTheme.typography.labelSmall)
     } }
 }
+
 

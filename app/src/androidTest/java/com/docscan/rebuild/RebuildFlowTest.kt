@@ -157,6 +157,44 @@ class RebuildFlowTest {
         } finally { input.recycle() }
     }
 
+    @Test fun lightenAndEcoKeepReadableStrokesResolutionAndOriginal(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, ScanDatabase::class.java).build()
+        val store = ScanStore(context, db); val book = store.create("Local filters")
+        val input = Bitmap.createBitmap(320, 480, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
+        val ink = Paint().apply { color = Color.rgb(25, 30, 20) }
+        canvas.drawRect(32f, 96f, 288f, 110f, ink)
+        val file = File(context.cacheDir, "local-filter-source.png")
+        file.outputStream().use { input.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val page = store.captured(book.id, file); val digest = hash(store.source(page))
+        val before = IntArray(320 * 480).also { input.getPixels(it, 0, 320, 0, 0, 320, 480) }
+        try {
+            for (treatment in listOf(Treatment.LIGHTEN, Treatment.ECO)) {
+                val recipe = EditRecipe(treatment = treatment)
+                store.save(page, recipe)
+                assertEquals(recipe, store.dao.page(page.id)!!.edit())
+                val output = ImagePipeline.render(store.source(page), recipe)
+                try {
+                    assertEquals(320, output.width); assertEquals(480, output.height)
+                    val paper = output.getPixel(160, 60); val text = output.getPixel(160, 102)
+                    assertEquals(255, Color.alpha(paper)); assertEquals(255, Color.alpha(text))
+                    assertTrue("Text contrast lost", Color.red(paper) - Color.red(text) > 100)
+                    if (treatment == Treatment.LIGHTEN) {
+                        assertTrue(Color.red(paper) > 155)
+                        assertTrue("Colour removed", Color.green(paper) > Color.red(paper))
+                    } else {
+                        assertEquals(Color.WHITE, paper)
+                        assertEquals(Color.red(text), Color.green(text)); assertEquals(Color.red(text), Color.blue(text))
+                        assertTrue("Eco ink should retain the stroke in grey", Color.red(text) in 1..100)
+                    }
+                } finally { output.recycle() }
+                assertEquals(digest, hash(store.source(page)))
+            }
+            val after = IntArray(320 * 480).also { input.getPixels(it, 0, 320, 0, 0, 320, 480) }
+            assertArrayEquals(before, after)
+        } finally { input.recycle(); store.source(page).delete(); file.delete(); db.close() }
+    }
+
     @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
         Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
         ImagePipeline.ensureAvailable()
@@ -204,21 +242,27 @@ class RebuildFlowTest {
         val source = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(source)
         val fixtureKind = args.getString("researchFixture", "gradient")
-        require(fixtureKind in setOf("flat", "gradient"))
-        if (fixtureKind == "flat") canvas.drawColor(Color.rgb(155, 165, 145)) else {
+        require(fixtureKind in setOf("flat", "gradient", "legacy", "board", "blank"))
+        if (fixtureKind == "board") canvas.drawColor(Color.rgb(40, 65, 50))
+        else if (fixtureKind == "blank") canvas.drawColor(Color.WHITE)
+        else if (fixtureKind in setOf("flat", "legacy")) canvas.drawColor(Color.rgb(155, 165, 145)) else {
             val background = Paint().apply { shader = LinearGradient(0f, 0f, width.toFloat(), 0f, Color.rgb(130, 138, 118), Color.rgb(240, 248, 228), Shader.TileMode.CLAMP) }
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), background)
         }
-        val paint = Paint().apply { color = Color.rgb(25, 30, 20) }
-        repeat(8) { canvas.drawRect(width * .1f, height * (.1f + it * .1f), width * .9f, height * (.12f + it * .1f), paint) }
+        val paint = Paint().apply { color = if (fixtureKind == "board") Color.rgb(240, 242, 230) else Color.rgb(25, 30, 20) }
+        if (fixtureKind == "legacy") {
+            require(width == 96)
+            repeat(8) { canvas.drawRect(10f, 12f + it * 12, 85f, 15f + it * 12, paint) }
+        } else if (fixtureKind != "blank") repeat(8) { canvas.drawRect(width * .1f, height * (.1f + it * .1f), width * .9f, height * (.12f + it * .1f), paint) }
         val before = IntArray(width * height).also { source.getPixels(it, 0, width, 0, 0, width, height) }
         val failures = mutableListOf<String>()
         try {
             for (treatment in selected) {
                 val start = android.os.SystemClock.elapsedRealtime()
                 android.util.Log.i("DocScanFilterProbe", org.json.JSONObject().put("boundary", boundary).put("event", "case_start").put("treatment", treatment.name).put("width", width).put("height", height).toString())
-                val row = org.json.JSONObject().put("fixture", fixtureKind).put("shadow_class", com.intsig.nativelib.MagicEnhancer.classifyShadowTypeBitmap(source)).put("boundary", boundary).put("event", "case_result").put("treatment", treatment.name).put("width", width).put("height", height)
+                val row = org.json.JSONObject().put("fixture", fixtureKind).put("boundary", boundary).put("event", "case_result").put("treatment", treatment.name).put("width", width).put("height", height)
                 try {
+                    if (args.getString("researchClassify", "true") == "true") row.put("shadow_class", com.intsig.nativelib.MagicEnhancer.classifyShadowTypeBitmap(source))
                     val forcedShadowType = args.getString("researchShadowType")?.toIntOrNull()?.also { require(it in 1..3) }
                     val output = if (forcedShadowType != null && treatment == Treatment.NATIVE_NO_SHADOW) {
                         val copy = source.copy(Bitmap.Config.ARGB_8888, true)
@@ -237,6 +281,10 @@ class RebuildFlowTest {
                         val actual = IntArray(width * height).also { output.getPixels(it, 0, width, 0, 0, width, height) }
                         assertTrue("Filter had no effect", actual.indices.any { actual[it] != before[it] })
                         assertTrue("Output alpha changed", actual.all { Color.alpha(it) == 255 })
+                        val outputDir = File(context.getExternalFilesDir(null), "filter-probe").apply { mkdirs() }
+                        val shadowSuffix = forcedShadowType?.toString() ?: "auto"
+                        File(outputDir, "$boundary-$fixtureKind-$width-${treatment.name}-$shadowSuffix.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        row.put("pixel_sha256", MessageDigest.getInstance("SHA-256").digest(java.nio.ByteBuffer.allocate(actual.size * 4).apply { actual.forEach { putInt(it) } }.array()).joinToString("") { "%02x".format(it.toInt() and 255) })
                         row.put("passed", true)
                     } finally { output.recycle() }
                 } catch (failure: Throwable) {

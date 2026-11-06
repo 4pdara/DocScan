@@ -93,6 +93,11 @@
     <string name="native_no_shadow">ללא צללים</string>
     <string name="native_invert">היפוך צבעים</string>
     <string name="native_pro_local">Pro מקומי</string>
+    <string name="lighten">הבהרה</string>
+    <string name="eco">חיסכון בדיו</string>
+    <string name="native_board">לוח</string>
+    <string name="native_board_paper">לוח לנייר</string>
+    <string name="native_invert_board">לוח הפוך</string>
     <string name="my_documents">המסמכים שלי</string>
     <string name="preview_label">ניסוי</string>
     <string name="selected_count">%1$d נבחרו</string>
@@ -103,4 +108,5 @@
     <string name="capture_batch">קבוצה</string>
     <string name="compare_original">השוואה למקור</string>
 </resources>
+
 

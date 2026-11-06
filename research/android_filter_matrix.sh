@@ -11,24 +11,29 @@ timeout 90s adb install -r app/build/outputs/apk/androidTest/debug/app-debug-and
 component='com.docscan.rebuild.csnative.test/com.docscan.rebuild.LocaleTestRunner'
 test_class='com.docscan.rebuild.RebuildFlowTest#referenceNativeIsolatedMatrix'
 run_case() {
- local boundary=$1 width=$2 treatments=$3 name=$4 fixture=${5:-gradient} shadow_type=${6:-}
+ local boundary=$1 width=$2 treatments=$3 name=$4 fixture=${5:-gradient} shadow_type=${6:-} classify=${7:-true}
  local extras=()
  if [[ -n "$shadow_type" ]]; then extras=(-e researchShadowType "$shadow_type"); fi
  timeout 15s adb shell am force-stop com.docscan.rebuild.csnative || true
  adb logcat -c
- timeout 120s adb shell am instrument -w -r -e class "$test_class" -e researchTreatments "$treatments" -e researchBoundary "$boundary" -e researchWidth "$width" -e researchFixture "$fixture" "${extras[@]}" "$component" > "research-matrix/$name.instrumentation.txt" 2>&1 || true
+ timeout 120s adb shell am instrument -w -r -e class "$test_class" -e researchTreatments "$treatments" -e researchBoundary "$boundary" -e researchWidth "$width" -e researchFixture "$fixture" -e researchClassify "$classify" "${extras[@]}" "$component" > "research-matrix/$name.instrumentation.txt" 2>&1 || true
  timeout 20s adb logcat -d -v threadtime > "research-matrix/$name.logcat.txt" || true
  echo "CASE $name"; tail -4 "research-matrix/$name.instrumentation.txt"
 }
 for boundary in direct pipeline; do
- for treatment in PAPER NATIVE_MAGIC_COLOR NATIVE_NO_SHADOW NATIVE_INVERT NATIVE_PRO_LOCAL; do
+ for treatment in PAPER NATIVE_MAGIC_COLOR NATIVE_NO_SHADOW NATIVE_INVERT NATIVE_PRO_LOCAL NATIVE_BOARD NATIVE_BOARD_PAPER NATIVE_INVERT_BOARD; do
   run_case "$boundary" 96 "$treatment" "$boundary-96-$treatment"
  done
  run_case "$boundary" 320 NATIVE_NO_SHADOW "$boundary-320-NATIVE_NO_SHADOW"
  run_case "$boundary" 96 NATIVE_NO_SHADOW "$boundary-flat-noshadow" flat
  for shadow in 2 3; do run_case "$boundary" 96 NATIVE_NO_SHADOW "$boundary-flat-shadow$shadow" flat "$shadow"; done
- run_case "$boundary" 96 PAPER,NATIVE_MAGIC_COLOR,NATIVE_NO_SHADOW,NATIVE_INVERT,NATIVE_PRO_LOCAL "$boundary-sequence"
+ run_case "$boundary" 96 NATIVE_NO_SHADOW "$boundary-legacy" legacy
+ run_case "$boundary" 96 NATIVE_NO_SHADOW "$boundary-legacy-no-classifier" legacy '' false
+ run_case "$boundary" 96 NATIVE_NO_SHADOW "$boundary-gradient-no-classifier" gradient '' false
+ run_case "$boundary" 320 NATIVE_BOARD,NATIVE_BOARD_PAPER,NATIVE_INVERT_BOARD "$boundary-board" board
+ run_case "$boundary" 96 PAPER,NATIVE_MAGIC_COLOR,NATIVE_NO_SHADOW,NATIVE_INVERT,NATIVE_PRO_LOCAL,NATIVE_BOARD,NATIVE_BOARD_PAPER,NATIVE_INVERT_BOARD "$boundary-sequence"
 done
+run_case pipeline 1280 NATIVE_NO_SHADOW full-resolution-noshadow
 # Attach both Java and ARM observers to a clean, direct JNI invocation.
 timeout 60s adb push /tmp/frida-server /data/local/tmp/frida-server
 adb shell chmod 755 /data/local/tmp/frida-server
@@ -55,6 +60,7 @@ if [[ -n "$app_pid" ]]; then
  wait "$arm_pid" || true
 fi
 timeout 20s adb logcat -d -v threadtime > research-matrix/frida.logcat.txt || true
+timeout 60s adb pull /sdcard/Android/data/com.docscan.rebuild.csnative/files/filter-probe research-matrix/images || true
 python3 - <<'PY'
 from pathlib import Path
 import json

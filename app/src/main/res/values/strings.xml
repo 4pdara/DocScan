@@ -93,6 +93,11 @@
     <string name="native_no_shadow">No Shadow</string>
     <string name="native_invert">Invert</string>
     <string name="native_pro_local">Local Pro</string>
+    <string name="lighten">Lighten</string>
+    <string name="eco">Eco ink</string>
+    <string name="native_board">Board</string>
+    <string name="native_board_paper">Board to paper</string>
+    <string name="native_invert_board">Inverted board</string>
     <string name="my_documents">My documents</string>
     <string name="preview_label">Preview</string>
     <string name="selected_count">%1$d selected</string>
@@ -103,4 +108,5 @@
     <string name="capture_batch">Batch</string>
     <string name="compare_original">Compare original</string>
 </resources>
+
 
