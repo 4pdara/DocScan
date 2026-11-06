@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p research-matrix
+: > research-matrix/expected-cases.txt
 adb root
 adb wait-for-device
 adb shell getprop ro.build.version.sdk > research-matrix/api.txt
@@ -14,9 +15,10 @@ run_case() {
  local boundary=$1 width=$2 treatments=$3 name=$4 fixture=${5:-gradient} shadow_type=${6:-} classify=${7:-true}
  local extras=()
  if [[ -n "$shadow_type" ]]; then extras=(-e researchShadowType "$shadow_type"); fi
+ echo "$name|$treatments" >> research-matrix/expected-cases.txt
  timeout 15s adb shell am force-stop com.docscan.rebuild.csnative || true
  adb logcat -c
- timeout 120s adb shell am instrument -w -r -e class "$test_class" -e researchTreatments "$treatments" -e researchBoundary "$boundary" -e researchWidth "$width" -e researchFixture "$fixture" -e researchClassify "$classify" "${extras[@]}" "$component" > "research-matrix/$name.instrumentation.txt" 2>&1 || true
+ timeout 120s adb shell am instrument -w -r -e class "$test_class" -e researchCaseId "$name" -e researchTreatments "$treatments" -e researchBoundary "$boundary" -e researchWidth "$width" -e researchFixture "$fixture" -e researchClassify "$classify" "${extras[@]}" "$component" > "research-matrix/$name.instrumentation.txt" 2>&1 || true
  timeout 20s adb logcat -d -v threadtime > "research-matrix/$name.logcat.txt" || true
  echo "CASE $name"; tail -4 "research-matrix/$name.instrumentation.txt"
 }
@@ -41,7 +43,8 @@ timeout 15s adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-matr
 adb forward tcp:27042 tcp:27042
 adb shell am force-stop com.docscan.rebuild.csnative
 adb logcat -c
-timeout 140s adb shell am instrument -w -r -e class "$test_class" -e researchTreatments NATIVE_NO_SHADOW -e researchBoundary direct -e researchWidth 320 -e researchDelayMs 30000 "$component" > research-matrix/frida.instrumentation.txt 2>&1 &
+echo 'frida|NATIVE_NO_SHADOW' >> research-matrix/expected-cases.txt
+timeout 140s adb shell am instrument -w -r -e class "$test_class" -e researchCaseId frida -e researchTreatments NATIVE_NO_SHADOW -e researchBoundary direct -e researchWidth 320 -e researchDelayMs 30000 "$component" > research-matrix/frida.instrumentation.txt 2>&1 &
 instrument_pid=$!
 app_pid=''
 for attempt in $(seq 1 30); do
@@ -63,17 +66,24 @@ timeout 20s adb logcat -d -v threadtime > research-matrix/frida.logcat.txt || tr
 timeout 60s adb pull /sdcard/Android/data/com.docscan.rebuild.csnative/files/filter-probe research-matrix/images || true
 python3 - <<'PY'
 from pathlib import Path
-import json
+import json,collections
 root=Path('research-matrix');cases=[]
 for log in root.glob('*.logcat.txt'):
  for line in log.read_text(errors='replace').splitlines():
   if 'DocScanFilterProbe' not in line or '{' not in line:continue
   try: row=json.loads(line[line.index('{'):])
   except ValueError:continue
+  if row.get('case_id') != log.name.removesuffix('.logcat.txt'):continue
   row['case_file']=log.name;cases.append(row)
 (root/'events.json').write_text(json.dumps(cases,indent=2))
 results=[r for r in cases if r.get('event')=='case_result']
 (root/'summary.json').write_text(json.dumps(results,indent=2));print(json.dumps(results,indent=2))
 assert results, 'No Native cases executed'
+for line in (root/'expected-cases.txt').read_text().splitlines():
+ name,treatments=line.split('|')
+ actual=[r for r in results if r['case_id']==name]
+ assert collections.Counter(r['treatment'] for r in actual)==collections.Counter(treatments.split(',')), 'Missing/duplicate filter result: '+name
+ instrumentation=(root/(name+'.instrumentation.txt')).read_text()
+ assert 'OK (1 test)' in instrumentation, 'Instrumentation did not pass: '+name
 assert all(r.get('passed') and r.get('source_preserved') for r in results), 'Some Native matrix cases failed; inspect saved results'
 PY

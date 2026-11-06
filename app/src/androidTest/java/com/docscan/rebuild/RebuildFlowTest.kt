@@ -228,6 +228,8 @@ class RebuildFlowTest {
     @Test fun referenceNativeIsolatedMatrix() {
         Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
         val args = androidx.test.platform.app.InstrumentationRegistry.getArguments()
+        val caseId = args.getString("researchCaseId", "manual")
+        require(caseId.matches(Regex("[A-Za-z0-9_-]{1,100}")))
         val allowed = listOf(Treatment.PAPER) + Treatment.entries.filter { it.requiresReferenceEngine }
         val selected = args.getString("researchTreatments")?.split(",")?.map { Treatment.valueOf(it) } ?: allowed
         require(selected.isNotEmpty() && selected.all { it in allowed })
@@ -236,9 +238,9 @@ class RebuildFlowTest {
         val boundary = args.getString("researchBoundary", "pipeline")
         require(boundary in setOf("pipeline", "direct"))
         if (boundary == "pipeline") ImagePipeline.ensureAvailable()
-        listOf("opencv", "ncnn", "MNN", "CVNN", "magicenhancer").forEach(System::loadLibrary)
         val delay = args.getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
         if (delay > 0) android.os.SystemClock.sleep(delay)
+        listOf("opencv", "ncnn", "MNN", "CVNN", "magicenhancer").forEach(System::loadLibrary)
         val source = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(source)
         val fixtureKind = args.getString("researchFixture", "gradient")
@@ -259,8 +261,8 @@ class RebuildFlowTest {
         try {
             for (treatment in selected) {
                 val start = android.os.SystemClock.elapsedRealtime()
-                android.util.Log.i("DocScanFilterProbe", org.json.JSONObject().put("boundary", boundary).put("event", "case_start").put("treatment", treatment.name).put("width", width).put("height", height).toString())
-                val row = org.json.JSONObject().put("fixture", fixtureKind).put("boundary", boundary).put("event", "case_result").put("treatment", treatment.name).put("width", width).put("height", height)
+                android.util.Log.i("DocScanFilterProbe", org.json.JSONObject().put("case_id", caseId).put("boundary", boundary).put("event", "case_start").put("treatment", treatment.name).put("width", width).put("height", height).toString())
+                val row = org.json.JSONObject().put("case_id", caseId).put("fixture", fixtureKind).put("boundary", boundary).put("event", "case_result").put("treatment", treatment.name).put("width", width).put("height", height)
                 try {
                     if (args.getString("researchClassify", "true") == "true") row.put("shadow_class", com.intsig.nativelib.MagicEnhancer.classifyShadowTypeBitmap(source))
                     val forcedShadowType = args.getString("researchShadowType")?.toIntOrNull()?.also { require(it in 1..3) }
@@ -283,7 +285,7 @@ class RebuildFlowTest {
                         assertTrue("Output alpha changed", actual.all { Color.alpha(it) == 255 })
                         val outputDir = File(context.getExternalFilesDir(null), "filter-probe").apply { mkdirs() }
                         val shadowSuffix = forcedShadowType?.toString() ?: "auto"
-                        File(outputDir, "$boundary-$fixtureKind-$width-${treatment.name}-$shadowSuffix.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        File(outputDir, "$caseId-${treatment.name}-$shadowSuffix.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         row.put("pixel_sha256", MessageDigest.getInstance("SHA-256").digest(java.nio.ByteBuffer.allocate(actual.size * 4).apply { actual.forEach { putInt(it) } }.array()).joinToString("") { "%02x".format(it.toInt() and 255) })
                         row.put("passed", true)
                     } finally { output.recycle() }
