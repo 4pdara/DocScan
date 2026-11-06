@@ -16,7 +16,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh api -X POST repos/4pdara/DocScan/actions/runs/42145934099/cancel || true
           gh api -X POST repos/4pdara/DocScan/actions/runs/42144840626/cancel || true
+      - name: Reserve space for the ARM translation guest
+        run: sudo rm -rf /usr/share/dotnet
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
@@ -47,6 +50,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 300
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
           script: bash research/original_android_lab.sh
       - uses: actions/upload-artifact@v4
