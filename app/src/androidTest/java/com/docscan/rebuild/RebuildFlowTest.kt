@@ -266,12 +266,16 @@ class RebuildFlowTest {
                 try {
                     if (args.getString("researchClassify", "true") == "true") row.put("shadow_class", com.intsig.nativelib.MagicEnhancer.classifyShadowTypeBitmap(source))
                     val forcedShadowType = args.getString("researchShadowType")?.toIntOrNull()?.also { require(it in 1..3) }
+                    val expectedNativeStatus = args.getString("researchExpectedNativeStatus")?.toIntOrNull()
+                    require(expectedNativeStatus == null || forcedShadowType != null)
                     val output = if (forcedShadowType != null && treatment == Treatment.NATIVE_NO_SHADOW) {
                         val copy = source.copy(Bitmap.Config.ARGB_8888, true)
                         try {
                             val status = com.intsig.nativelib.MagicEnhancer.deshadowBitmap(copy, forcedShadowType)
                             row.put("native_status", status).put("forced_shadow_type", forcedShadowType)
-                            check(status >= 0) { "Forced shadow processing failed: $status" }; copy
+                            if (expectedNativeStatus != null) assertEquals(expectedNativeStatus, status)
+                            else check(status >= 0) { "Forced shadow processing failed: $status" }
+                            copy
                         } catch (failure: Throwable) { copy.recycle(); throw failure }
                     } else if (boundary == "pipeline") ImagePipeline.transform(source, EditRecipe(treatment = treatment)) else {
                         val copy = source.copy(Bitmap.Config.ARGB_8888, true)
@@ -281,7 +285,10 @@ class RebuildFlowTest {
                     try {
                         assertEquals(width, output.width); assertEquals(height, output.height)
                         val actual = IntArray(width * height).also { output.getPixels(it, 0, width, 0, 0, width, height) }
-                        assertTrue("Filter had no effect", actual.indices.any { actual[it] != before[it] })
+                        if (expectedNativeStatus != null && expectedNativeStatus < 0) {
+                            assertArrayEquals("Rejected native call changed its working bitmap", before, actual)
+                            row.put("expected_rejection", true)
+                        } else assertTrue("Filter had no effect", actual.indices.any { actual[it] != before[it] })
                         assertTrue("Output alpha changed", actual.all { Color.alpha(it) == 255 })
                         val outputDir = File(context.getExternalFilesDir(null), "filter-probe").apply { mkdirs() }
                         val shadowSuffix = forcedShadowType?.toString() ?: "auto"

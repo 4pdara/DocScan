@@ -27,7 +27,7 @@ internal object NativeCamScannerEnhancer {
         when (treatment) {
             Treatment.PAPER -> deshadowWithSession(bitmap, 1, strictZero = true)
             Treatment.NATIVE_MAGIC_COLOR -> deshadowWithSession(bitmap, 3, strictZero = false)
-            Treatment.NATIVE_NO_SHADOW -> checkStatus(MagicEnhancer.deshadowBitmap(bitmap, 1))
+            Treatment.NATIVE_NO_SHADOW -> removeShadow(bitmap)
             Treatment.NATIVE_INVERT -> {
                 check(imageProcessorLoaded)
                 checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmap(bitmap, 1))
@@ -50,9 +50,19 @@ internal object NativeCamScannerEnhancer {
         // no reference texture, drawable or model is copied into the application.
         val background = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
         try {
-            background.eraseColor(if (paper) Color.rgb(246, 243, 232) else Color.rgb(40, 74, 70))
+            background.eraseColor(if (paper) Color.WHITE else Color.rgb(40, 74, 70))
             checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmapBG(bitmap, background, if (paper) 3 else 2))
         } finally { background.recycle() }
+    }
+
+    private fun removeShadow(bitmap: Bitmap) {
+        val status = MagicEnhancer.deshadowBitmap(bitmap, 1)
+        if (status == -1 && MagicEnhancer.classifyShadowTypeBitmap(bitmap) == 4) {
+            // The verified JNI wrapper returns before writing pixels in this path.
+            // Retry the same native shadow processor with its supported explicit
+            // illumination path; never substitute PAPER or ignore a failed result.
+            checkStatus(MagicEnhancer.deshadowBitmap(bitmap, 2))
+        } else checkStatus(status)
     }
 
     private fun checkStatus(status: Int) {
