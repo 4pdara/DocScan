@@ -181,8 +181,8 @@ fun ScanApp(store: ScanStore) {
         if (Build.VERSION.SDK_INT >= 29 || ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) saveGallery(id)
         else { galleryBook = id; storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
     }
-    fun sharePdf() {
-        val id = bookId ?: return
+    fun sharePdf(targetId: String? = bookId) {
+        val id = targetId ?: return
         vm.perform {
             val file = DocumentOutput(context, store).pdf(id)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
@@ -192,29 +192,37 @@ fun ScanApp(store: ScanStore) {
         }
     }
     fun startScan() { vm.perform { bookId = store.create(defaultTitle()).id; route = "camera" } }
-    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "editor" || route == "camera") "document" else "library" }
-    ScannerScreenTheme(dark = route == "camera" || route == "editor") {
+    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "editor" || route == "review" || route == "camera") "document" else "library" }
+    ScannerScreenTheme(dark = route == "camera" || route == "editor" || route == "review") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "camera" -> bookId?.let { id ->
-                CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { route = "document" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
+                CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { vm.perform { val captured = store.dao.snapshot(id); pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
                     else vm.perform { var ok = false; try { val captured = vm.receive(id, file, detectBounds); if (!batch) { pageId = captured.id; route = "editor" }; ok = true } finally { complete(ok) } }
                 })
             }
-            "editor" -> pages.firstOrNull { it.id == pageId }?.let { page ->
+            "editor", "review" -> pages.firstOrNull { it.id == pageId }?.let { page ->
                 PageEditor(store, page, vm.busy, snack = snack, onBack = { route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe); route = "document" } },
                     onExportImage = { recipe -> imagePage = page.id; imageRecipe = RecipeCodec.encode(recipe); imageSaver.launch("scan-${page.position + 1}.jpg") },
                     onGallery = { recipe -> requestGallery(page, recipe) },
-                    onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") })
+                    onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") },
+                    title = currentTitle, pageIndex = pages.indexOfFirst { it.id == page.id }, pageCount = pages.size, saveOnBack = route == "review",
+                    onNavigate = { index, recipe -> pages.getOrNull(index)?.let { target -> vm.perform { store.save(page, recipe); pageId = target.id } } },
+                    onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } },
+                    onAddPages = { recipe -> vm.perform { store.save(page, recipe); route = "camera" } })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
-                onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onGallery = { requestGallery() }, onShare = ::sharePdf,
+                onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onGallery = { requestGallery() }, onShare = { sharePdf() },
                 onMove = { page, direction -> bookId?.let { id -> vm.perform { store.move(id, page.id, direction) } } },
                 onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack)
             else -> LibraryScreen(store, books, trash, onScan = ::startScan, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" },
-                onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack)
+                onShare = { id -> sharePdf(id) }, onPdf = { id ->
+                    bookId = id
+                    val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)
+                    pdfSaver.launch("${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf")
+                }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack)
         }
         if (vm.busy) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .12f)).clickable(enabled = true, onClick = {}), contentAlignment = Alignment.Center) {

@@ -6,7 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -30,6 +30,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -58,16 +61,27 @@ private fun Treatment.label(): Int = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onExportImage: (EditRecipe) -> Unit, onGallery: (EditRecipe) -> Unit, onOriginal: () -> Unit) {
+fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onExportImage: (EditRecipe) -> Unit, onGallery: (EditRecipe) -> Unit, onOriginal: () -> Unit,
+    title: String? = null, pageIndex: Int = 0, pageCount: Int = 1, saveOnBack: Boolean = false,
+    onNavigate: ((Int, EditRecipe) -> Unit)? = null, onRename: ((String) -> Unit)? = null,
+    onAddPages: ((EditRecipe) -> Unit)? = null) {
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
     var tool by rememberSaveable { mutableStateOf("filters") }
     var original by rememberSaveable { mutableStateOf(false) }
     var export by remember { mutableStateOf(false) }
-    var zoom by remember { mutableFloatStateOf(1f) }; var pan by remember { mutableStateOf(Offset.Zero) }
+    var rename by remember { mutableStateOf(false) }
+    var draftTitle by remember(title) { mutableStateOf(title.orEmpty()) }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val latestNavigate by rememberUpdatedState(onNavigate)
+    var zoom by remember(page.id) { mutableFloatStateOf(1f) }; var pan by remember(page.id) { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
-    BackHandler(!busy) { onBack() }
+    BackHandler(!busy) { if (saveOnBack) onSave(edit) else onBack() }
+    if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) },
+        text = { OutlinedTextField(draftTitle, { draftTitle = it.take(100) }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { onRename?.invoke(draftTitle.trim()); rename = false }, enabled = draftTitle.isNotBlank()) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
     val treatments = if (BuildConfig.CAMSCANNER_NATIVE) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD) else Treatment.entries.filter { !it.requiresReferenceEngine }
     if (export) ModalBottomSheet(onDismissRequest = { export = false }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
@@ -78,15 +92,23 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             TextButton(onClick = { export = false; onOriginal() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.source_export)) }
         }
     }
-    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium) },
-        navigationIcon = { IconButton(onBack, enabled = !busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.cancel)) } },
-        actions = {
-            Box {
-                IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) { Icon(Icons.Outlined.Download, stringResource(R.string.export_scan)) }
-
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
+        TopAppBar(title = {
+            if (title != null && onRename != null) TextButton(onClick = { draftTitle = title; rename = true }, enabled = !busy) {
+                Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(6.dp)); Icon(Icons.Outlined.Edit, stringResource(R.string.rename), Modifier.size(18.dp))
+            } else Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium)
+        }, navigationIcon = {
+            IconButton(onClick = { if (saveOnBack) onSave(edit) else onBack() }, enabled = !busy) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back))
             }
-            Button(onClick = { onSave(edit) }, enabled = !busy, modifier = Modifier.padding(end = 12.dp).testTag("save-edit")) { Icon(Icons.Outlined.Check, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.save)) }
-        }) },
+        }, actions = {
+            IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) {
+                Icon(Icons.Outlined.Download, stringResource(R.string.export_scan))
+            }
+        })
+    },
         bottomBar = {
             Surface(shadowElevation = 6.dp) {
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
@@ -122,20 +144,21 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             Slider(ratio.coerceIn(.25f, 4f), { change(edit.copy(outputAspect = it)) }, valueRange = .25f..4f, modifier = Modifier.padding(horizontal = 16.dp).testTag("aspect-adjust"))
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("editor-toolbar"), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        EditorTool(R.string.crop, Icons.Outlined.Crop, tool == "crop") { tool = "crop"; original = false; zoom = 1f; pan = Offset.Zero }
-                        EditorTool(R.string.rotate, Icons.Outlined.RotateRight, false) { tool = "filters"; original = false; change(edit.copy(turns = (edit.turns + 1).mod(4))) }
-                        EditorTool(R.string.filters, Icons.Outlined.Tune, tool == "filters") { tool = "filters"; original = false }
-                        EditorTool(R.string.adjust, Icons.Outlined.Contrast, tool == "adjust") { tool = "adjust"; original = false }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 5.dp).testTag("editor-toolbar"), verticalAlignment = Alignment.CenterVertically) {
+                        if (onAddPages != null) EditorTool(R.string.add_pages, Icons.Outlined.AddAPhoto, false, Modifier.weight(1f)) { onAddPages(edit) }
+                        EditorTool(R.string.rotate, Icons.Outlined.RotateLeft, false, Modifier.weight(1f)) { tool = "filters"; original = false; change(edit.copy(turns = (edit.turns + 3).mod(4))) }
+                        EditorTool(R.string.crop, Icons.Outlined.Crop, tool == "crop", Modifier.weight(1f)) { tool = "crop"; original = false; zoom = 1f; pan = Offset.Zero }
+                        EditorTool(if (tool == "adjust") R.string.filters else R.string.adjust, Icons.Outlined.Tune, tool == "adjust", Modifier.weight(1f)) { tool = if (tool == "adjust") "filters" else "adjust"; original = false }
+                        Button(onClick = { onSave(edit) }, enabled = !busy, shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.height(50.dp).testTag("save-edit")) {
+                            Icon(Icons.Outlined.Check, stringResource(R.string.save), Modifier.size(28.dp))
+                        }
                     }
                 }
             }
         }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.quality), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                OutlinedButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop") { Text(stringResource(if (original) R.string.show_result else R.string.compare_original)) }
-            }
             Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp).clipToBounds().background(ScanCharcoal).testTag("page-preview")) {
                 if (tool == "crop") {
                     PagePicture(store, page, Modifier.fillMaxSize(), EditRecipe())
@@ -164,8 +187,42 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                         corners.forEach { drawCircle(Color.White, 10.dp.toPx(), it); drawCircle(Color(0xFF008F86), 7.dp.toPx(), it) }
                     }
                 } else {
-                    PagePicture(store, page, Modifier.fillMaxSize().pointerInput(Unit) { detectTransformGestures { _, drag, scale, _ -> zoom = (zoom * scale).coerceIn(1f, 5f); pan = if (zoom == 1f) Offset.Zero else pan + drag } }
-                        .graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, if (original) EditRecipe() else edit)
+                    PagePicture(store, page, Modifier.fillMaxSize().pointerInput(page.id, busy, rtl) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var drag = Offset.Zero
+                            var multiple = false
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.calculatePan()
+                                if (event.changes.count { it.pressed } > 1) multiple = true
+                                if (multiple || zoom > 1f) {
+                                    zoom = (zoom * event.calculateZoom()).coerceIn(1f, 5f)
+                                    pan = if (zoom == 1f) Offset.Zero else pan + change
+                                    event.changes.forEach { it.consume() }
+                                } else drag += change
+                            } while (event.changes.any { it.pressed })
+                            if (!busy && !multiple && zoom == 1f && kotlin.math.abs(drag.x) > 64.dp.toPx() && kotlin.math.abs(drag.x) > kotlin.math.abs(drag.y) * 1.4f) {
+                                val next = pageIndex + if ((drag.x > 0) == rtl) 1 else -1
+                                if (next in 0 until pageCount) latestNavigate?.invoke(next, currentEdit)
+                            }
+                        }
+                    }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, if (original) EditRecipe() else edit)
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp)), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onNavigate?.invoke(pageIndex - 1, edit) }, enabled = !busy && pageIndex > 0 && onNavigate != null, modifier = Modifier.testTag("review-previous")) {
+                        Icon(if (rtl) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft, stringResource(R.string.previous_page))
+                    }
+                    Text(stringResource(R.string.page_counter, pageIndex + 1, pageCount), Modifier.testTag("review-counter"), style = MaterialTheme.typography.labelLarge)
+                    IconButton(onClick = { onNavigate?.invoke(pageIndex + 1, edit) }, enabled = !busy && pageIndex + 1 < pageCount && onNavigate != null, modifier = Modifier.testTag("review-next")) {
+                        Icon(if (rtl) Icons.Outlined.ChevronLeft else Icons.Outlined.ChevronRight, stringResource(R.string.next_page))
+                    }
+                }
+                FilledTonalButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop", shape = RoundedCornerShape(6.dp)) {
+                    Icon(Icons.Outlined.Compare, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(if (original) R.string.show_result else R.string.compare_original), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -173,10 +230,10 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
 }
 
 @Composable
-private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
-    TextButton(onClick) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TextButton(onClick, modifier = modifier, contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(label), style = MaterialTheme.typography.labelSmall)
+        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     } }
 }
 

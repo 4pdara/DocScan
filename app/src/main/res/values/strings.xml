@@ -107,6 +107,21 @@
     <string name="capture_single">Single</string>
     <string name="capture_batch">Batch</string>
     <string name="compare_original">Compare original</string>
+    <string name="home_tab">Home</string>
+    <string name="files_tab">Files</string>
+    <string name="tools_tab">Tools</string>
+    <string name="me_tab">Me</string>
+    <string name="recent_documents">Recent</string>
+    <string name="show_all">Show all</string>
+    <string name="view_document">View</string>
+    <string name="smart_scan">Smart scan</string>
+    <string name="pdf_tools">Create PDF</string>
+    <string name="recent_document">Recent document</string>
+    <string name="search_empty">No matching documents</string>
+    <string name="local_profile">Your local workspace</string>
+    <string name="local_profile_hint">Documents and edits are saved on this device. Originals are kept separately at their captured resolution.</string>
+    <string name="previous_page">Previous page</string>
+    <string name="next_page">Next page</string>
 </resources>
 
 

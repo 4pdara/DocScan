@@ -51,7 +51,7 @@ class RebuildFlowTest {
         finally { image.recycle() }
     }
 
-    @Test fun cameraCapturesDurablePageAndDoneOpensDocument() {
+    @Test fun cameraCapturesDurablePageAndDoneOpensReviewEditor() {
         val store = (compose.activity.application as ScanApplication).store
         val existing = runBlocking { store.dao.library().first().map { it.book.id }.toSet() }
         compose.onNodeWithTag("new-scan").performClick()
@@ -69,6 +69,12 @@ class RebuildFlowTest {
         assertTrue(store.source(page).length() > 0); assertTrue(minOf(page.width, page.height) >= 480 && maxOf(page.width, page.height) >= 640)
         compose.waitUntil(30000) { compose.onAllNodes(hasText(compose.activity.getString(R.string.done)) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("page-preview").assertIsDisplayed()
+        compose.onNodeWithTag("review-counter").assertIsDisplayed()
+        screenshot("after-capture-review")
+        compose.onNodeWithTag("save-edit").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("document-pages").assertIsDisplayed()
     }
 
@@ -475,6 +481,61 @@ class RebuildFlowTest {
         compose.onNodeWithTag("select-${b.id}").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.restore)).performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.book(a.id)!!.trashedAt == null && store.dao.book(b.id)!!.trashedAt == null } }
+    }
+
+    @Test fun homeSearchAndNavigationKeepDocumentsAndControlsReachable() {
+        val store = (compose.activity.application as ScanApplication).store
+        val title = "Home search ${System.nanoTime()}"
+        runBlocking { val book = store.create(title); store.captured(book.id, fixture("home.jpg")) }
+        compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("home-shortcuts").assertIsDisplayed()
+        compose.onNodeWithTag("home-navigation").assertIsDisplayed()
+        val fab = compose.onNodeWithTag("new-scan").fetchSemanticsNode().boundsInRoot
+        val tabs = compose.onNodeWithTag("home-tab-home").fetchSemanticsNode().boundsInRoot
+        assertTrue("Camera button stays above navigation", fab.bottom <= tabs.top)
+        screenshot("home-recent")
+        compose.onNodeWithTag("home-search").performTextInput("missing-${System.nanoTime()}")
+        compose.onNodeWithText(compose.activity.getString(R.string.search_empty)).assertIsDisplayed()
+        compose.onNodeWithTag("home-search").performTextClearance()
+        compose.onNodeWithTag("home-tab-files").performClick()
+        compose.onNodeWithText(title).assertIsDisplayed()
+        compose.onNodeWithTag("home-tab-tools").performClick()
+        compose.onNodeWithTag("home-shortcuts").assertIsDisplayed()
+        compose.onNodeWithTag("home-tab-me").performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.local_profile)).assertIsDisplayed()
+        compose.onNodeWithTag("home-tab-home").performClick()
+        compose.onNodeWithText(title).performClick()
+        compose.onNodeWithTag("document-pages").assertIsDisplayed()
+    }
+
+    @Test fun reviewNavigationCommitsEachRecipeWithoutChangingOriginals() {
+        val store = (compose.activity.application as ScanApplication).store
+        val title = "Review pages ${System.nanoTime()}"
+        val input = fixture("review.jpg")
+        val pages = runBlocking { val book = store.create(title); listOf(store.captured(book.id, input), store.captured(book.id, input)) }
+        val hashes = pages.map { hash(store.source(it)) }
+        compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(title).performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.add_pages)).performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("capture-batch").fetchSemanticsNodes().isNotEmpty() }
+        // Existing pages are sufficient: do not capture another emulated photo.
+        compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("review-counter").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("filter-GRAY").performClick()
+        compose.onNodeWithTag("review-next").performClick()
+        compose.waitUntil(10000) { runBlocking { store.dao.page(pages[0].id)?.edit()?.treatment == Treatment.GRAY } }
+        compose.onNodeWithTag("review-counter").assertTextEquals(compose.activity.getString(R.string.page_counter, 2, 2))
+        compose.onNodeWithTag("filter-INK").performClick()
+        compose.onNodeWithTag("review-previous").performClick()
+        compose.waitUntil(10000) { runBlocking { store.dao.page(pages[1].id)?.edit()?.treatment == Treatment.INK } }
+        compose.onNodeWithTag("filter-GRAY").assertIsSelected()
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("review-counter").fetchSemanticsNodes().isNotEmpty() }
+        screenshot("review-pages")
+        compose.onNodeWithTag("save-edit").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
+        pages.forEachIndexed { index, page -> assertEquals(hashes[index], hash(store.source(page))) }
+        input.delete()
     }
 
     @Test fun editorHasInlineFiltersAndActionsAboveSystemNavigation() {

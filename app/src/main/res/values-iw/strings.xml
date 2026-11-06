@@ -107,6 +107,21 @@
     <string name="capture_single">אחת</string>
     <string name="capture_batch">קבוצה</string>
     <string name="compare_original">השוואה למקור</string>
+    <string name="home_tab">דף הבית</string>
+    <string name="files_tab">קבצים</string>
+    <string name="tools_tab">כלים</string>
+    <string name="me_tab">אני</string>
+    <string name="recent_documents">אחרונים</string>
+    <string name="show_all">הצגת הכול</string>
+    <string name="view_document">צפייה</string>
+    <string name="smart_scan">סריקה חכמה</string>
+    <string name="pdf_tools">יצירת PDF</string>
+    <string name="recent_document">המסמך האחרון</string>
+    <string name="search_empty">לא נמצאו מסמכים מתאימים</string>
+    <string name="local_profile">סביבת העבודה המקומית שלך</string>
+    <string name="local_profile_hint">המסמכים והעריכות נשמרים במכשיר הזה. המקורות נשמרים בנפרד ברזולוציה שבה נקלטו.</string>
+    <string name="previous_page">העמוד הקודם</string>
+    <string name="next_page">העמוד הבא</string>
 </resources>
 
 
