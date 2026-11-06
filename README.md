@@ -1,6 +1,15 @@
 # DocScan חדש — בנייה עצמאית
 אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. הפרופיל הרגיל משתמש בעיבוד העצמאי. נוסף פרופיל Native מחקרי שמפעיל את רכיב הסרת הצללים MagicEnhancer מהחבילה שסופקה; אין כאן העברה מלאה של מנוע CamScanner.
 
+## גרסת ניסוי 0.1.4 — עיצוב אפשרות 5
+
+[הורדת APK Native ניסיוני](https://github.com/4pdara/DocScan/releases/download/native-v0.1.4-preview/DocScan-Native-0.1.4-preview-debug.apk) · [Release והערות בדיקה](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.4-preview) · [ממצאי Frida והמסננים](docs/RESEARCH_0.1.4_HE.md).
+
+ממשק חדש לפי ההדמיה שנבחרה: ספרייה עם בחירה/סל/שחזור, מצלמה ועורך כהים, צילום יחיד/קבוצה, מסננים בפס קבוע ותפריט לשמירת כל העמודים בגלריה. אותו מזהה חבילה וחתימה כמו Native 0.1.3; מתקינים כעדכון ללא הסרת ההתקנה.
+
+גרסת Pre-release, לא סופית. בדיקות build ו־API 29/35 עברו; API 28 נתקל בכשל תשתית ונבדק מחדש. התקבל trace אמיתי של Java ו־JNI בתוך DocScan; PAPER ו־Magic Color עברו בדיקות סינתטיות, ו־No Shadow החזיר ‎-1 גם ללא Frida. שאר המחקר והמגבלות מפורטים בהערות הגרסה. אין כאן כל המסננים של CamScanner או בדיקת טלפון אמיתי.
+
+
 ## עדכון 0.1.3 — מסלולי Native נוספים
 [Release Native 0.1.3](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.3-research) · [הורדת APK](https://github.com/4pdara/DocScan/releases/download/native-v0.1.3-research/DocScan-Native-0.1.3-debug.apk) · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.3-research/SHA256SUMS.txt).
 
@@ -59,4 +68,5 @@ APK מקומי: `app/build/outputs/apk/debug/app-debug.apk`.
 המקורות נשמרים באחסון הפרטי של האפליקציה. הסרת **האפליקציה החדשה** מוחקת אותם. שמרו מקורות ו־PDF ליעד חיצוני לפני הסרה; PDF אינו גיבוי שניתן לשחזר ממנו את כל העריכות.
 
 אין עדיין גיבוי/שחזור מלא, ייבוא PDF, הדפסה, OCR, יישור קימור ספר, פיצול שני עמודים או הסרת עצמים. אין הקטנה שקטה בעת כשל זיכרון. חתימה קבועה, בדיקות מצלמה פיזית ויכולות ההמשך מפורטות בדוח.
+
 

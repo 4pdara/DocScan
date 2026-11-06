@@ -51,6 +51,8 @@ def fallback_literals(plan, data):
 
 
 def restore(plan, baseline, payload, destination, fallback=None):
+    if 'baseline_sha256' in plan and hashlib.sha256(baseline.read_bytes()).hexdigest() != plan['baseline_sha256']:
+        raise ValueError('Baseline APK digest mismatch')
     if payload.stat().st_size != plan['payload_size']:
         raise ValueError('Transfer size mismatch')
     if hashlib.sha256(payload.read_bytes()).hexdigest() != plan['payload_sha256']:
@@ -118,7 +120,9 @@ def download_payload(plan, repository, destination):
 
 
 def publish(plan, apk, checksum, repository):
-    tag = 'native-v0.1.3-research'
+    tag = plan.get('tag', 'native-v0.1.3-research')
+    notes = plan.get('notes_file', 'docs/NATIVE_0.1.3_RELEASE_HE.md')
+    title = plan.get('title', 'DocScan Native 0.1.3 — מסננים מקוריים ושמירה לגלריה')
     endpoint = f'repos/{repository}/releases/tags/{tag}'
     previous = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
     if previous.returncode == 0:
@@ -132,12 +136,12 @@ def publish(plan, apk, checksum, repository):
         if existing['target_commitish'] != plan['source_commit']:
             raise ValueError('Unexpected draft release target')
         subprocess.run(['gh', 'release', 'upload', tag, str(apk), str(checksum), '--repo', repository, '--clobber'], check=True)
-        subprocess.run(['gh', 'release', 'edit', tag, '--repo', repository, '--draft=false', '--prerelease', '--latest=false', '--notes-file', 'docs/NATIVE_0.1.3_RELEASE_HE.md'], check=True)
+        subprocess.run(['gh', 'release', 'edit', tag, '--repo', repository, '--draft=false', '--prerelease', '--latest=false', '--notes-file', notes], check=True)
     elif '404' in previous.stderr:
         subprocess.run(['gh', 'release', 'create', tag, str(apk), str(checksum), '--repo', repository,
                         '--target', plan['source_commit'], '--prerelease', '--latest=false',
-                        '--title', 'DocScan Native 0.1.3 — מסננים מקוריים ושמירה לגלריה',
-                        '--notes-file', 'docs/NATIVE_0.1.3_RELEASE_HE.md'], check=True)
+                        '--title', title,
+                        '--notes-file', notes], check=True)
     else:
         raise RuntimeError('Cannot inspect the target release')
     published = gh_json(endpoint)
@@ -158,7 +162,7 @@ def main():
     parser.add_argument('--output', type=Path, default=Path('release-output'))
     args = parser.parse_args()
     plan = json.loads(args.manifest.read_text())
-    if plan['apk_name'] != 'DocScan-Native-0.1.3-debug.apk' or not re.fullmatch('[0-9a-f]{64}', plan['apk_sha256']):
+    if plan['apk_name'] not in ('DocScan-Native-0.1.3-debug.apk', 'DocScan-Native-0.1.4-preview-debug.apk') or not re.fullmatch('[0-9a-f]{64}', plan['apk_sha256']):
         raise ValueError('Unexpected release artifact')
     args.output.mkdir(parents=True, exist_ok=True)
     if args.local_payload:
@@ -169,15 +173,29 @@ def main():
     if repository != '4pdara/DocScan':
         raise ValueError('Unexpected target repository')
     run = gh_json(f"repos/{repository}/actions/runs/{plan['validated_run_id']}")
-    if run['head_sha'] != plan['source_commit'] or run['status'] != 'completed' or run['conclusion'] != 'success':
+    if run['head_sha'] != plan['source_commit']:
+        raise ValueError('Validation source differs from the exact app source')
+    if plan.get('required_jobs'):
+        if plan.get('tag') != 'native-v0.1.4-preview' or not plan.get('legacy_check_note'):
+            raise ValueError('Explicit prerelease coverage statement required')
+        jobs = gh_json(f"repos/{repository}/actions/runs/{plan['validated_run_id']}/jobs?filter=latest&per_page=100")['jobs']
+        for required in plan['required_jobs']:
+            matches = [j for j in jobs if j['name'] == required]
+            if len(matches) != 1 or matches[0]['status'] != 'completed' or matches[0]['conclusion'] != 'success':
+                raise ValueError('Required validation did not pass: ' + required)
+        print('Experimental validation coverage:', plan['required_jobs'], plan['legacy_check_note'])
+    elif run['status'] != 'completed' or run['conclusion'] != 'success':
         raise ValueError('The exact app source has not passed its validation run')
     payload = args.output / 'native-transfer.gz'
     download_payload(plan, repository, payload)
-    result = gh_json(f"repos/{repository}/git/blobs/{plan['fallback']['blob']}")
-    fallback = fallback_literals(plan, base64.b64decode(''.join(result['content'].split()), validate=True))
+    fallback = None
+    if 'fallback' in plan:
+        result = gh_json(f"repos/{repository}/git/blobs/{plan['fallback']['blob']}")
+        fallback = fallback_literals(plan, base64.b64decode(''.join(result['content'].split()), validate=True))
     apk, checksum = restore(plan, args.baseline, payload, args.output, fallback)
     publish(plan, apk, checksum, repository)
 
 
 if __name__ == '__main__':
     main()
+

@@ -1,0 +1,447 @@
+{
+  "apk_name": "DocScan-Native-0.1.4-preview-debug.apk",
+  "apk_size": 64681696,
+  "apk_sha256": "c5e60d85e170f1d38bb46cb3bf3c19ac84b8c477a73dfd37a795ab6c083c004b",
+  "literal_size": 1593142,
+  "payload_size": 600686,
+  "payload_sha256": "56dfd38492e14a1948eba70e079976a3c09f47c14a0a36446cccc3d4b4f4b4a5",
+  "segments": [
+    {
+      "literal_offset": 0,
+      "length": 181
+    },
+    {
+      "base_entry": "classes.dex",
+      "length": 8798730,
+      "sha256": "acb241935cdea21fcb93447111be5f5672781b485b55b70d5eca56a9c6aadfb4"
+    },
+    {
+      "literal_offset": 181,
+      "length": 43
+    },
+    {
+      "base_entry": "classes10.dex",
+      "length": 2513329,
+      "sha256": "efef2384713926ef16c53ccaec8c16d84bfd43f8350e38cfc312b49fe1eb9bb6"
+    },
+    {
+      "literal_offset": 224,
+      "length": 278611
+    },
+    {
+      "base_entry": "classes4.dex",
+      "length": 30725,
+      "sha256": "1cd1845e71dfc63158c70aee926c52e65d1f0d26d6f27fe88a364c0fda00fe71"
+    },
+    {
+      "literal_offset": 278835,
+      "length": 4321
+    },
+    {
+      "base_entry": "classes6.dex",
+      "length": 13822,
+      "sha256": "c9032e4d4c32f906c1202cfcba6d59c78a25b1792d55bf3afb6c167793a4efbf"
+    },
+    {
+      "literal_offset": 283156,
+      "length": 1050
+    },
+    {
+      "base_entry": "classes8.dex",
+      "length": 10713,
+      "sha256": "394277ff9940146aaca6e41a1da0305a00b2302d964c7e466d1952cad6543910"
+    },
+    {
+      "literal_offset": 284206,
+      "length": 42
+    },
+    {
+      "base_entry": "classes9.dex",
+      "length": 8453565,
+      "sha256": "5b2d27c07684b0114cf5a0bf8d215380259c8678ac96528372007cf5629eb083"
+    },
+    {
+      "literal_offset": 284248,
+      "length": 14420
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libCVNN.so",
+      "length": 2181968,
+      "sha256": "81634fe554a8622eb238dca6a200c18c3e95730fe24474302f809ade12277ddd"
+    },
+    {
+      "literal_offset": 298668,
+      "length": 13488
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libMNN.so",
+      "length": 2100152,
+      "sha256": "e03bbcbc0f26b7f2753a2284580b0feab1ac92a629f138fd214c8a5a12f049e9"
+    },
+    {
+      "literal_offset": 312156,
+      "length": 13384
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "length": 10096,
+      "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6"
+    },
+    {
+      "literal_offset": 325540,
+      "length": 6288
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libc++_shared.so",
+      "length": 1292904,
+      "sha256": "4397241b4bd20a8e579bfb41d21107857e12985f6a01ca0c2a5f83380d1270b4"
+    },
+    {
+      "literal_offset": 331828,
+      "length": 1432
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libimage_processing_util_jni.so",
+      "length": 32544,
+      "sha256": "f0e4611db0d6b68942d8ba6977519f3dd1cdbffa87b7fc16d8006696ba954af4"
+    },
+    {
+      "literal_offset": 333260,
+      "length": 224
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libimageprocessor.so",
+      "length": 342304,
+      "sha256": "0ccf18b6323ff23a076dc860dcd76e84097d031427ab056b52a4c7d8ffa28353"
+    },
+    {
+      "literal_offset": 333484,
+      "length": 1760
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libmagicenhancer.so",
+      "length": 5458208,
+      "sha256": "4fecd50628352cc4d88fba220ee1059e8104857166014f8b5d6e8a13e9c92599"
+    },
+    {
+      "literal_offset": 335244,
+      "length": 14048
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libncnn.so",
+      "length": 1837280,
+      "sha256": "b1841e5a3ea32d7120bbd0cd53e9609c2181441414a961d55fd0c422c11e1dc0"
+    },
+    {
+      "literal_offset": 349292,
+      "length": 14112
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libopencv.so",
+      "length": 6475880,
+      "sha256": "9df94cd8f94f0f6818ce700104b6337259c7c95eb95cd98552d27105d5d8320a"
+    },
+    {
+      "literal_offset": 363404,
+      "length": 12184
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libopencv_java4.so",
+      "length": 23465088,
+      "sha256": "144bbc9ad0b0bac4ba58f7d53198aead64379e5314f68200968c703d2c1c14ab"
+    },
+    {
+      "literal_offset": 375588,
+      "length": 13184
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libsurface_util_jni.so",
+      "length": 4896,
+      "sha256": "6cb2eac3c68e6a82ce2a5ea5aba86749eb8c609914392e125f6cdfbc208992f8"
+    },
+    {
+      "literal_offset": 388772,
+      "length": 64
+    },
+    {
+      "base_entry": "assets/licenses/OpenCV-LICENSE.txt",
+      "length": 4430,
+      "sha256": "b2706a62b7ffa95ddaa48d322d21d2882dcfb5db048300ea18b177cbcff30cfd"
+    },
+    {
+      "literal_offset": 388836,
+      "length": 23590
+    },
+    {
+      "base_entry": "res/drawable-hdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "length": 1096,
+      "sha256": "9f849bcd788adceb32f4c1a5aa892749bd1e244a3787bfbfbd30d3b6f5d8e9db"
+    },
+    {
+      "literal_offset": 412426,
+      "length": 88
+    },
+    {
+      "base_entry": "res/drawable-hdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "length": 1243,
+      "sha256": "ab94afcb2bb325544c0c1103bf5109b827bf070f441faef909f856ae295a1cf0"
+    },
+    {
+      "literal_offset": 412514,
+      "length": 8365
+    },
+    {
+      "base_entry": "res/drawable-hdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "length": 1098,
+      "sha256": "00a1ac74d8164cb5c4749a0b2e77e2c6da4a90abe873d8604f29841c19357c66"
+    },
+    {
+      "literal_offset": 420879,
+      "length": 40582
+    },
+    {
+      "base_entry": "res/drawable-xhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "length": 1526,
+      "sha256": "1417574134c5e9321c0b18fea711a08448ccf49957f55e10cedafb13237510f7"
+    },
+    {
+      "literal_offset": 461461,
+      "length": 90
+    },
+    {
+      "base_entry": "res/drawable-xhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "length": 1731,
+      "sha256": "4d2fe45a8169f368052c921230a268ba9f53ea5fedbcb09ff35107473551e50c"
+    },
+    {
+      "literal_offset": 461551,
+      "length": 9497
+    },
+    {
+      "base_entry": "res/drawable-xhdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "length": 1544,
+      "sha256": "1f7dd8b3521353af473f41850887e9385cf61c390c6e34e4e2bd991921ccfdf8"
+    },
+    {
+      "literal_offset": 471048,
+      "length": 11612
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_btn_radio_to_on_mtrl_015.png",
+      "length": 1208,
+      "sha256": "5e0799a0d0b5d43ed5ae3a378aaa0847a810ceeff58db9a0f7836ebf4ef17146"
+    },
+    {
+      "literal_offset": 482660,
+      "length": 92
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "length": 2463,
+      "sha256": "0f8db605d63bf1d6d35fd647d592ac4e70c9a712ff5d1c2114c8d58a88b8228a"
+    },
+    {
+      "literal_offset": 482752,
+      "length": 93
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "length": 2834,
+      "sha256": "1f9538745cfd3209cc09ed451c198302aac3a1c5da41e87394377814b1bcc5ee"
+    },
+    {
+      "literal_offset": 482845,
+      "length": 5058
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_ic_star_black_48dp.png",
+      "length": 1291,
+      "sha256": "a79b060d0edb66331bef8dd9a6c75b9506d15fd823c2a6b8579efb6249b85309"
+    },
+    {
+      "literal_offset": 487903,
+      "length": 4229
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_menu_hardkey_panel_mtrl_mult.9.png",
+      "length": 1779,
+      "sha256": "a8252f52638c80df119db031626198a4a8d4b32ee618e96c3a36b9b946e26894"
+    },
+    {
+      "literal_offset": 492132,
+      "length": 89
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "length": 2305,
+      "sha256": "e1a2b864d0114a8471662f8e30ffcbb2eb9ffd414d36239612def8c7792a450a"
+    },
+    {
+      "literal_offset": 492221,
+      "length": 11907
+    },
+    {
+      "base_entry": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "length": 2505,
+      "sha256": "c367b73a33a933429e1d57d33fcfbf243f0274e7cdba221a0b983ee15b5baca9"
+    },
+    {
+      "literal_offset": 504128,
+      "length": 91
+    },
+    {
+      "base_entry": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "length": 2816,
+      "sha256": "b4af73e52266be570c2c163d987e64348066db311b41e7a382000529c0136c6b"
+    },
+    {
+      "literal_offset": 504219,
+      "length": 4104
+    },
+    {
+      "base_entry": "res/drawable-xxxhdpi-v4/abc_ic_star_black_36dp.png",
+      "length": 1269,
+      "sha256": "35700fbbb3249978afe821da76ef59dbc2cc41cb12da4fe3f9e17746d4ecd430"
+    },
+    {
+      "literal_offset": 508323,
+      "length": 83
+    },
+    {
+      "base_entry": "res/drawable-xxxhdpi-v4/abc_ic_star_black_48dp.png",
+      "length": 1680,
+      "sha256": "8e103399f00e88d7e579dbfe883887fd096b11d7c74d7eda4ea2374e70d60a14"
+    },
+    {
+      "literal_offset": 508406,
+      "length": 51119
+    },
+    {
+      "base_entry": "res/layout/abc_search_view.xml",
+      "length": 1107,
+      "sha256": "2d726739f24ff09f9ae4defd3593f73e0986bda6312256972ab761e1a3377a97"
+    },
+    {
+      "literal_offset": 559525,
+      "length": 744057
+    },
+    {
+      "base_entry": "META-INF/androidx/annotation/annotation/LICENSE.txt",
+      "length": 3563,
+      "sha256": "faf33b6a35c413f2d7b787706365cb58a13451ee23e06d834984da273234a6a4"
+    },
+    {
+      "literal_offset": 1303582,
+      "length": 85
+    },
+    {
+      "base_entry": "META-INF/androidx/collection/collection-ktx/LICENSE.txt",
+      "length": 3563,
+      "sha256": "faf33b6a35c413f2d7b787706365cb58a13451ee23e06d834984da273234a6a4"
+    },
+    {
+      "literal_offset": 1303667,
+      "length": 81
+    },
+    {
+      "base_entry": "META-INF/androidx/collection/collection/LICENSE.txt",
+      "length": 3563,
+      "sha256": "faf33b6a35c413f2d7b787706365cb58a13451ee23e06d834984da273234a6a4"
+    },
+    {
+      "literal_offset": 1303748,
+      "length": 92
+    },
+    {
+      "base_entry": "META-INF/androidx/lifecycle/lifecycle-common-java8/LICENSE.txt",
+      "length": 3563,
+      "sha256": "faf33b6a35c413f2d7b787706365cb58a13451ee23e06d834984da273234a6a4"
+    },
+    {
+      "literal_offset": 1303840,
+      "length": 86
+    },
+    {
+      "base_entry": "META-INF/androidx/lifecycle/lifecycle-common/LICENSE.txt",
+      "length": 3563,
+      "sha256": "faf33b6a35c413f2d7b787706365cb58a13451ee23e06d834984da273234a6a4"
+    },
+    {
+      "literal_offset": 1303926,
+      "length": 76
+    },
+    {
+      "base_entry": "META-INF/androidx/room/room-common/LICENSE.txt",
+      "length": 3563,
+      "sha256": "faf33b6a35c413f2d7b787706365cb58a13451ee23e06d834984da273234a6a4"
+    },
+    {
+      "literal_offset": 1304002,
+      "length": 1127
+    },
+    {
+      "base_entry": "kotlin/collections/collections.kotlin_builtins",
+      "length": 1834,
+      "sha256": "4596f921507c5247e47121d67f0c3d06154a156d49774c5fa3db8377e2d3dcd7"
+    },
+    {
+      "literal_offset": 1305129,
+      "length": 79
+    },
+    {
+      "base_entry": "kotlin/concurrent/atomics/atomics.kotlin_builtins",
+      "length": 1082,
+      "sha256": "7807ffc833b3d4a393c52cb0fe83cae6fd1e09a6e5bb32d3bcbcf357e1303190"
+    },
+    {
+      "literal_offset": 1305208,
+      "length": 676
+    },
+    {
+      "base_entry": "kotlin/kotlin.kotlin_builtins",
+      "length": 5342,
+      "sha256": "d94711e75a621fa0423ad249cf2ff46e0db46a6d79b8351b29808614848e188b"
+    },
+    {
+      "literal_offset": 1305884,
+      "length": 66
+    },
+    {
+      "base_entry": "kotlin/ranges/ranges.kotlin_builtins",
+      "length": 1354,
+      "sha256": "655dd005d13f46e633b1e48e1c1f2a604fc9a867f29d6221d8eeee25a574e036"
+    },
+    {
+      "literal_offset": 1305950,
+      "length": 68
+    },
+    {
+      "base_entry": "kotlin/reflect/reflect.kotlin_builtins",
+      "length": 1435,
+      "sha256": "f41fb47441ce5fc2a0d7c5e4bc877efc92a7759854178b856e805a738e8ccba4"
+    },
+    {
+      "literal_offset": 1306018,
+      "length": 287124
+    }
+  ],
+  "chunks": [
+    {
+      "index": 0,
+      "sha": "9299f7a816b0e6758c212c290089d40a33fc336e",
+      "size": 600686
+    }
+  ],
+  "source_commit": "18367e7a4524dcbe995525d8e21fafd9fccd541a",
+  "validated_run_id": 42145756242,
+  "tag": "native-v0.1.4-preview",
+  "title": "DocScan Native 0.1.4 \u2014 \u05e2\u05d9\u05e6\u05d5\u05d1 5, \u05d2\u05e8\u05e1\u05ea \u05e0\u05d9\u05e1\u05d5\u05d9",
+  "notes_file": "docs/PREVIEW_0.1.4_HE.md",
+  "baseline_sha256": "6b9ad458d620295a28bdabc0e7db87829dda7bec16fbb73862de09605fc16a5a",
+  "required_jobs": [
+    "build",
+    "device (29, en)",
+    "device (35, he)"
+  ],
+  "legacy_check_note": "API 28 failed before running any tests due to emulator/ADB infrastructure; retry requested. This prerelease does not claim API 28 validation."
+}

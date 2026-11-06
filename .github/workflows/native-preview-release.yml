@@ -1,0 +1,31 @@
+name: Publish experimental option 5 APK
+on:
+  push:
+    branches: [rebuild/camscanner-reference]
+    paths: [.github/native-release-0.1.4.json]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: docscan-native-v0.1.4-preview-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == '4pdara/DocScan' && github.ref == 'refs/heads/rebuild/camscanner-reference'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download exact previously published baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download native-v0.1.3-research --pattern DocScan-Native-0.1.3-debug.apk --dir release-baseline
+      - name: Verify and publish the signed experimental APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 research/publish_native_release.py --manifest .github/native-release-0.1.4.json --baseline release-baseline/DocScan-Native-0.1.3-debug.apk
