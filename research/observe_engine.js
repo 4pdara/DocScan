@@ -13,7 +13,8 @@ Process.attachModuleObserver({
       if(observed.has(key))continue;observed.add(key);
       Interceptor.attach(symbol.address,{
         onEnter(args) { this.start=Date.now(); },
-        onLeave(result) { event({event:'native_return',name:symbol.name,result:symbol.name.endsWith('_GetVersion')?'jstring':result.toInt32(),elapsed_ms:Date.now()-this.start}); }
+        // Untyped native register: Java hooks below provide the actual declared return type.
+        onLeave(result) { event({event:'native_return',name:symbol.name,raw_return:symbol.name.endsWith('_GetVersion')?'jstring':result.toString(),elapsed_ms:Date.now()-this.start}); }
       });
     }
   }

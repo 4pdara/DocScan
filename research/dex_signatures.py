@@ -1,7 +1,11 @@
-import pathlib,struct,json
+import argparse,pathlib,struct,json
+parser=argparse.ArgumentParser(description='Inspect native class definitions, without extracting activation strings.')
+parser.add_argument('--dex-dir',type=pathlib.Path,default=pathlib.Path('research/private/base'))
+parser.add_argument('--output',type=pathlib.Path,default=pathlib.Path('research/jni_signatures.json'))
+cli=parser.parse_args()
 targets={'Lcom/intsig/scanner/ScannerEngine;','Lcom/intsig/nativelib/MagicEnhancer;','Lcom/intsig/nativelib/ImageProcessor;','Lcom/intsig/nativelib/PageScanner;'}
 found=[]
-for p in pathlib.Path('research/private/base').glob('*.dex'):
+for p in cli.dex_dir.glob('*.dex'):
  b=p.read_bytes()
  def u32(at):return struct.unpack_from('<I',b,at)[0]
  def uleb(at):
@@ -39,4 +43,6 @@ for p in pathlib.Path('research/private/base').glob('*.dex'):
   print(p.name,cls,flush=True)
   for row in rows:
    if row['access']&256:print(' native',row['name'],row['descriptor'],'static',bool(row['access']&8),flush=True)
-pathlib.Path('research/jni_signatures.json').write_text(json.dumps(found,indent=2))
+if not found:raise SystemExit('No matching class definitions found in the supplied DEX directory')
+cli.output.parent.mkdir(parents=True,exist_ok=True)
+cli.output.write_text(json.dumps(found,indent=2))

@@ -61,6 +61,15 @@ SHA256 של מכל הקלט: `35777d7072db578bbd1c38ac955faed90afa6fe64a08edc07b
 | ReflectBinaryColorShiftBitmap | מצב 1 | 0 | `75106fe49b2cbc3065410d8bbda3827dbfee27087b341a7ee6b2c4e9fec85b98` |
 | ImageSilverBulletBitmap | 1,1,1 | 1 | `ea2f23e9a68ece73099d87a9b2c6bbc896d3ef9d3ce595cf9116e18c90f1fa96` |
 
+בוצעו גם ארבע הרצות נוספות עם קלט סינתטי 320×480 (PNG מקור: `d8d8855a9f5fdc1d4c6f31403fedec7c79c5b33fc73562514961f02fcd568eb8`). בכל הרצה השתנו 153,600 פיקסלים וכל ערכי alpha היו 255. כאן התקבלו תוצאות שונות בין Magic Color ל־SilverBullet.
+
+| קריאה | קוד החזרה | SHA256 של RGBA, ‏320×480 |
+| --- | ---: | --- |
+| deshadowBitmapNew, מצב 3 | 2 | `d18f99f00f96e200a77ed8f9f0d5650679107611119fe629cd1a264d3a7b2d7a` |
+| deshadowBitmap, סוג 1 | 0 | `ae4accbc109368d0e91d228b2e7fe83d0f463aa860159f749aeb658acff9a35f` |
+| ReflectBinaryColorShiftBitmap, מצב 1 | 0 | `0e7e0dea00d1ee20207ec70aed2148b697d154c0bbc85540fcc6eaf61da9d339` |
+| ImageSilverBulletBitmap, ‏1,1,1 | 1 | `6531713b0b740adc266583a320d09e363fccf69a04397b58567779783ec0aa4c` |
+
 שתי נקודות כניסה נתנו פלט זהה בקלט זה. זו אינה הוכחה שהן זהות לכל תמונה או שכל מסלול Pro בענן נמצא בקוד המקומי. הזמנים באמולציית הוראות אינם ביצועי טלפון.
 
 ## שילוב 0.1.3
@@ -69,7 +78,19 @@ SHA256 של מכל הקלט: `35777d7072db578bbd1c38ac955faed90afa6fe64a08edc07b
 
 השמות החדשים נשמרים בעריכות כמזהי enum חדשים; שמות המתכונים הישנים לא שונו. הבנייה הרגילה מסתירה אותם ומסרבת להפעיל מתכון Native במקום לעבור למסנן אחר. בפרופיל Native נוסף רק libimageprocessor.so, עם SHA256 `0ccf18b6323ff23a076dc860dcd76e84097d031427ab056b52a4c7d8ffa28353`. הוא נטען רק כשנדרש. אין צירוף של scannercs או mainstone לפרופיל זה.
 
-נוספו בדיקת Android של שמירת מתכונים וסירוב להחלפה שקטה, ובדיקת smoke נפרדת שמחייבת פרופיל Native ומדלגת עליו במפורש בפרופיל הרגיל. כתיבת בדיקת ה־smoke אינה מוצגת כהרצתה על מכשיר. תוצאות הבנייה והבדיקות המלאות יתועדו לאחר סיומן.
+נוספו בדיקת Android של שמירת מתכונים וסירוב להחלפה שקטה, ובדיקת smoke נפרדת שמחייבת פרופיל Native ומדלגת עליו במפורש בפרופיל הרגיל. כתיבת בדיקת ה־smoke אינה מוצגת כהרצתה על מכשיר.
+
+## בנייה ותוצר 0.1.3
+
+שני הפרופילים השלימו בניית APK, ‏9 מבחני יחידה ללא כשל ו־Lint עם 0 שגיאות ו־9 אזהרות. נבנה גם APK של בדיקות Android בפרופיל הרגיל. מקור קוד האפליקציה: [305c4a5](https://github.com/4pdara/DocScan/commit/305c4a530553ad3ee4f50a25225792747126d7c6).
+
+APK Native: `DocScan-Native-0.1.3-debug.apk`, ‏64,413,063 בתים; SHA256: `6b9ad458d620295a28bdabc0e7db87829dda7bec16fbb73862de09605fc16a5a`.
+
+החבילה היא `com.docscan.rebuild.csnative`, ‏versionCode 3, ‏minSdk 26, ‏targetSdk 36, ‏ARM64 בלבד. אומתו בתוצר כל שש הספריות מול ה־hashes של הקלט, וכן היעדר scannercs ו־mainstone. אין הרשאת INTERNET. חתימת Debug: SHA256 תעודה `69dce468c27a15728cf501feb9bf76d67263031f5ee34604f78b6be55465e89c`, זהה ל־0.1.1.
+
+[ריצת 0.1.3 ב־GitHub Actions](https://github.com/4pdara/DocScan/actions/runs/42133225484) השלימה את שלב הבנייה. בדיקות API 28, ‏29 ו־35 עדיין בריצה בזמן עדכון זה; בפרופיל הרגיל בדיקת Native הייעודית מדולגת במפורש. אין בדיקת Android מלאה של ה־Native או טלפון אמיתי.
+
+כלי `dex_signatures.py` קיבל פרמטרים לנתיב קלט/פלט, ואומת מחדש על DEX המקורי: ScannerEngine ‏40 הצהרות native, ‏MagicEnhancer ‏36, ‏ImageProcessor ‏24 ו־PageScanner ‏102. החתימות של ארבע הקריאות החדשות תואמות במדויק לממשקי ה־JNI המינימליים ביישום. תצפית Frida תומכת כעת גם ב־ARMv7, ומפרידה ערך אוגר Native לא מטופס מהתוצאה המטופסת שב־Java; אלה שיפורי כלי מחקר, ללא טענה שחיבור לאפליקציה הושלם.
 
 בניסיון Frida המחודש Android 7.1 ב־ARMv7 השלים אתחול, והתקנת חבילת CamScanner המקורית התחילה. סביבת המחקר התאפסה במהלך ההתקנה; לא התקבל trace מהאפליקציה. אין להציג ניסיון זה כחיבור Frida שהצליח. גם אין בדיקת טלפון אמיתי של ההרחבות.
 
