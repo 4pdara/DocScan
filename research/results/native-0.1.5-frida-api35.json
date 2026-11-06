@@ -1,0 +1,630 @@
+{
+  "source_commit": "1578dcc6123d915d74c837b3ce7e399c30ceee95",
+  "api": 35,
+  "events": [
+    {
+      "at": 1793955325504,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 219
+    },
+    {
+      "at": 1793955325508,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "GetVersion",
+      "signature": [],
+      "args": [],
+      "result": "java.lang.String",
+      "elapsed_ms": 1
+    },
+    {
+      "at": 1793955325711,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "initDeshadowModelNew",
+      "signature": [
+        "int"
+      ],
+      "args": [
+        1
+      ],
+      "result": 0,
+      "elapsed_ms": 203
+    },
+    {
+      "at": 1793955326317,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "deshadowBitmapNew",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        1,
+        0
+      ],
+      "result": 0,
+      "elapsed_ms": 606
+    },
+    {
+      "at": 1793955326332,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "releaseDeshadowModelNew",
+      "signature": [
+        "int"
+      ],
+      "args": [
+        0
+      ],
+      "result": "void",
+      "elapsed_ms": 15
+    },
+    {
+      "at": 1793955326472,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 113
+    },
+    {
+      "at": 1793955326621,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "initDeshadowModelNew",
+      "signature": [
+        "int"
+      ],
+      "args": [
+        1
+      ],
+      "result": 0,
+      "elapsed_ms": 149
+    },
+    {
+      "at": 1793955330523,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "deshadowBitmapNew",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        3,
+        0
+      ],
+      "result": 2,
+      "elapsed_ms": 3902
+    },
+    {
+      "at": 1793955330539,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "releaseDeshadowModelNew",
+      "signature": [
+        "int"
+      ],
+      "args": [
+        0
+      ],
+      "result": "void",
+      "elapsed_ms": 16
+    },
+    {
+      "at": 1793955330678,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 112
+    },
+    {
+      "at": 1793955330797,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "deshadowBitmap",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        1
+      ],
+      "result": -1,
+      "elapsed_ms": 119
+    },
+    {
+      "at": 1793955330911,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 113
+    },
+    {
+      "at": 1793955330965,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "deshadowBitmap",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        2
+      ],
+      "result": 0,
+      "elapsed_ms": 54
+    },
+    {
+      "at": 1793955331104,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 113
+    },
+    {
+      "at": 1793955331350,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.ImageProcessor",
+      "method": "ReflectBinaryColorShiftBitmap",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        1
+      ],
+      "result": 0,
+      "elapsed_ms": 5
+    },
+    {
+      "at": 1793955331476,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 116
+    },
+    {
+      "at": 1793955340157,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "ImageSilverBulletBitmap",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int",
+        "int",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        1,
+        1,
+        1
+      ],
+      "result": 1,
+      "elapsed_ms": 8681
+    },
+    {
+      "at": 1793955340295,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 126
+    },
+    {
+      "at": 1793955340301,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.ImageProcessor",
+      "method": "ReflectBinaryColorShiftBitmapBG",
+      "signature": [
+        "android.graphics.Bitmap",
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        {
+          "width": 100,
+          "height": 100
+        },
+        2
+      ],
+      "result": 0,
+      "elapsed_ms": 6
+    },
+    {
+      "at": 1793955340425,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 113
+    },
+    {
+      "at": 1793955340487,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.ImageProcessor",
+      "method": "ReflectBinaryColorShiftBitmapBG",
+      "signature": [
+        "android.graphics.Bitmap",
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        {
+          "width": 100,
+          "height": 100
+        },
+        3
+      ],
+      "result": 0,
+      "elapsed_ms": 4
+    },
+    {
+      "at": 1793955340606,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.MagicEnhancer",
+      "method": "classifyShadowTypeBitmap",
+      "signature": [
+        "android.graphics.Bitmap"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        }
+      ],
+      "result": 4,
+      "elapsed_ms": 110
+    },
+    {
+      "at": 1793955340608,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.ImageProcessor",
+      "method": "ReflectBinaryColorShiftBitmap",
+      "signature": [
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        1
+      ],
+      "result": 0,
+      "elapsed_ms": 1
+    },
+    {
+      "at": 1793955340610,
+      "event": "java_return",
+      "class": "com.intsig.nativelib.ImageProcessor",
+      "method": "ReflectBinaryColorShiftBitmapBG",
+      "signature": [
+        "android.graphics.Bitmap",
+        "android.graphics.Bitmap",
+        "int"
+      ],
+      "args": [
+        {
+          "width": 96,
+          "height": 128
+        },
+        {
+          "width": 100,
+          "height": 100
+        },
+        2
+      ],
+      "result": 0,
+      "elapsed_ms": 1
+    },
+    {
+      "at": 1793955325503,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 217
+    },
+    {
+      "at": 1793955325508,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_GetVersion",
+      "raw_return": "0x7fc620b1f00d",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 0
+    },
+    {
+      "at": 1793955325710,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_initDeshadowModelNew",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 201
+    },
+    {
+      "at": 1793955326317,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_deshadowBitmapNew",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 606
+    },
+    {
+      "at": 1793955326331,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_releaseDeshadowModelNew",
+      "raw_return": "0x1",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 13
+    },
+    {
+      "at": 1793955326471,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 112
+    },
+    {
+      "at": 1793955326620,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_initDeshadowModelNew",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 148
+    },
+    {
+      "at": 1793955330522,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_deshadowBitmapNew",
+      "raw_return": "0x2",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 3901
+    },
+    {
+      "at": 1793955330538,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_releaseDeshadowModelNew",
+      "raw_return": "0x1",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 15
+    },
+    {
+      "at": 1793955330677,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 111
+    },
+    {
+      "at": 1793955330797,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_deshadowBitmap",
+      "raw_return": "0xffffffff",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 118
+    },
+    {
+      "at": 1793955330910,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 112
+    },
+    {
+      "at": 1793955330964,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_deshadowBitmap",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 53
+    },
+    {
+      "at": 1793955331103,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 112
+    },
+    {
+      "at": 1793955331349,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_ImageProcessor_ReflectBinaryColorShiftBitmap",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 4
+    },
+    {
+      "at": 1793955331475,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 114
+    },
+    {
+      "at": 1793955340157,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_ImageSilverBulletBitmap",
+      "raw_return": "0x1",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 8680
+    },
+    {
+      "at": 1793955340294,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 125
+    },
+    {
+      "at": 1793955340301,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_ImageProcessor_ReflectBinaryColorShiftBitmapBG",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 6
+    },
+    {
+      "at": 1793955340424,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 113
+    },
+    {
+      "at": 1793955340486,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_ImageProcessor_ReflectBinaryColorShiftBitmapBG",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 3
+    },
+    {
+      "at": 1793955340606,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_MagicEnhancer_classifyShadowTypeBitmap",
+      "raw_return": "0x4",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 110
+    },
+    {
+      "at": 1793955340608,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_ImageProcessor_ReflectBinaryColorShiftBitmap",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 1
+    },
+    {
+      "at": 1793955340610,
+      "event": "arm_jni_return",
+      "name": "Java_com_intsig_nativelib_ImageProcessor_ReflectBinaryColorShiftBitmapBG",
+      "raw_return": "0x0",
+      "return_type": "untyped; see typed Java trace",
+      "elapsed_ms": 1
+    }
+  ]
+}
