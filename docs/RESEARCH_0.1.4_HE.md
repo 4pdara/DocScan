@@ -98,3 +98,11 @@ libscannercs, libmagicenhancer, libimageprocessor ו־libopencv הושוו בי�
 [ריצה 42146066932](https://github.com/4pdara/DocScan/actions/runs/42146066932) השלימה אתחול, התקנה והפעלה רגילה של ההפצה הרשמית **לפני חיבור Frida**. גם ההפעלה הרגילה קרסה ב־`s.h.e.l.l.N.al` עם UnsatisfiedLinkError וחזרה למסך הבית. לא היה PID חי לאחר 20 שניות, ולכן לא בוצע attach ולא הופעל fixture. הלוג לפני Frida והסיכום נשמרו ב־artifact `original-camscanner-frida-android-30`.
 
 המסקנה המצומצמת: ההפצה הרשמית המוגנת אינה משלימה אתחול בסביבת Android 11 x86_64/ARM-translation שנבדקה; אין לייחס את הכשל לחיבור Frida, וגם אין להחיל אותו אוטומטית על חבילת ה־16 DEX של המשתמש או על טלפון ARM. הניסיון הבא עובר ל־Android 15 כדי לבדוק סביבת תרגום עדכנית. לא שונתה שכבת הטעינה ולא בוטלו בדיקות היישום.
+
+### Trace אמיתי מתוך DocScan Native
+
+[ריצה 42146066632](https://github.com/4pdara/DocScan/actions/runs/42146066632) השלימה חיבור כפול: agent מארח x64 תיעד קריאות Java, ו־agent ב־emulated realm דיווח ARM64 ותיעד exports של libmagicenhancer. זהו trace אמיתי ב־Android, נוסף לבדיקות Unidbg הקודמות.
+
+נצפו `initDeshadowModelNew(1)→0`, ‏`deshadowBitmapNew(Bitmap 96×128,1,0)→0` ו־`releaseDeshadowModelNew(0)`. בדיקת PAPER עברה את בדיקות הממדים/אלפא/השפעה/מקור והתקדמה למסנן הבא. זמן PAPER שנמדד תחת Frida ותרגום ARM היה כ־3.9 שניות; אין להשוותו לביצועי טלפון.
+
+לאחר אתחול session נוסף, התהליך קרס ב־SIGSEGV בזמן המסלול הבא (Magic Color/מצב 3); כל חמשת המסלולים לא השלימו smoke בריצה זו. נוספה ריצת ביקורת של אותו מבחן **ללא Frida** לפני הריצה עם התצפית, כדי לבדוק אם השפעת ה־hooking/תרגום היא חלק מהכשל. אין לייחס הצלחה של PAPER לכל המסננים, ואין להחליף מסנן שנכשל בשקט במסנן אחר. קובצי Java/ARM/logcat נשמרו ב־artifact `native-frida-android-30`.

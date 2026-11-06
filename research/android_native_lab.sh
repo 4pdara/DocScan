@@ -11,6 +11,10 @@ timeout 15s adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-serv
 timeout 15s adb forward tcp:27042 tcp:27042
 timeout 90s adb install -r app/build/outputs/apk/debug/app-debug.apk
 timeout 90s adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+# Control run: all five filters without Frida, before the observed run.
+timeout 140s adb shell am instrument -w -r -e class com.docscan.rebuild.RebuildFlowTest#referenceNativeSmokePreservesDimensionsAlphaAndSource com.docscan.rebuild.csnative.test/com.docscan.rebuild.LocaleTestRunner > research-results/plain-instrumentation.txt 2>&1 || true
+timeout 20s adb logcat -d -v threadtime > research-results/plain-logcat.txt || true
+adb logcat -c
 timeout 140s adb shell am instrument -w -r -e class com.docscan.rebuild.RebuildFlowTest#referenceNativeSmokePreservesDimensionsAlphaAndSource -e researchDelayMs 30000 com.docscan.rebuild.csnative.test/com.docscan.rebuild.LocaleTestRunner > research-results/instrumentation.txt 2>&1 &
 instrument_pid=$!
 app_pid=''
@@ -38,7 +42,9 @@ from pathlib import Path
 import json
 p=Path('research-results')
 text=(p/'instrumentation.txt').read_text()
-assert 'OK (1 test)' in text and 'FAILURES' not in text, 'Native Android smoke did not pass'
+plain=(p/'plain-instrumentation.txt').read_text()
+(p/'comparison.json').write_text(json.dumps({'plain_passed':'OK (1 test)' in plain and 'FAILURES' not in plain,'observed_passed':'OK (1 test)' in text and 'FAILURES' not in text},indent=2))
+assert 'OK (1 test)' in text and 'FAILURES' not in text, 'Observed Native smoke did not pass; compare plain control'
 for name,event in [('frida-java.txt','java_return'),('frida-arm.txt','arm_jni_return')]:
  rows=[]
  for line in (p/name).read_text().splitlines():
