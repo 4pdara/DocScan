@@ -88,7 +88,7 @@ APK Native: `DocScan-Native-0.1.3-debug.apk`, ‏64,413,063 בתים; SHA256: `6
 
 החבילה היא `com.docscan.rebuild.csnative`, ‏versionCode 3, ‏minSdk 26, ‏targetSdk 36, ‏ARM64 בלבד. אומתו בתוצר כל שש הספריות מול ה־hashes של הקלט, וכן היעדר scannercs ו־mainstone. אין הרשאת INTERNET. חתימת Debug: SHA256 תעודה `69dce468c27a15728cf501feb9bf76d67263031f5ee34604f78b6be55465e89c`, זהה ל־0.1.1.
 
-[ריצת 0.1.3 ב־GitHub Actions](https://github.com/4pdara/DocScan/actions/runs/42133225484) השלימה את שלב הבנייה. בדיקות API 28, ‏29 ו־35 עדיין בריצה בזמן עדכון זה; בפרופיל הרגיל בדיקת Native הייעודית מדולגת במפורש. אין בדיקת Android מלאה של ה־Native או טלפון אמיתי.
+[ריצת 0.1.3 ב־GitHub Actions](https://github.com/4pdara/DocScan/actions/runs/42133225484) הסתיימה בהצלחה: בנייה ובדיקות API 28 ו־29 באנגלית ו־API 35 בעברית. בכל אמולטור הסתיימו 16 בדיקות: 15 עברו ובדיקת Native ייעודית אחת דולגה במפורש. אין בדיקת Android מלאה של ה־Native או טלפון אמיתי.
 
 כלי `dex_signatures.py` קיבל פרמטרים לנתיב קלט/פלט, ואומת מחדש על DEX המקורי: ScannerEngine ‏40 הצהרות native, ‏MagicEnhancer ‏36, ‏ImageProcessor ‏24 ו־PageScanner ‏102. החתימות של ארבע הקריאות החדשות תואמות במדויק לממשקי ה־JNI המינימליים ביישום. תצפית Frida תומכת כעת גם ב־ARMv7, ומפרידה ערך אוגר Native לא מטופס מהתוצאה המטופסת שב־Java; אלה שיפורי כלי מחקר, ללא טענה שחיבור לאפליקציה הושלם.
 

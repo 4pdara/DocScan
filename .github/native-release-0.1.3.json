@@ -1,0 +1,266 @@
+{
+  "apk_name": "DocScan-Native-0.1.3-debug.apk",
+  "apk_size": 64413063,
+  "apk_sha256": "6b9ad458d620295a28bdabc0e7db87829dda7bec16fbb73862de09605fc16a5a",
+  "source_commit": "305c4a530553ad3ee4f50a25225792747126d7c6",
+  "validated_run_id": 42133225484,
+  "baseline_artifact_name": "DocScan-New-0.1.3",
+  "baseline_apk_name": "DocScan-New-0.1.3.apk",
+  "literal_size": 19717435,
+  "payload_size": 10199680,
+  "payload_sha256": "50424b5dc59135cb7549d86170687bfd8c2186e667fefdb25be3d26ad619e54f",
+  "segments": [
+    {
+      "literal_offset": 0,
+      "length": 181
+    },
+    {
+      "base_entry": "classes.dex",
+      "length": 8798730,
+      "sha256": "acb241935cdea21fcb93447111be5f5672781b485b55b70d5eca56a9c6aadfb4"
+    },
+    {
+      "literal_offset": 181,
+      "length": 43
+    },
+    {
+      "base_entry": "classes10.dex",
+      "length": 2513329,
+      "sha256": "efef2384713926ef16c53ccaec8c16d84bfd43f8350e38cfc312b49fe1eb9bb6"
+    },
+    {
+      "literal_offset": 224,
+      "length": 42
+    },
+    {
+      "base_entry": "classes2.dex",
+      "length": 46521,
+      "sha256": "c42c630913b40358e1cd6b3af2961f32059f68fc404e6ace628025c181b911a7"
+    },
+    {
+      "literal_offset": 266,
+      "length": 210657
+    },
+    {
+      "base_entry": "classes4.dex",
+      "length": 30725,
+      "sha256": "1cd1845e71dfc63158c70aee926c52e65d1f0d26d6f27fe88a364c0fda00fe71"
+    },
+    {
+      "literal_offset": 210923,
+      "length": 4319
+    },
+    {
+      "base_entry": "classes6.dex",
+      "length": 13822,
+      "sha256": "c9032e4d4c32f906c1202cfcba6d59c78a25b1792d55bf3afb6c167793a4efbf"
+    },
+    {
+      "literal_offset": 215242,
+      "length": 1050
+    },
+    {
+      "base_entry": "classes8.dex",
+      "length": 10713,
+      "sha256": "394277ff9940146aaca6e41a1da0305a00b2302d964c7e466d1952cad6543910"
+    },
+    {
+      "literal_offset": 216292,
+      "length": 42
+    },
+    {
+      "base_entry": "classes9.dex",
+      "length": 8453565,
+      "sha256": "5b2d27c07684b0114cf5a0bf8d215380259c8678ac96528372007cf5629eb083"
+    },
+    {
+      "literal_offset": 216334,
+      "length": 4312037
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "length": 10096,
+      "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6"
+    },
+    {
+      "literal_offset": 4528371,
+      "length": 6288
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libc++_shared.so",
+      "length": 1292904,
+      "sha256": "4397241b4bd20a8e579bfb41d21107857e12985f6a01ca0c2a5f83380d1270b4"
+    },
+    {
+      "literal_offset": 4534659,
+      "length": 1432
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libimage_processing_util_jni.so",
+      "length": 32544,
+      "sha256": "f0e4611db0d6b68942d8ba6977519f3dd1cdbffa87b7fc16d8006696ba954af4"
+    },
+    {
+      "literal_offset": 4536091,
+      "length": 14156000
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libopencv_java4.so",
+      "length": 23465088,
+      "sha256": "144bbc9ad0b0bac4ba58f7d53198aead64379e5314f68200968c703d2c1c14ab"
+    },
+    {
+      "literal_offset": 18692091,
+      "length": 13184
+    },
+    {
+      "base_entry": "lib/arm64-v8a/libsurface_util_jni.so",
+      "length": 4896,
+      "sha256": "6cb2eac3c68e6a82ce2a5ea5aba86749eb8c609914392e125f6cdfbc208992f8"
+    },
+    {
+      "literal_offset": 18705275,
+      "length": 64
+    },
+    {
+      "base_entry": "assets/licenses/OpenCV-LICENSE.txt",
+      "length": 4430,
+      "sha256": "b2706a62b7ffa95ddaa48d322d21d2882dcfb5db048300ea18b177cbcff30cfd"
+    },
+    {
+      "literal_offset": 18705339,
+      "length": 103366
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "length": 2463,
+      "sha256": "0f8db605d63bf1d6d35fd647d592ac4e70c9a712ff5d1c2114c8d58a88b8228a"
+    },
+    {
+      "literal_offset": 18808705,
+      "length": 93
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "length": 2834,
+      "sha256": "1f9538745cfd3209cc09ed451c198302aac3a1c5da41e87394377814b1bcc5ee"
+    },
+    {
+      "literal_offset": 18808798,
+      "length": 12446
+    },
+    {
+      "base_entry": "res/drawable-xxhdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "length": 2305,
+      "sha256": "e1a2b864d0114a8471662f8e30ffcbb2eb9ffd414d36239612def8c7792a450a"
+    },
+    {
+      "literal_offset": 18821244,
+      "length": 11907
+    },
+    {
+      "base_entry": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "length": 2505,
+      "sha256": "c367b73a33a933429e1d57d33fcfbf243f0274e7cdba221a0b983ee15b5baca9"
+    },
+    {
+      "literal_offset": 18833151,
+      "length": 91
+    },
+    {
+      "base_entry": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "length": 2816,
+      "sha256": "b4af73e52266be570c2c163d987e64348066db311b41e7a382000529c0136c6b"
+    },
+    {
+      "literal_offset": 18833242,
+      "length": 826047
+    },
+    {
+      "base_entry": "kotlin/kotlin.kotlin_builtins",
+      "length": 5342,
+      "sha256": "d94711e75a621fa0423ad249cf2ff46e0db46a6d79b8351b29808614848e188b"
+    },
+    {
+      "literal_offset": 19659289,
+      "length": 58146
+    }
+  ],
+  "chunks": [
+    {
+      "index": 0,
+      "size": 700000,
+      "sha": "e7b343c232df2eac2ab44d972242331d8f352fc3"
+    },
+    {
+      "index": 1,
+      "size": 700000,
+      "sha": "7000267005c3b07460985bbfa6787f59bdef5c56"
+    },
+    {
+      "index": 2,
+      "size": 700000,
+      "sha": "1e75221a346bbc5bf70fe77e49c87e0f084eeb4d"
+    },
+    {
+      "index": 3,
+      "size": 700000,
+      "sha": "f26fc013de69898bbcd909d40cb7396cbda71eb8"
+    },
+    {
+      "index": 4,
+      "size": 700000,
+      "sha": "2687bae3fb744b8fdcd996b7b1e99cfb57fa2327"
+    },
+    {
+      "index": 5,
+      "size": 700000,
+      "sha": "dcd18bea4011c2a144043c0eea1685a32aadac7d"
+    },
+    {
+      "index": 6,
+      "size": 700000,
+      "sha": "b21b49aa1e00cbdeb642b28198411631d4b37dd2"
+    },
+    {
+      "index": 7,
+      "size": 700000,
+      "sha": "c4ba91e726105fa06f5566e3b9b0f22ab28820bf"
+    },
+    {
+      "index": 8,
+      "size": 700000,
+      "sha": "4a7f89f74145810d6d0c26149de2c42a32abfa68"
+    },
+    {
+      "index": 9,
+      "size": 700000,
+      "sha": "e1ce33dc8798131c95af9b94ace8535799258b00"
+    },
+    {
+      "index": 10,
+      "size": 700000,
+      "sha": "bf6f2fb830c9c07436b2c9c7a5bf6a9dddc17b63"
+    },
+    {
+      "index": 11,
+      "size": 700000,
+      "sha": "b1f426d39450ba192a23467576567721765f4f2c"
+    },
+    {
+      "index": 12,
+      "size": 700000,
+      "sha": "18b5d79e080ea859845cab92c6c6b7da89129bc5"
+    },
+    {
+      "index": 13,
+      "size": 700000,
+      "sha": "62a8539b761114c8ebf871899b7ab9cb3bd87815"
+    },
+    {
+      "index": 14,
+      "size": 399680,
+      "sha": "495d36c39ccc0cd2bfecd1029d6e6b7766ec28d8"
+    }
+  ]
+}
