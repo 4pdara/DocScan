@@ -32,3 +32,23 @@
 - https://frida.re/news/2026/11/05/frida-17-26-0-released/
 - https://frida.re/news/2021/02/10/frida-14-2-released/
 - https://android-developers.googleblog.com/2020/03/run-arm-apps-on-android-emulator.html
+
+## מקור רשמי נוסף והרצת האפליקציה המקורית
+
+קוד ה־QR הרשמי בעמוד הבית פוענח ל־`https://v3.camscanner.com/user/download`. בקשת Android מפנה ל־`https://cs-dl.camscanner.com/download/CamScanner.apk`.
+
+הורדה מ־6.11.2026: גרסה 7.28.0.2610220000, קוד 72801, ARM64 בלבד, 172,570,998 בתים. SHA256 `fa4f83b6990aa0d83bf9507d414e3fbe93cb9bfbfe6da0612752c5faf1c29d46`. חתימת IntSig מאומתת: `7fb4c4f789b7258fc63d300a8e94f393a6a8ec2f29d86dd0cafd1f36347ea23f`, זהה לחבילה שסיפק המשתמש. זוהי גרסת הפצה שונה ביום אחד; אין להציג אותה כאותו APK.
+
+libscannercs, libmagicenhancer, libimageprocessor ו־libopencv הושוו בית־לבית לחבילה המקורית ונמצאו זהים. נוספה מעבדה נפרדת שמתקינה את ההורדה הרשמית ללא שינוי ומחברת Frida 17.26, ללא חשבון או סריקות אישיות. הקלט הסינתטי 320×480. קריאות הבדיקה מופעלות רק אחרי שהאפליקציה מאותחלת באופן הרגיל או מחזירה הקשר מנוע תקין; לא הועתק מפתח SDK ולא שונו תוצאות אימות.
+
+## מסנני לוח ונייר — בדיקה סטטית נוספת
+
+נקראה מחדש PadLocalModelEnhance בעזרת JADX 1.5.6 על classes10.dex של חבילת המשתמש. יש אזהרת Kotlin metadata ולכן המסקנות מוגבלות לקריאות המפורשות שנקראו:
+
+- Invert משתמש ב־ReflectBinaryColorShiftBitmap במצב 1.
+- Board משתמש ב־ReflectBinaryColorShiftBitmapBG במצב 2 ובמשאב bg_pad_board.
+- Paper משתמש באותה קריאה במצב 3 ובמשאב bg_pad_paper.
+- מצב משולב מפעיל Invert ואז Board; אין זו קריאת מסנן עם המספר 123.
+- במסלול קובץ נמסרים נתיבי מקור, רקע ותוצאה ל־ReflectBinaryColorShiftImgFileBG, והקריאה המקורית מקבלת קוד לא שלילי כהצלחה.
+
+לגרסאות הבאות: לאמת קריאות BG עם רקע מקורי שלנו, לוודא השפעה/אלפא/ממדים, ורק אז להוסיף אפשרויות נוספות. אין להעתיק את משאבי הרקע של היצרן לעץ הקוד. קוד מפורק נשמר רק באזור המחקר המקומי, לא ב־Git.
