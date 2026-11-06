@@ -2,13 +2,13 @@
 set -euo pipefail
 mkdir -p research-original-results
 adb shell getprop ro.product.cpu.abilist > research-original-results/abilist.txt
-adb root
-adb wait-for-device
-adb push /tmp/frida-server /data/local/tmp/frida-server
-adb shell chmod 755 /data/local/tmp/frida-server
-adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-original.log 2>&1 &'
-adb forward tcp:27042 tcp:27042
-adb install -r /tmp/CamScanner.apk
+timeout 20s adb root
+timeout 30s adb wait-for-device
+timeout 60s adb push /tmp/frida-server /data/local/tmp/frida-server
+timeout 15s adb shell chmod 755 /data/local/tmp/frida-server
+timeout 15s adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-original.log 2>&1 &'
+timeout 15s adb forward tcp:27042 tcp:27042
+timeout 90s adb install -r /tmp/CamScanner.apk
 for permission in android.permission.CAMERA android.permission.READ_EXTERNAL_STORAGE android.permission.WRITE_EXTERNAL_STORAGE; do
  adb shell pm grant com.intsig.camscanner "$permission" || true
 done
@@ -24,25 +24,25 @@ adb push /tmp/DocScan-Research-Input.png /sdcard/Download/DocScan-Research-Input
 adb shell svc wifi disable
 adb shell svc data disable
 # Let the application's own loader finish before attaching; compare ordinary startup with spawn.
-adb shell am start -W -n com.intsig.camscanner/com.intsig.camscanner.mainmenu.mainactivity.MainActivity > research-original-results/normal-start.txt 2>&1 || true
+timeout 40s adb shell am start -W -n com.intsig.camscanner/com.intsig.camscanner.mainmenu.mainactivity.MainActivity > research-original-results/normal-start.txt 2>&1 || true
 sleep 20
-adb logcat -d -v threadtime > research-original-results/normal-start-logcat.txt
-app_pid=$(adb shell pidof com.intsig.camscanner | tr -d '\r' || true)
+timeout 20s adb logcat -d -v threadtime > research-original-results/normal-start-logcat.txt
+app_pid=$(timeout 5s adb shell pidof com.intsig.camscanner | tr -d '\r' || true)
 if [[ -n "$app_pid" ]]; then
- frida -H 127.0.0.1:27042 -p "$app_pid" -l research/observe_engine.js -q -t 100 > research-original-results/frida-java.txt 2>&1 &
+ timeout 115s frida -H 127.0.0.1:27042 -p "$app_pid" -l research/observe_engine.js -q -t 100 > research-original-results/frida-java.txt 2>&1 &
  java_pid=$!
  sleep 10
- frida -H 127.0.0.1:27042 -p "$app_pid" --realm=emulated -l research/observe_native.js -q -t 85 > research-original-results/frida-arm.txt 2>&1 &
+ timeout 115s frida -H 127.0.0.1:27042 -p "$app_pid" --realm=emulated -l research/observe_native.js -q -t 85 > research-original-results/frida-arm.txt 2>&1 &
  arm_pid=$!
  wait "$arm_pid" || true
  wait "$java_pid" || true
 else
  echo 'Original process exited during normal startup before Frida attach.' > research-original-results/frida-java.txt
 fi
-adb exec-out screencap -p > research-original-results/original-state.png
-adb logcat -d -v threadtime > research-original-results/logcat.txt
-adb pull /data/local/tmp/frida-original.log research-original-results/frida-server.txt || true
-adb pull /data/user/0/com.intsig.camscanner/files/docscan-research research-original-results/synthetic-outputs || true
+timeout 20s adb exec-out screencap -p > research-original-results/original-state.png
+timeout 20s adb logcat -d -v threadtime > research-original-results/logcat.txt
+timeout 20s adb pull /data/local/tmp/frida-original.log research-original-results/frida-server.txt || true
+timeout 20s adb pull /data/user/0/com.intsig.camscanner/files/docscan-research research-original-results/synthetic-outputs || true
 python3 - <<'PY'
 from pathlib import Path
 import json
