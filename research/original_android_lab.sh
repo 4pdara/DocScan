@@ -11,12 +11,25 @@ collect_evidence() {
  exit "$status"
 }
 trap collect_evidence EXIT
-adb shell getprop ro.boot.qemu > research-original-results/emulator-property.txt
-adb shell getprop ro.dalvik.vm.native.bridge > research-original-results/native-bridge.txt
-adb shell getconf _NPROCESSORS_ONLN > research-original-results/cpu-count.txt
-adb shell getprop ro.product.cpu.abilist > research-original-results/abilist.txt
-timeout 20s adb root
-timeout 30s adb wait-for-device
+# ADB may briefly go offline immediately after boot or adbd restarts as root.
+# Retry initialization only; never alter the guest's protection or app checks.
+retry_adb() {
+ for attempt in 1 2 3; do
+  if timeout 30s adb "$@"; then return 0; fi
+  timeout 30s adb wait-for-device || true
+  sleep 2
+ done
+ return 1
+}
+retry_adb wait-for-device
+retry_adb root
+retry_adb wait-for-device
+retry_adb shell id -u > research-original-results/adb-user.txt
+[[ "$(tr -d '\r' < research-original-results/adb-user.txt)" == 0 ]]
+retry_adb shell getprop ro.boot.qemu > research-original-results/emulator-property.txt
+retry_adb shell getprop ro.dalvik.vm.native.bridge > research-original-results/native-bridge.txt
+retry_adb shell getconf _NPROCESSORS_ONLN > research-original-results/cpu-count.txt
+retry_adb shell getprop ro.product.cpu.abilist > research-original-results/abilist.txt
 timeout 60s adb push /tmp/frida-server /data/local/tmp/frida-server
 timeout 15s adb shell chmod 755 /data/local/tmp/frida-server
 timeout 15s adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-original.log 2>&1 &'
