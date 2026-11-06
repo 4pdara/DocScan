@@ -6,6 +6,9 @@ import com.docscan.rebuild.BuildConfig
 import com.docscan.rebuild.model.Treatment
 import com.intsig.nativelib.MagicEnhancer
 import com.intsig.nativelib.ImageProcessor
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 
 /** Experimental Bitmap boundary; no Mat or allocation crosses between OpenCV providers. */
 internal object NativeCamScannerEnhancer {
@@ -46,6 +49,7 @@ internal object NativeCamScannerEnhancer {
 
     private fun board(bitmap: Bitmap, paper: Boolean) {
         check(imageProcessorLoaded)
+        if (paper) prepareBoardInk(bitmap)
         // PadLocalModelEnhance uses modes 2/3. These flat mattes are ours;
         // no reference texture, drawable or model is copied into the application.
         val background = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
@@ -53,6 +57,20 @@ internal object NativeCamScannerEnhancer {
             background.eraseColor(if (paper) Color.WHITE else Color.rgb(40, 74, 70))
             checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmapBG(bitmap, background, if (paper) 3 else 2))
         } finally { background.recycle() }
+    }
+
+    private fun prepareBoardInk(bitmap: Bitmap) {
+        // Mode 3 is used for writing-pad images in the reference.
+        // Our camera supplies colour photos: form a neutral chalk mask so mode 3
+        // produces readable black ink on white instead of complementing board hues.
+        ImagePipeline.ensureAvailable()
+        val gray = Mat(); val mask = Mat()
+        try {
+            Utils.bitmapToMat(bitmap, gray)
+            Imgproc.cvtColor(gray, gray, Imgproc.COLOR_RGBA2GRAY)
+            Imgproc.threshold(gray, mask, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
+            Utils.matToBitmap(mask, bitmap)
+        } finally { gray.release(); mask.release() }
     }
 
     private fun removeShadow(bitmap: Bitmap) {

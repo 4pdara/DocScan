@@ -290,6 +290,10 @@ class RebuildFlowTest {
                             row.put("expected_rejection", true)
                         } else assertTrue("Filter had no effect", actual.indices.any { actual[it] != before[it] })
                         assertTrue("Output alpha changed", actual.all { Color.alpha(it) == 255 })
+                        if (fixtureKind == "board" && treatment == Treatment.NATIVE_BOARD_PAPER) {
+                            assertEquals("Board background should become white paper", Color.WHITE, output.getPixel(10, 10))
+                            assertEquals("Chalk should become black ink", Color.BLACK, output.getPixel(width / 2, (height * .11f).toInt()))
+                        }
                         val outputDir = File(context.getExternalFilesDir(null), "filter-probe").apply { mkdirs() }
                         val shadowSuffix = forcedShadowType?.toString() ?: "auto"
                         File(outputDir, "$caseId-${treatment.name}-$shadowSuffix.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
