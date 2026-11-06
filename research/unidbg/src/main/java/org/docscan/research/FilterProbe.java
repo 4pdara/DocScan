@@ -62,6 +62,16 @@ public final class FilterProbe {
                     result = processor.callStaticJniMethodInt(emulator, "ReflectBinaryColorShiftBitmap(Landroid/graphics/Bitmap;I)I", bitmap, mode);
                     break;
                 }
+                case "background": {
+                    vm.loadLibrary(new File(libraries, "libimageprocessor.so"), true);
+                    DvmClass processor = vm.resolveClass("com/intsig/nativelib/ImageProcessor");
+                    BufferedImage background = new BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR);
+                    int color = mode == 2 ? 0xff29433b : 0xffeee9d9;
+                    for (int y=0; y<height; y++) for (int x=0; x<width; x++) background.setRGB(x,y,color);
+                    NativeProbe.CaptureBitmap backdrop = new NativeProbe.CaptureBitmap(vm, background);
+                    result = processor.callStaticJniMethodInt(emulator, "ReflectBinaryColorShiftBitmapBG(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;I)I", bitmap, backdrop, mode);
+                    break;
+                }
                 default: throw new IllegalArgumentException("Unknown probe");
             }
             if (bitmap.processed == null) throw new IllegalStateException("No pixels returned");

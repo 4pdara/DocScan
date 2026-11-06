@@ -11,7 +11,7 @@ adb shell '/data/local/tmp/frida-server > /data/local/tmp/frida-server.log 2>&1 
 adb forward tcp:27042 tcp:27042
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w -r -e class com.docscan.rebuild.RebuildFlowTest#referenceNativeSmokePreservesDimensionsAlphaAndSource -e researchDelayMs 30000 com.docscan.rebuild.csnative.test/androidx.test.runner.AndroidJUnitRunner > research-results/instrumentation.txt 2>&1 &
+adb shell am instrument -w -r -e class com.docscan.rebuild.RebuildFlowTest#referenceNativeSmokePreservesDimensionsAlphaAndSource -e researchDelayMs 30000 com.docscan.rebuild.csnative.test/com.docscan.rebuild.LocaleTestRunner > research-results/instrumentation.txt 2>&1 &
 instrument_pid=$!
 app_pid=''
 for attempt in $(seq 1 60); do
