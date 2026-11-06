@@ -443,5 +443,6 @@
     "device (29, en)",
     "device (35, he)"
   ],
-  "legacy_check_note": "API 28 failed before running any tests due to emulator/ADB infrastructure; retry requested. This prerelease does not claim API 28 validation."
+  "legacy_check_note": "API 28 failed before running any tests due to emulator/ADB infrastructure; retry requested. This prerelease does not claim API 28 validation.",
+  "tag_creation": "explicit_verified_source_ref"
 }

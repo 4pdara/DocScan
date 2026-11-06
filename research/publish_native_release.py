@@ -138,9 +138,18 @@ def publish(plan, apk, checksum, repository):
         subprocess.run(['gh', 'release', 'upload', tag, str(apk), str(checksum), '--repo', repository, '--clobber'], check=True)
         subprocess.run(['gh', 'release', 'edit', tag, '--repo', repository, '--draft=false', '--prerelease', '--latest=false', '--notes-file', notes], check=True)
     elif '404' in previous.stderr:
+        ref_endpoint = f'repos/{repository}/git/ref/tags/{tag}'
+        reference = subprocess.run(['gh', 'api', ref_endpoint], capture_output=True, text=True)
+        if reference.returncode:
+            if '404' not in reference.stderr:
+                raise RuntimeError('Cannot inspect release tag')
+            subprocess.run(['gh', 'api', '--method', 'POST', f'repos/{repository}/git/refs',
+                            '-f', f'ref=refs/tags/{tag}', '-f', "sha=" + plan['source_commit']], check=True)
+        tag_data = gh_json(ref_endpoint)
+        if tag_data['object']['type'] != 'commit' or tag_data['object']['sha'] != plan['source_commit']:
+            raise ValueError('Release tag does not point at the verified app source')
         subprocess.run(['gh', 'release', 'create', tag, str(apk), str(checksum), '--repo', repository,
-                        '--target', plan['source_commit'], '--prerelease', '--latest=false',
-                        '--title', title,
+                        '--verify-tag', '--prerelease', '--latest=false', '--title', title,
                         '--notes-file', notes], check=True)
     else:
         raise RuntimeError('Cannot inspect the target release')
