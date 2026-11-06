@@ -52,7 +52,7 @@ for name in ['frida-java.txt','frida-arm.txt']:
  for line in (p/name).read_text().splitlines():
   try: events.append(json.loads(line))
   except ValueError:pass
-summary={'apk_version':'7.28.0.2610220000','original_user_reference_version':'7.28.0.2610210000','signed_in':False,'network':'disabled','hooks_ready':any(e.get('event')=='hooks_ready' for e in events),'java_calls':sum(e.get('event')=='java_return' for e in events),'native_calls':sum(e.get('event')=='arm_jni_return' for e in events),'fixture_done':any(e.get('event')=='fixture_done' for e in events),'fixtures':[e for e in events if e.get('event')=='fixture_result']}
+summary={'apk_version':'7.28.0.2610220000','original_user_reference_version':'7.28.0.2610210000','signed_in':False,'network':'disabled','android_api':int(__import__('subprocess').check_output(['adb','shell','getprop','ro.build.version.sdk'],text=True).strip()),'hooks_ready':any(e.get('event')=='hooks_ready' for e in events),'java_calls':sum(e.get('event')=='java_return' for e in events),'native_calls':sum(e.get('event')=='arm_jni_return' for e in events),'fixture_done':any(e.get('event')=='fixture_done' for e in events),'fixtures':[e for e in events if e.get('event')=='fixture_result']}
 (p/'events.json').write_text(json.dumps(events,indent=2));(p/'summary.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary))
 assert summary['hooks_ready'] and summary['fixture_done'], 'Original CamScanner did not complete the observed fixture path; inspect captured evidence'
 PY

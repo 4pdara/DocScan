@@ -46,7 +46,7 @@ jobs:
       - uses: reactivecircus/android-emulator-runner@v2
         timeout-minutes: 8
         with:
-          api-level: 30
+          api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
@@ -57,5 +57,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: original-camscanner-frida-android-30
+          name: original-camscanner-frida-android-35
           path: research-original-results/
