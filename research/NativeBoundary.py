@@ -42,7 +42,10 @@ tokens=['JNI_OnLoad','ScannerEngine_initEngine','ScannerEngine_initThreadContext
 'ScannerEngine_GetVersion','MagicEnhancer_initDeshadowModelNew','MagicEnhancer_deshadowBitmapNew',
 'MagicEnhancer_ImageSilverBulletBitmap','MagicEnhancer_GetVersion','PageScanner_initCropDewarp',
 'PageScanner_initDetectBorder','PageScanner_DetectBorder','PageScanner_GetVersion',
-'ImageProcessor_initDeblur','ImageProcessor_GetVersion','EnhanceColorImageByModes','init_model']
+'ImageProcessor_initDeblur','ImageProcessor_GetVersion','EnhanceColorImageByModes','init_model',
+'MagicEnhancer_deshadowBitmap','MagicEnhancer_deshadowBitmap2','MagicEnhancer_initDeshadowModel2',
+'MagicEnhancer_releaseDeshadowModel2','MagicEnhancer_classifyShadowTypeBitmap',
+'ImageProcessor_ReflectBinaryColorShiftBitmapBG']
 di=DecompInterface();di.openProgram(currentProgram)
 for f in currentProgram.getFunctionManager().getFunctions(True):
  if any(t==f.getName() or t in f.getName() for t in tokens):
@@ -54,3 +57,4 @@ for f in currentProgram.getFunctionManager().getFunctions(True):
    else:out.write('// FAILED '+result.getErrorMessage())
   print('BOUNDARY '+f.getName()+' '+str(f.getEntryPoint()))
 di.dispose()
+

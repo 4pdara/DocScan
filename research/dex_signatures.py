@@ -2,8 +2,10 @@ import argparse,pathlib,struct,json
 parser=argparse.ArgumentParser(description='Inspect native class definitions, without extracting activation strings.')
 parser.add_argument('--dex-dir',type=pathlib.Path,default=pathlib.Path('research/private/base'))
 parser.add_argument('--output',type=pathlib.Path,default=pathlib.Path('research/jni_signatures.json'))
+parser.add_argument('--class-name',action='append',help='Exact DEX class descriptor to inspect; repeat for multiple classes')
 cli=parser.parse_args()
 targets={'Lcom/intsig/scanner/ScannerEngine;','Lcom/intsig/nativelib/MagicEnhancer;','Lcom/intsig/nativelib/ImageProcessor;','Lcom/intsig/nativelib/PageScanner;'}
+if cli.class_name:targets=set(cli.class_name)
 found=[]
 for p in cli.dex_dir.glob('*.dex'):
  b=p.read_bytes()
@@ -46,3 +48,4 @@ for p in cli.dex_dir.glob('*.dex'):
 if not found:raise SystemExit('No matching class definitions found in the supplied DEX directory')
 cli.output.parent.mkdir(parents=True,exist_ok=True)
 cli.output.write_text(json.dumps(found,indent=2))
+

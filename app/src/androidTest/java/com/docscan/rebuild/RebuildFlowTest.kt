@@ -186,6 +186,74 @@ class RebuildFlowTest {
         } finally { input.recycle() }
     }
 
+    /** Research-only entry point: each invocation can run one filter in a fresh Android process. */
+    @Test fun referenceNativeIsolatedMatrix() {
+        Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
+        val args = androidx.test.platform.app.InstrumentationRegistry.getArguments()
+        val allowed = listOf(Treatment.PAPER) + Treatment.entries.filter { it.requiresReferenceEngine }
+        val selected = args.getString("researchTreatments")?.split(",")?.map { Treatment.valueOf(it) } ?: allowed
+        require(selected.isNotEmpty() && selected.all { it in allowed })
+        val width = (args.getString("researchWidth")?.toIntOrNull() ?: 96).also { require(it in setOf(96, 320, 1280)) }
+        val height = if (width == 96) 128 else width * 3 / 2
+        val boundary = args.getString("researchBoundary", "pipeline")
+        require(boundary in setOf("pipeline", "direct"))
+        if (boundary == "pipeline") ImagePipeline.ensureAvailable()
+        listOf("opencv", "ncnn", "MNN", "CVNN", "magicenhancer").forEach(System::loadLibrary)
+        val delay = args.getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
+        if (delay > 0) android.os.SystemClock.sleep(delay)
+        val source = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(source)
+        val fixtureKind = args.getString("researchFixture", "gradient")
+        require(fixtureKind in setOf("flat", "gradient"))
+        if (fixtureKind == "flat") canvas.drawColor(Color.rgb(155, 165, 145)) else {
+            val background = Paint().apply { shader = LinearGradient(0f, 0f, width.toFloat(), 0f, Color.rgb(130, 138, 118), Color.rgb(240, 248, 228), Shader.TileMode.CLAMP) }
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), background)
+        }
+        val paint = Paint().apply { color = Color.rgb(25, 30, 20) }
+        repeat(8) { canvas.drawRect(width * .1f, height * (.1f + it * .1f), width * .9f, height * (.12f + it * .1f), paint) }
+        val before = IntArray(width * height).also { source.getPixels(it, 0, width, 0, 0, width, height) }
+        val failures = mutableListOf<String>()
+        try {
+            for (treatment in selected) {
+                val start = android.os.SystemClock.elapsedRealtime()
+                android.util.Log.i("DocScanFilterProbe", org.json.JSONObject().put("boundary", boundary).put("event", "case_start").put("treatment", treatment.name).put("width", width).put("height", height).toString())
+                val row = org.json.JSONObject().put("fixture", fixtureKind).put("shadow_class", com.intsig.nativelib.MagicEnhancer.classifyShadowTypeBitmap(source)).put("boundary", boundary).put("event", "case_result").put("treatment", treatment.name).put("width", width).put("height", height)
+                try {
+                    val forcedShadowType = args.getString("researchShadowType")?.toIntOrNull()?.also { require(it in 1..3) }
+                    val output = if (forcedShadowType != null && treatment == Treatment.NATIVE_NO_SHADOW) {
+                        val copy = source.copy(Bitmap.Config.ARGB_8888, true)
+                        try {
+                            val status = com.intsig.nativelib.MagicEnhancer.deshadowBitmap(copy, forcedShadowType)
+                            row.put("native_status", status).put("forced_shadow_type", forcedShadowType)
+                            check(status >= 0) { "Forced shadow processing failed: $status" }; copy
+                        } catch (failure: Throwable) { copy.recycle(); throw failure }
+                    } else if (boundary == "pipeline") ImagePipeline.transform(source, EditRecipe(treatment = treatment)) else {
+                        val copy = source.copy(Bitmap.Config.ARGB_8888, true)
+                        try { com.docscan.rebuild.imaging.NativeCamScannerEnhancer.applyInPlace(copy, treatment); copy }
+                        catch (failure: Throwable) { copy.recycle(); throw failure }
+                    }
+                    try {
+                        assertEquals(width, output.width); assertEquals(height, output.height)
+                        val actual = IntArray(width * height).also { output.getPixels(it, 0, width, 0, 0, width, height) }
+                        assertTrue("Filter had no effect", actual.indices.any { actual[it] != before[it] })
+                        assertTrue("Output alpha changed", actual.all { Color.alpha(it) == 255 })
+                        row.put("passed", true)
+                    } finally { output.recycle() }
+                } catch (failure: Throwable) {
+                    row.put("passed", false).put("error_type", failure.javaClass.simpleName).put("error", failure.message)
+                    failures.add(treatment.name + ": " + failure.message)
+                } finally {
+                    val after = IntArray(width * height).also { source.getPixels(it, 0, width, 0, 0, width, height) }
+                    val preserved = before.contentEquals(after)
+                    row.put("source_preserved", preserved).put("elapsed_ms", android.os.SystemClock.elapsedRealtime() - start)
+                    if (!preserved) failures.add(treatment.name + ": source changed")
+                    android.util.Log.i("DocScanFilterProbe", row.toString())
+                }
+            }
+            assertTrue(failures.joinToString("; "), failures.isEmpty())
+        } finally { source.recycle() }
+    }
+
     @Test fun invalidCropCannotOverwriteSourceOrSavedRecipe(): Unit = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, ScanDatabase::class.java).build(); val store = ScanStore(context, db)
         val book = store.create("Invalid edit"); val input = fixture("invalid.jpg"); val page = store.captured(book.id, input)
@@ -389,4 +457,5 @@ class RebuildFlowTest {
         screenshot("document")
     }
 }
+
 
