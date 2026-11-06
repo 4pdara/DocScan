@@ -2,7 +2,7 @@
 אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. הפרופיל הרגיל משתמש בעיבוד העצמאי. נוסף פרופיל Native מחקרי שמפעיל את רכיב הסרת הצללים MagicEnhancer מהחבילה שסופקה; אין כאן העברה מלאה של מנוע CamScanner.
 
 ## עדכון 0.1.3 — מסלולי Native נוספים
-[הורדת DocScan-Native-0.1.3-debug.apk](https://chatgpt.com/library?file_id=libfile_09a01203d60881919410fe994a673b1b&account_id=e5ab30f5-f7c8-4dad-b0d8-9fb6a7126f95) · [SHA256](https://chatgpt.com/library?file_id=libfile_a3832e1c75708191bb57f81a420552b7&account_id=e5ab30f5-f7c8-4dad-b0d8-9fb6a7126f95).
+[Release Native 0.1.3](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.3-research) · [הורדת APK](https://github.com/4pdara/DocScan/releases/download/native-v0.1.3-research/DocScan-Native-0.1.3-debug.apk) · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.3-research/SHA256SUMS.txt).
 
 המסנן המקורי המוצלח נשמר ללא שינוי. נוספו בפרופיל Native ארבע בחירות נוספות מתוך רכיבי ההפניה: Magic Color, ללא צללים, היפוך צבעים ו־Pro מקומי. נקודות הכניסה נבדקו ב־JNI עם קלט סינתטי. [מיפוי 11 המסננים, מצבי הלוח, המדידות והיכולות שנותרו](docs/FILTER_CATALOG_HE.md).
 
