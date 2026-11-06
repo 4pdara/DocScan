@@ -3,7 +3,9 @@
 
 ## גרסת ניסוי 0.1.4 — עיצוב אפשרות 5
 
-[הורדת APK Native ניסיוני](https://github.com/4pdara/DocScan/releases/download/native-v0.1.4-preview/DocScan-Native-0.1.4-preview-debug.apk) · [Release והערות בדיקה](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.4-preview) · [ממצאי Frida והמסננים](docs/RESEARCH_0.1.4_HE.md).
+[הערות גרסת הניסוי](docs/PREVIEW_0.1.4_HE.md) · [ממצאי Frida והמסננים](docs/RESEARCH_0.1.4_HE.md).
+
+**סטטוס פרסום:** הקוד הועלה וה־APK נבנה ואומת. יצירת Release/תג חדש נחסמה ב־GitHub בשגיאת הרשאה 403; אין עדיין Release 0.1.4 ב־GitHub. קובץ ההתקנה נמסר בשיחה. אין לשנות את main או להרחיב הרשאות אוטומטית לצורך עקיפת החסימה.
 
 ממשק חדש לפי ההדמיה שנבחרה: ספרייה עם בחירה/סל/שחזור, מצלמה ועורך כהים, צילום יחיד/קבוצה, מסננים בפס קבוע ותפריט לשמירת כל העמודים בגלריה. אותו מזהה חבילה וחתימה כמו Native 0.1.3; מתקינים כעדכון ללא הסרת ההתקנה.
 
