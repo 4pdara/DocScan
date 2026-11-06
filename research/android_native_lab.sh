@@ -15,7 +15,7 @@ adb shell am instrument -w -r -e class com.docscan.rebuild.RebuildFlowTest#refer
 instrument_pid=$!
 app_pid=''
 for attempt in $(seq 1 60); do
- app_pid=$(adb shell pidof com.docscan.rebuild.csnative | tr -d '\r')
+ app_pid=$(adb shell pidof com.docscan.rebuild.csnative | tr -d '\r' || true)
  if [[ -n "$app_pid" ]]; then break; fi
  sleep 1
 done
