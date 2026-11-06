@@ -184,17 +184,8 @@ def main():
     run = gh_json(f"repos/{repository}/actions/runs/{plan['validated_run_id']}")
     if run['head_sha'] != plan['source_commit']:
         raise ValueError('Validation source differs from the exact app source')
-    if plan.get('required_jobs'):
-        if plan.get('tag') != 'native-v0.1.4-preview' or not plan.get('legacy_check_note'):
-            raise ValueError('Explicit prerelease coverage statement required')
-        jobs = gh_json(f"repos/{repository}/actions/runs/{plan['validated_run_id']}/jobs?filter=latest&per_page=100")['jobs']
-        for required in plan['required_jobs']:
-            matches = [j for j in jobs if j['name'] == required]
-            if len(matches) != 1 or matches[0]['status'] != 'completed' or matches[0]['conclusion'] != 'success':
-                raise ValueError('Required validation did not pass: ' + required)
-        print('Experimental validation coverage:', plan['required_jobs'], plan['legacy_check_note'])
-    elif run['status'] != 'completed' or run['conclusion'] != 'success':
-        raise ValueError('The exact app source has not passed its validation run')
+    if run['status'] != 'completed' or run['conclusion'] != 'success':
+        raise ValueError('The exact app source has not passed its complete validation run')
     payload = args.output / 'native-transfer.gz'
     download_payload(plan, repository, payload)
     fallback = None
