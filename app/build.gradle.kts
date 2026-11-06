@@ -36,8 +36,8 @@ android {
         manifestPlaceholders["docscanAppLabel"] = if (camScannerNative) "@string/native_app_name" else "@string/app_name"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = if (camScannerNative) "0.1.3-native-research" else "0.1.3-rebuild"
+        versionCode = 4
+        versionName = if (camScannerNative) "0.1.4-native-preview" else "0.1.4-preview"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }

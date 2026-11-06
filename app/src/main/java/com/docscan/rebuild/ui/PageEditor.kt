@@ -63,28 +63,34 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     var zoom by remember { mutableFloatStateOf(1f) }; var pan by remember { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
     BackHandler(!busy) { onBack() }
+    val treatments = if (BuildConfig.CAMSCANNER_NATIVE) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.GRAY, Treatment.INK) else Treatment.entries.filter { !it.requiresReferenceEngine }
+    if (export) ModalBottomSheet(onDismissRequest = { export = false }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text(stringResource(R.string.export_scan), style = MaterialTheme.typography.titleLarge)
+            TextButton(onClick = { export = false; onGallery(edit) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.PhotoLibrary, null); Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.save_gallery)) }
+            TextButton(onClick = { export = false; onExportImage(edit) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Image, null); Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.save_jpeg)) }
+            HorizontalDivider()
+            TextButton(onClick = { export = false; onOriginal() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.source_export)) }
+        }
+    }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium) },
         navigationIcon = { IconButton(onBack, enabled = !busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.cancel)) } },
         actions = {
             Box {
                 IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) { Icon(Icons.Outlined.Download, stringResource(R.string.export_scan)) }
-                DropdownMenu(expanded = export, onDismissRequest = { export = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.save_gallery)) }, onClick = { export = false; onGallery(edit) })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.save_jpeg)) }, onClick = { export = false; onExportImage(edit) })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.source_export)) }, onClick = { export = false; onOriginal() })
-                }
+
             }
-            Button(onClick = { onSave(edit) }, enabled = !busy, modifier = Modifier.padding(end = 12.dp).testTag("save-edit")) { Text(stringResource(R.string.save)) }
+            Button(onClick = { onSave(edit) }, enabled = !busy, modifier = Modifier.padding(end = 12.dp).testTag("save-edit")) { Icon(Icons.Outlined.Check, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.save)) }
         }) },
         bottomBar = {
             Surface(shadowElevation = 6.dp) {
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
                     when (tool) {
                         "filters" -> LazyRow(Modifier.fillMaxWidth().testTag("filter-strip"), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(Treatment.entries.filter { BuildConfig.CAMSCANNER_NATIVE || !it.requiresReferenceEngine }) { treatment ->
+                            items(treatments, key = { it.name }) { treatment ->
                                 val selected = edit.treatment == treatment
-                                Column(Modifier.width(76.dp).selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    PagePicture(store, page, Modifier.size(64.dp, 76.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment), edge = 160)
+                                Column(Modifier.width(82.dp).testTag("filter-${treatment.name}").selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    PagePicture(store, page, Modifier.size(72.dp, 82.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment), edge = 160)
                                     Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
                                 }
                             }
@@ -123,9 +129,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.quality), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                TextButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop") { Text(stringResource(if (original) R.string.show_result else R.string.view_original)) }
+                OutlinedButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop") { Text(stringResource(if (original) R.string.show_result else R.string.compare_original)) }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp).clipToBounds().background(Color(0xFFE9EDEE)).testTag("page-preview")) {
+            Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp).clipToBounds().background(ScanCharcoal).testTag("page-preview")) {
                 if (tool == "crop") {
                     PagePicture(store, page, Modifier.fillMaxSize(), EditRecipe())
                     var handle by remember(page.id) { mutableIntStateOf(-1) }

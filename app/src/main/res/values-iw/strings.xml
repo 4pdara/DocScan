@@ -93,5 +93,14 @@
     <string name="native_no_shadow">ללא צללים</string>
     <string name="native_invert">היפוך צבעים</string>
     <string name="native_pro_local">Pro מקומי</string>
+    <string name="my_documents">המסמכים שלי</string>
+    <string name="preview_label">ניסוי</string>
+    <string name="selected_count">%1$d נבחרו</string>
+    <string name="more_actions">פעולות נוספות</string>
+    <string name="gallery_all_pages">כל העמודים · תמונה לכל עמוד</string>
+    <string name="page_counter">%1$d / %2$d</string>
+    <string name="capture_single">אחת</string>
+    <string name="capture_batch">קבוצה</string>
+    <string name="compare_original">השוואה למקור</string>
 </resources>
 

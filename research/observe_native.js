@@ -11,7 +11,7 @@ Process.attachModuleObserver({onAdded(module){
   const key=module.name+'!'+symbol.name;if(seen.has(key))continue;seen.add(key);
   try{Interceptor.attach(symbol.address,{
    onEnter(args){this.start=Date.now();},
-   onLeave(ret){event({event:'arm_jni_return',name:symbol.name,result:symbol.name.endsWith('_GetVersion')?'jstring':ret.toInt32(),elapsed_ms:Date.now()-this.start});}
+   onLeave(ret){event({event:'arm_jni_return',name:symbol.name,raw_return:ret.toString(),return_type:'untyped; see typed Java trace',elapsed_ms:Date.now()-this.start});}
   });}catch(e){event({event:'attach_error',name:symbol.name,message:String(e)});}
  }
 }});

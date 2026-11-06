@@ -67,7 +67,7 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             finally { busy = false }
         }
     }
-    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true) {
+    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true): Sheet {
         try {
             val page = store.captured(bookId, file)
             // The durable master already exists before proposing the crop.
@@ -77,6 +77,7 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
             catch (e: Exception) { notices.send(R.string.processing_error) }
+            return store.dao.page(page.id) ?: page
         } finally { file.delete() }
     }
 }
@@ -192,12 +193,13 @@ fun ScanApp(store: ScanStore) {
     }
     fun startScan() { vm.perform { bookId = store.create(defaultTitle()).id; route = "camera" } }
     BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "editor" || route == "camera") "document" else "library" }
+    ScannerScreenTheme(dark = route == "camera" || route == "editor") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "camera" -> bookId?.let { id ->
-                CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { route = "document" }, onCaptured = { file, detectBounds, complete ->
+                CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { route = "document" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
-                    else vm.perform { var ok = false; try { vm.receive(id, file, detectBounds); ok = true } finally { complete(ok) } }
+                    else vm.perform { var ok = false; try { val captured = vm.receive(id, file, detectBounds); if (!batch) { pageId = captured.id; route = "editor" }; ok = true } finally { complete(ok) } }
                 })
             }
             "editor" -> pages.firstOrNull { it.id == pageId }?.let { page ->
@@ -223,98 +225,4 @@ fun ScanApp(store: ScanStore) {
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LibraryScreen(store: ScanStore, entries: List<LibraryEntry>, trash: List<LibraryEntry>, onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit, onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState) {
-    var search by rememberSaveable { mutableStateOf("") }
-    var inTrash by rememberSaveable { mutableStateOf(false) }
-    var selection by rememberSaveable { mutableStateOf(false) }
-    var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
-    val visible = (if (inTrash) trash else entries).filter { it.book.title.contains(search, true) }
-    fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id }
-    LaunchedEffect(entries, trash, inTrash, search) { selected = selected.filter { id -> visible.any { it.book.id == id } } }
-    BackHandler(selection || inTrash) { if (selection) { selection = false; selected = emptyList() } else inTrash = false }
-    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Column { Text(if (inTrash) stringResource(R.string.trash) else "DocScan", style = MaterialTheme.typography.titleLarge); Text(if (selection) selected.size.toString() else stringResource(R.string.library), style = MaterialTheme.typography.labelMedium) } },
-        actions = {
-            if (selection) {
-                IconButton(onClick = { selected = if (visible.all { it.book.id in selected }) emptyList() else visible.map { it.book.id } }) { Icon(Icons.Outlined.SelectAll, stringResource(R.string.select_all)) }
-                IconButton(onClick = { if (selected.isNotEmpty()) { onTrash(selected.toSet(), inTrash); selected = emptyList(); selection = false } }, enabled = selected.isNotEmpty()) {
-                    Icon(if (inTrash) Icons.Outlined.RestoreFromTrash else Icons.Outlined.DeleteOutline, stringResource(if (inTrash) R.string.restore else R.string.move_to_trash))
-                }
-                IconButton(onClick = { selection = false; selected = emptyList() }) { Icon(Icons.Outlined.Close, stringResource(R.string.cancel)) }
-            } else {
-                IconButton(onClick = { selection = true }) { Icon(Icons.Outlined.Checklist, stringResource(R.string.select_documents)) }
-                IconButton(onClick = { inTrash = !inTrash; selected = emptyList() }) { Icon(if (inTrash) Icons.Outlined.Folder else Icons.Outlined.DeleteOutline, stringResource(if (inTrash) R.string.library else R.string.trash)) }
-                IconButton(onImport) { Icon(Icons.Outlined.FileOpen, stringResource(R.string.import_images)) }
-            }
-        }) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = onScan, icon = { Icon(Icons.Outlined.DocumentScanner, null) }, text = { Text(stringResource(R.string.new_scan)) }, modifier = Modifier.testTag("new-scan")) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).testTag("library")) {
-            OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), placeholder = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, shape = RoundedCornerShape(16.dp))
-            if (inTrash) Text(stringResource(R.string.trash_hint), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
-            if (visible.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth().padding(30.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Outlined.Description, null, Modifier.size(70.dp), tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(20.dp)); Text(stringResource(if (inTrash) R.string.empty_trash else R.string.empty_title), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(R.string.empty_hint), Modifier.padding(vertical = 12.dp)); OutlinedButton(onImport) { Text(stringResource(R.string.import_images)) }
-            } else LazyColumn(Modifier.testTag("library-list"), contentPadding = PaddingValues(bottom = 110.dp)) {
-                items(visible, key = { it.book.id }) { item ->
-                    val documentPages by remember(item.book.id) { store.dao.pages(item.book.id) }.collectAsState(emptyList())
-                    val cover = documentPages.firstOrNull()
-                    Row(Modifier.fillMaxWidth().combinedClickable(onClick = { if (selection || inTrash) { selection = true; toggle(item.book.id) } else onOpen(item.book.id) }, onLongClick = { selection = true; toggle(item.book.id) }).padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        if (selection) Checkbox(checked = item.book.id in selected, onCheckedChange = { toggle(item.book.id) }, modifier = Modifier.testTag("select-${item.book.id}"))
-                        Surface(Modifier.size(62.dp, 82.dp), shape = RoundedCornerShape(7.dp), tonalElevation = 2.dp) { cover?.let { PagePicture(store, it, edge = 160) } }
-                        Column(Modifier.weight(1f)) { Text(item.book.title, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(6.dp)); Text(pluralStringResource(R.plurals.pages, item.pageCount, item.pageCount), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        Icon(Icons.Outlined.ChevronLeft, null, tint = MaterialTheme.colorScheme.primary)
-                    }
-                    HorizontalDivider(Modifier.padding(horizontal = 20.dp))
-                }
-            }
-        }
-    }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: () -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState) {
-    var reorder by rememberSaveable { mutableStateOf(false) }
-    var export by remember { mutableStateOf(false) }
-    var rename by remember { mutableStateOf(false) }; var newTitle by remember(title) { mutableStateOf(title) }
-    if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) }, text = { OutlinedTextField(newTitle, { newTitle = it }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { if (newTitle.isNotBlank()) { onRename(newTitle); rename = false } }) { Text(stringResource(R.string.save)) } }, dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
-    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Column(Modifier.clickable { rename = true }) { Text(title, maxLines = 1); Text(pluralStringResource(R.plurals.pages, pages.size, pages.size), style = MaterialTheme.typography.labelMedium) } },
-        navigationIcon = { IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } },
-        actions = { IconButton(onImport) { Icon(Icons.Outlined.FileOpen, stringResource(R.string.import_images)) }; IconButton(onClick = { reorder = !reorder }) { Icon(Icons.Outlined.SwapVert, stringResource(R.string.reorder)) } }) },
-        bottomBar = { Surface(shadowElevation = 6.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(10.dp).testTag("document-actions"), horizontalArrangement = Arrangement.SpaceEvenly) {
-            TextButton(onCamera) { Icon(Icons.Outlined.Add, null); Text(stringResource(R.string.add_pages)) }
-            IconButton(onShare, enabled = pages.isNotEmpty()) { Icon(Icons.Outlined.Share, stringResource(R.string.share)) }
-            Box {
-                Button(onClick = { export = true }, enabled = pages.isNotEmpty(), modifier = Modifier.testTag("export-menu")) {
-                    Icon(Icons.Outlined.Download, null); Text(stringResource(R.string.save))
-                }
-                DropdownMenu(expanded = export, onDismissRequest = { export = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.save_gallery)) }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) },
-                        onClick = { export = false; onGallery() }, modifier = Modifier.testTag("save-gallery"))
-                    DropdownMenuItem(text = { Text(stringResource(R.string.export_pdf)) }, leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
-                        onClick = { export = false; onPdf() })
-                }
-            }
-        } } }) { padding ->
-        if (pages.isEmpty()) Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_pages)) }
-        else LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("document-pages"), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(pages, key = { it.id }) { page ->
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.page_number, pages.indexOf(page) + 1), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                        if (reorder) { IconButton(onClick = { onMove(page, -1) }, enabled = page != pages.first()) { Icon(Icons.Outlined.KeyboardArrowUp, stringResource(R.string.move_up)) }; IconButton(onClick = { onMove(page, 1) }, enabled = page != pages.last()) { Icon(Icons.Outlined.KeyboardArrowDown, stringResource(R.string.move_down)) } }
-                        TextButton(onClick = { onEdit(page) }) { Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp)); Text(stringResource(R.string.edit)) }
-                    }
-                    Surface(Modifier.fillMaxWidth().clickable { onEdit(page) }, shadowElevation = 2.dp) {
-                        PagePicture(store, page, Modifier.fillMaxWidth().testTag("page-image-${page.id}"), naturalHeight = true, description = stringResource(R.string.page_number, pages.indexOf(page) + 1))
-                    }
-                }
-            }
-        }
-    }
-}
-

@@ -72,6 +72,22 @@ class RebuildFlowTest {
         compose.onNodeWithTag("document-pages").assertIsDisplayed()
     }
 
+    @Test fun singleCaptureOpensEditorWithDurableOriginal() {
+        val store = (compose.activity.application as ScanApplication).store
+        compose.onNodeWithTag("new-scan").performClick()
+        val shutter = hasContentDescription(compose.activity.getString(R.string.capture)) and isEnabled()
+        compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(isToggleable()).performClick()
+        compose.onNodeWithTag("capture-single").performClick()
+        compose.onNode(shutter).performClick()
+        compose.waitUntil(30000) { compose.onAllNodesWithTag("save-edit").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("filter-strip").assertIsDisplayed()
+        compose.onNodeWithTag("editor-toolbar").assertIsDisplayed()
+        val books = runBlocking { store.dao.library().first() }
+        assertTrue(books.any { item -> runBlocking { store.dao.snapshot(item.book.id).any { store.source(it).length() > 0 } } })
+        screenshot("single-capture-editor")
+    }
+
     @Test fun sourceRecipeAndOrderSurviveDatabaseReopen(): Unit = runBlocking {
         @Suppress("DEPRECATION") val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
         assertFalse(packageInfo.requestedPermissions.orEmpty().contains(android.Manifest.permission.INTERNET))
@@ -124,6 +140,9 @@ class RebuildFlowTest {
     }
 
     @Test fun referenceRecipesRoundTripAndNeverFallBackToAnotherFilter() {
+        ImagePipeline.ensureAvailable()
+        val delay = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
+        if (delay > 0) android.os.SystemClock.sleep(delay)
         val input = Bitmap.createBitmap(96, 128, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(100, 140, 180)) }
         try {
             for (treatment in Treatment.entries.filter { it.requiresReferenceEngine }) {
@@ -140,6 +159,9 @@ class RebuildFlowTest {
 
     @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
         Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
+        ImagePipeline.ensureAvailable()
+        val delay = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
+        if (delay > 0) android.os.SystemClock.sleep(delay)
         val input = Bitmap.createBitmap(96, 128, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
         val paint = Paint().apply { color = Color.rgb(25, 30, 20) }

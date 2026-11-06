@@ -1,0 +1,60 @@
+name: ARM64 Android and Frida research
+on:
+  push:
+    branches: [rebuild/camscanner-reference]
+    paths: [research/observe_java.js, research/observe_native.js, research/android_native_lab.sh, .github/workflows/native-lab.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare private lab inputs without adding them to source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download native-v0.1.3-research --pattern DocScan-Native-0.1.3-debug.apk --dir /tmp/native-baseline
+          echo '6b9ad458d620295a28bdabc0e7db87829dda7bec16fbb73862de09605fc16a5a  /tmp/native-baseline/DocScan-Native-0.1.3-debug.apk' | sha256sum -c -
+          python3 - <<'PY'
+          import zipfile,pathlib
+          names=['opencv','ncnn','MNN','CVNN','magicenhancer','imageprocessor']
+          root=pathlib.Path('/tmp/native-lab/arm64-v8a');root.mkdir(parents=True)
+          with zipfile.ZipFile('/tmp/native-baseline/DocScan-Native-0.1.3-debug.apk') as z:
+              for name in names:
+                  f='lib'+name+'.so';(root/f).write_bytes(z.read('lib/arm64-v8a/'+f))
+          PY
+          ./gradlew -PcamScannerNativeDir=/tmp/native-lab assembleDebug assembleDebugAndroidTest --stacktrace
+          ./gradlew --stop
+          python3 -m pip install frida==17.26.0 frida-tools==14.11.0
+          curl -fL --retry 3 https://github.com/frida/frida/releases/download/17.26.0/frida-server-17.26.0-android-x86_64.xz -o /tmp/frida.xz
+          echo '5507894927e23837d4099bcbfa026e9d227bfc47544a115971fd1a358fba7437  /tmp/frida.xz' | sha256sum -c -
+          xz -dc /tmp/frida.xz > /tmp/frida-server
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          script: bash research/android_native_lab.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-frida-android-30
+          path: research-results/

@@ -14,6 +14,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -30,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
@@ -53,7 +57,7 @@ import kotlin.math.max
 private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
 
 @Composable
-fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onCaptured: (File, Boolean, (Boolean) -> Unit) -> Unit) {
+fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, (Boolean) -> Unit) -> Unit) {
     val context = LocalContext.current; val lifecycle = LocalLifecycleOwner.current
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
@@ -61,6 +65,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     val main = remember { ContextCompat.getMainExecutor(context) }
     val gate = remember { CaptureStability() }; val capturing = remember { AtomicBoolean(false) }; val autoFlag = remember { AtomicBoolean(true) }
     var automatic by rememberSaveable { mutableStateOf(true) }; SideEffect { autoFlag.set(automatic) }
+    var batch by rememberSaveable { mutableStateOf(true) }
     var detectBounds by rememberSaveable { mutableStateOf(true) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }; var camera by remember { mutableStateOf<Camera?>(null) }
     var observation by remember { mutableStateOf(CameraObservation(null, .75f, 0f, emptyList(), false)) }
@@ -71,29 +76,17 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         val imageCapture = capture ?: return
         if (busy || !capturing.compareAndSet(false, true)) return
         taking = true; gate.markCaptured(observation.signature)
-        val cropCaptured = detectBounds
+        val cropCaptured = detectBounds; val batchCaptured = batch
         val file = File(context.cacheDir, "capture-${UUID.randomUUID()}.jpg")
         imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                latestCaptured(file, cropCaptured) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
+                latestCaptured(file, cropCaptured, batchCaptured) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
             }
             override fun onError(exception: ImageCaptureException) { file.delete(); taking = false; capturing.set(false); gate.failed(); error = true }
         })
     }
     val latestShoot by rememberUpdatedState({ shoot() })
     BackHandler { if (!taking && !busy) onDone() }
-    DisposableEffect(context) {
-        val activity = context as? Activity
-        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        val previousStatus = controller?.isAppearanceLightStatusBars
-        val previousNavigation = controller?.isAppearanceLightNavigationBars
-        controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = false
-        onDispose {
-            if (previousStatus != null) controller?.isAppearanceLightStatusBars = previousStatus
-            if (previousNavigation != null) controller?.isAppearanceLightNavigationBars = previousNavigation
-        }
-    }
     DisposableEffect(allowed, lifecycle, preview) {
         var disposed = false; var provider: ProcessCameraProvider? = null
         val streamObserver = Observer<PreviewView.StreamState> { streaming = it == PreviewView.StreamState.STREAMING }
@@ -141,7 +134,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
             executor.shutdown(); capture = null
         }
     }
-    Column(Modifier.fillMaxSize().background(Color(0xFF101717)).safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (!taking && !busy) onDone() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = Color.White) }
             Text(stringResource(R.string.camera), Modifier.weight(1f), color = Color.White)
@@ -155,8 +148,9 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                     observation.frame?.takeIf { detectBounds }?.let { frame ->
                         val points = frame.points.map { Offset(rect.left + it.x * rect.width, rect.top + it.y * rect.height) }
                         val path = Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) }; close() }
-                        drawPath(path, Color(0xFF00DBBE), style = Stroke(2.dp.toPx()))
-                        points.forEach { drawCircle(Color.White, 5.dp.toPx(), it) }
+                        drawPath(path, ScanMint.copy(alpha = .12f))
+                        drawPath(path, ScanMint, style = Stroke(2.dp.toPx()))
+                        points.forEach { drawCircle(ScanMint, 4.dp.toPx(), it) }
                     }
                 }
                 if ((capture == null || !streaming) && !error) Text(stringResource(R.string.camera_starting), color = Color.White)
@@ -167,24 +161,34 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
             if (error) Text(stringResource(R.string.camera_error), Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = .8f)).padding(12.dp), color = Color.White)
             SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
-        LinearProgressIndicator(progress = { observation.progress }, modifier = Modifier.fillMaxWidth(), color = Color(0xFF00DBBE))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        LinearProgressIndicator(progress = { observation.progress }, modifier = Modifier.fillMaxWidth().height(2.dp), color = ScanMint, trackColor = Color(0xFF252727))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             FilterChip(selected = detectBounds, onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() },
                 label = { Text(stringResource(if (detectBounds) R.string.detect_bounds else R.string.full_photo)) })
-            Text(stringResource(R.string.detect_bounds_hint), Modifier.padding(start = 10.dp).weight(1f), color = Color.White, style = MaterialTheme.typography.labelSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(automatic, { automatic = it; if (it) detectBounds = true; gate.failed() })
+                Text(stringResource(R.string.auto_capture), style = MaterialTheme.typography.labelSmall)
+            }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(automatic, { automatic = it; if (it) detectBounds = true; gate.failed() }, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary, uncheckedColor = Color.White))
-            Text(stringResource(R.string.auto_capture), color = Color.White)
-            Spacer(Modifier.weight(1f)); Text(pluralStringResource(R.plurals.saved_count, pages.size, pages.size), color = Color.White, style = MaterialTheme.typography.labelSmall)
+        Row(Modifier.align(Alignment.CenterHorizontally).background(Color(0xFF292B2C), RoundedCornerShape(24.dp)).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = !batch, onClick = { batch = false }, enabled = !taking && !busy, label = { Text(stringResource(R.string.capture_single)) }, modifier = Modifier.testTag("capture-single"), shape = RoundedCornerShape(20.dp))
+            FilterChip(selected = batch, onClick = { batch = true }, enabled = !taking && !busy, label = { Text(stringResource(R.string.capture_batch)) }, modifier = Modifier.testTag("capture-batch"), shape = RoundedCornerShape(20.dp))
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.height(62.dp)) {
-            items(pages.takeLast(12), key = { it.id }) { page -> PagePicture(store, page, Modifier.size(44.dp, 60.dp).background(Color.White), edge = 120) }
-        }
-        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.labelSmall)
-            FilledIconButton(onClick = { shoot() }, enabled = capture != null && streaming && !taking && !busy, modifier = Modifier.size(70.dp)) { Icon(Icons.Outlined.CameraAlt, stringResource(R.string.capture), Modifier.size(34.dp)) }
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { Button(onClick = onDone, enabled = !taking && !busy) { Text(stringResource(R.string.done)) } }
+        Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.width(76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onImport, enabled = !taking && !busy) { Icon(Icons.Outlined.AddPhotoAlternate, stringResource(R.string.import_images), Modifier.size(28.dp)) }
+                Text(stringResource(R.string.import_images), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+            FilledIconButton(onClick = { shoot() }, enabled = capture != null && streaming && !taking && !busy,
+                modifier = Modifier.size(78.dp).border(4.dp, ScanMint, CircleShape).padding(8.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White, contentColor = Color.Black)) {
+                Icon(Icons.Outlined.CameraAlt, stringResource(R.string.capture), Modifier.size(30.dp))
+            }
+            Column(Modifier.width(76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (pages.isNotEmpty()) PagePicture(store, pages.last(), Modifier.size(30.dp, 38.dp).background(Color.White), edge = 120)
+                Text(pluralStringResource(R.plurals.saved_count, pages.size, pages.size), style = MaterialTheme.typography.labelSmall)
+                TextButton(onDone, enabled = !taking && !busy, contentPadding = PaddingValues(horizontal = 8.dp)) { Text(stringResource(R.string.done)) }
+            }
         }
     }
 }

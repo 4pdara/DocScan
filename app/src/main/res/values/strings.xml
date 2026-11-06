@@ -93,5 +93,14 @@
     <string name="native_no_shadow">No Shadow</string>
     <string name="native_invert">Invert</string>
     <string name="native_pro_local">Local Pro</string>
+    <string name="my_documents">My documents</string>
+    <string name="preview_label">Preview</string>
+    <string name="selected_count">%1$d selected</string>
+    <string name="more_actions">More actions</string>
+    <string name="gallery_all_pages">All pages · one image per page</string>
+    <string name="page_counter">%1$d / %2$d</string>
+    <string name="capture_single">Single</string>
+    <string name="capture_batch">Batch</string>
+    <string name="compare_original">Compare original</string>
 </resources>
 
