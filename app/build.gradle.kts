@@ -46,8 +46,8 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = if (camScannerNative) "0.1.6-native-preview" else "0.1.6-preview"
+        versionCode = 7
+        versionName = if (camScannerNative) "0.1.7-native-preview" else "0.1.7-preview"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }

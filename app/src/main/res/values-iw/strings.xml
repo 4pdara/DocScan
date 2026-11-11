@@ -64,7 +64,7 @@
     <plurals name="pages"><item quantity="one">%1$d עמוד</item><item quantity="two">%1$d עמודים</item><item quantity="many">%1$d עמודים</item><item quantity="other">%1$d עמודים</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d עמוד נשמר</item><item quantity="two">%1$d עמודים נשמרו</item><item quantity="many">%1$d עמודים נשמרו</item><item quantity="other">%1$d עמודים נשמרו</item></plurals>
     <string name="native_app_name">DocScan ניסוי Native</string>
-    <string name="native_preview_app_name">DocScan Native 0.1.6</string>
+    <string name="native_preview_app_name">DocScan Native 0.1.7</string>
     <string name="native_paper">CamScanner</string>
     <string name="save_gallery">שמירת תמונות לגלריה</string>
     <string name="gallery_saved">התמונות נשמרו בגלריה באלבום DocScan</string>
