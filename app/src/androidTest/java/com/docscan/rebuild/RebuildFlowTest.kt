@@ -207,7 +207,7 @@ class RebuildFlowTest {
         } finally { input.recycle(); store.source(page).delete(); file.delete(); db.close() }
     }
 
-    @Test fun nativeProPreservesUnalignedPageDimensionsAndOriginalPixels() {
+    @Test fun nativeProPreservesPageDimensionsAndOriginalPixels() {
         Assume.assumeTrue("Requires the ARM64 Native profile", BuildConfig.CAMSCANNER_NATIVE)
         for ((width, height) in listOf(1970 to 1440, 1440 to 1970, 321 to 479)) {
             val input = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

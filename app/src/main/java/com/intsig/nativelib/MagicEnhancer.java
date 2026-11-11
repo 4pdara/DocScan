@@ -10,7 +10,7 @@ public final class MagicEnhancer {
     public static native int deshadowBitmapNew(Bitmap bitmap, int mode, int session);
     public static native int deshadowBitmap(Bitmap bitmap, int shadowType);
     public static native int classifyShadowTypeBitmap(Bitmap bitmap);
-    public static native int ImageSilverBulletBitmap(Bitmap bitmap, int mode, int background, int threads);
+    public static native int ImageSilverBulletBitmap(Bitmap bitmap, int mode, int dewarp, int threads);
     public static native void releaseDeshadowModelNew(int session);
 }
 

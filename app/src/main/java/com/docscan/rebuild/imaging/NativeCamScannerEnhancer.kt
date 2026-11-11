@@ -2,10 +2,6 @@ package com.docscan.rebuild.imaging
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.BitmapShader
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Shader
 import com.docscan.rebuild.BuildConfig
 import com.docscan.rebuild.model.Treatment
 import com.intsig.nativelib.MagicEnhancer
@@ -52,25 +48,11 @@ internal object NativeCamScannerEnhancer {
     }
 
     private fun silverBullet(bitmap: Bitmap) {
-        // The JNI copy crashes for unaligned crop dimensions (1970 x 1440).
-        // Keep every original pixel: extend the edges to the native working grid,
-        // run the same filter, then copy only the original rectangle back.
-        val width = (bitmap.width + 31) / 32 * 32
-        val height = (bitmap.height + 31) / 32 * 32
-        if (width == bitmap.width && height == bitmap.height) {
-            checkStatus(MagicEnhancer.ImageSilverBulletBitmap(bitmap, 1, 1, 1))
-            return
-        }
-        val padded = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        try {
-            val paint = Paint().apply {
-                shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-                isFilterBitmap = false
-            }
-            Canvas(padded).drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-            checkStatus(MagicEnhancer.ImageSilverBulletBitmap(padded, 1, 1, 1))
-            Canvas(bitmap).drawBitmap(padded, 0f, 0f, null)
-        } finally { padded.recycle() }
+        // The second flag enables silver_bullet_dewarp_process, which may enlarge
+        // its Mat. This Bitmap JNI entry point blindly copies that output into the
+        // original allocation, causing SIGSEGV. Run the same native enhancement
+        // with dewarp disabled; preserve the user's crop and full pixel dimensions.
+        checkStatus(MagicEnhancer.ImageSilverBulletBitmap(bitmap, 1, 0, 1))
     }
 
     private fun board(bitmap: Bitmap, paper: Boolean) {
