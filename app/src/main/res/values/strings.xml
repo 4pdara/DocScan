@@ -64,6 +64,7 @@
     <plurals name="pages"><item quantity="one">%1$d page</item><item quantity="other">%1$d pages</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d page saved</item><item quantity="other">%1$d pages saved</item></plurals>
     <string name="native_app_name">DocScan Native Test</string>
+    <string name="native_preview_app_name">DocScan Native 0.1.6</string>
     <string name="native_paper">CamScanner</string>
     <string name="save_gallery">Save images to gallery</string>
     <string name="gallery_saved">Images saved to the DocScan album in your gallery</string>

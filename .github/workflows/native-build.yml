@@ -47,7 +47,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Native-0.1.6-build-input
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
@@ -56,3 +58,55 @@ jobs:
           path: |
             app/build/reports/
             app/build/test-results/
+  device:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 30
+            locale: en
+          - api: 35
+            locale: he
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reserve space for the Android virtual device
+        run: sudo rm -rf /usr/share/dotnet
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: Native-0.1.6-build-input
+          path: native-apks
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 300
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          script: bash .github/native-device-check.sh ${{ matrix.locale }} native-apks
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-preview-device-${{ matrix.api }}
+          path: native-device-results/

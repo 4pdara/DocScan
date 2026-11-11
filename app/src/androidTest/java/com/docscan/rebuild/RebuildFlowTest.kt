@@ -44,6 +44,11 @@ class RebuildFlowTest {
         return File(context.cacheDir, name).also { file -> file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it) }; bitmap.recycle() }
     }
     private fun hash(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).toList()
+    private fun selectFilter(treatment: Treatment) {
+        val tag = "filter-${treatment.name}"
+        compose.onNodeWithTag("filter-strip").performScrollToNode(hasTestTag(tag))
+        compose.onNodeWithTag(tag).performClick()
+    }
     private fun screenshot(name: String) {
         val image = requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         val output = File(compose.activity.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
@@ -521,13 +526,14 @@ class RebuildFlowTest {
         // Existing pages are sufficient: do not capture another emulated photo.
         compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("review-counter").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("filter-GRAY").performClick()
+        selectFilter(Treatment.GRAY)
         compose.onNodeWithTag("review-next").performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.page(pages[0].id)?.edit()?.treatment == Treatment.GRAY } }
         compose.onNodeWithTag("review-counter").assertTextEquals(compose.activity.getString(R.string.page_counter, 2, 2))
-        compose.onNodeWithTag("filter-INK").performClick()
+        selectFilter(Treatment.INK)
         compose.onNodeWithTag("review-previous").performClick()
         compose.waitUntil(10000) { runBlocking { store.dao.page(pages[1].id)?.edit()?.treatment == Treatment.INK } }
+        compose.onNodeWithTag("filter-strip").performScrollToNode(hasTestTag("filter-GRAY"))
         compose.onNodeWithTag("filter-GRAY").assertIsSelected()
         compose.activityRule.scenario.recreate()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("review-counter").fetchSemanticsNodes().isNotEmpty() }
@@ -536,6 +542,71 @@ class RebuildFlowTest {
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
         pages.forEachIndexed { index, page -> assertEquals(hashes[index], hash(store.source(page))) }
         input.delete()
+    }
+
+    @Test fun nativeReviewKeepsAllFourteenFiltersAndExportsAfterReopen() {
+        Assume.assumeTrue("Requires the ARM64 Native profile", BuildConfig.CAMSCANNER_NATIVE)
+        val treatments = Treatment.entries.toList()
+        assertEquals(14, treatments.size)
+        val store = (compose.activity.application as ScanApplication).store
+        val title = "Native 0.1.5 to 0.1.6 ${System.nanoTime()}"
+        val input = Bitmap.createBitmap(320, 480, Bitmap.Config.ARGB_8888)
+        Canvas(input).apply {
+            drawColor(Color.rgb(155, 165, 145))
+            val paint = Paint().apply { color = Color.rgb(25, 30, 20) }
+            repeat(8) { drawRect(32f, 48f + it * 48f, 288f, 58f + it * 48f, paint) }
+        }
+        val file = File(context.cacheDir, "native-review.png")
+        file.outputStream().use { input.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        input.recycle()
+        val pages = runBlocking {
+            val book = store.create(title)
+            treatments.map { store.captured(book.id, file) }
+        }
+        val originals = pages.map { hash(store.source(it)) }
+        try {
+            compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(title).performClick()
+            compose.onNodeWithText(compose.activity.getString(R.string.add_pages)).performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("capture-batch").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isNotEmpty() }
+            treatments.forEachIndexed { index, treatment ->
+                selectFilter(treatment)
+                compose.onNodeWithTag("filter-${treatment.name}").assertIsSelected()
+                compose.onNodeWithTag("review-counter").assertTextEquals(compose.activity.getString(R.string.page_counter, index + 1, treatments.size))
+                if (index < treatments.lastIndex) compose.onNodeWithTag("review-next").performClick()
+                else compose.onNodeWithTag("save-edit").performClick()
+                compose.waitUntil(10000) { runBlocking { store.dao.page(pages[index].id)?.edit()?.treatment == treatment } }
+                if (index < treatments.lastIndex) compose.waitUntil(10000) {
+                    compose.onAllNodes(hasTestTag("review-counter") and hasText(compose.activity.getString(R.string.page_counter, index + 2, treatments.size))).fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
+            compose.activityRule.scenario.recreate()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
+            runBlocking {
+                val restored = store.dao.snapshot(pages.first().notebookId)
+                assertEquals(treatments, restored.map { it.edit().treatment })
+                val output = DocumentOutput(context, store)
+                restored.forEachIndexed { index, page ->
+                    val image = output.image(page, page.edit())
+                    try {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeFile(image.path, bounds)
+                        assertEquals(320, bounds.outWidth); assertEquals(480, bounds.outHeight)
+                        assertEquals(originals[index], hash(store.source(page)))
+                    } finally { image.delete() }
+                }
+                val pdf = output.pdf(pages.first().notebookId)
+                try {
+                    ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                        PdfRenderer(fd).use { assertEquals(14, it.pageCount) }
+                    }
+                } finally { pdf.delete() }
+            }
+            screenshot("native-fourteen-filter-document")
+        } finally { file.delete() }
     }
 
     @Test fun editorHasInlineFiltersAndActionsAboveSystemNavigation() {
@@ -558,7 +629,7 @@ class RebuildFlowTest {
         compose.onNodeWithText(compose.activity.getString(R.string.source_export)).assertIsDisplayed()
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
         compose.waitUntil(10000) { compose.onAllNodesWithTag("editor-export-sheet").fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithText(compose.activity.getString(R.string.gray)).performClick()
+        selectFilter(Treatment.GRAY)
         val root = compose.onNodeWithTag("page-editor").fetchSemanticsNode().boundsInRoot
         val save = compose.onNodeWithTag("save-edit").fetchSemanticsNode().boundsInRoot
         var navBottom = 0

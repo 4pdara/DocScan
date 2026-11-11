@@ -9,6 +9,8 @@ plugins {
 
 val camScannerNativeDir = providers.gradleProperty("camScannerNativeDir").orNull
 val camScannerNative = camScannerNativeDir != null
+val standaloneNativePreview = providers.gradleProperty("standaloneNativePreview").orNull?.toBooleanStrict() ?: false
+require(!standaloneNativePreview || camScannerNative) { "Standalone Native preview requires camScannerNativeDir" }
 if (camScannerNative) {
     val expected = mapOf(
         "libopencv.so" to "9df94cd8f94f0f6818ce700104b6337259c7c95eb95cd98552d27105d5d8320a",
@@ -31,9 +33,17 @@ android {
     namespace = "com.docscan.rebuild"
     compileSdk = 36
     defaultConfig {
-        applicationId = if (camScannerNative) "com.docscan.rebuild.csnative" else "com.docscan.rebuild"
+        applicationId = when {
+            standaloneNativePreview -> "com.docscan.rebuild.csnative.preview"
+            camScannerNative -> "com.docscan.rebuild.csnative"
+            else -> "com.docscan.rebuild"
+        }
         buildConfigField("boolean", "CAMSCANNER_NATIVE", camScannerNative.toString())
-        manifestPlaceholders["docscanAppLabel"] = if (camScannerNative) "@string/native_app_name" else "@string/app_name"
+        manifestPlaceholders["docscanAppLabel"] = when {
+            standaloneNativePreview -> "@string/native_preview_app_name"
+            camScannerNative -> "@string/native_app_name"
+            else -> "@string/app_name"
+        }
         minSdk = 26
         targetSdk = 36
         versionCode = 6
