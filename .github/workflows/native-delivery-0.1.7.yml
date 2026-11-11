@@ -1,0 +1,51 @@
+name: Publish verified Native 0.1.7
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: native-0.1.7-delivery
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == '4pdara/DocScan' && github.ref == 'refs/heads/rebuild/camscanner-reference'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Download the exact Native CI application
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/4pdara/DocScan/actions/artifacts/13896262536/zip > /tmp/native-input.zip
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,zipfile
+          plan=json.loads(Path('.github/native-0.1.7-signature.json').read_text())
+          archive=Path('/tmp/native-input.zip')
+          assert hashlib.sha256(archive.read_bytes()).hexdigest()==plan['artifact_zip_sha256']
+          with zipfile.ZipFile(archive) as z:
+              Path('/tmp/native-input.apk').write_bytes(z.read('debug/app-debug.apk'))
+          PY
+      - name: Verify completed tests, restore the signed APK, and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 research/deliver_native_0_1_7.py \
+            --input-apk /tmp/native-input.apk \
+            --output deliverables/native-0.1.7 \
+            --build-tools "$ANDROID_HOME/build-tools/35.0.0" \
+            --publish
