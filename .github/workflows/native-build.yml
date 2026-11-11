@@ -2,7 +2,7 @@ name: Native preview build input
 on:
   push:
     branches: [rebuild/camscanner-reference]
-    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, .github/workflows/native-build.yml]
+    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, .github/workflows/native-build.yml, .github/native-device-check.sh]
   workflow_dispatch:
 permissions:
   contents: read

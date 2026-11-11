@@ -9,7 +9,10 @@ collect_results() {
   trap - EXIT
   adb logcat -d > native-device-results/logcat.txt || true
   if ! adb pull "/sdcard/Android/data/$application_id/files/screenshots" native-device-results/screenshots; then
-    if [[ $test_status -eq 0 ]]; then test_status=1; fi
+    mkdir -p native-device-results/screenshots
+    if adb exec-out run-as "$application_id" tar -C "/sdcard/Android/data/$application_id/files/screenshots" -cf - . > native-device-results/screenshots.tar; then
+      tar -xf native-device-results/screenshots.tar -C native-device-results/screenshots
+    elif [[ $test_status -eq 0 ]]; then test_status=1; fi
   fi
   exit "$test_status"
 }

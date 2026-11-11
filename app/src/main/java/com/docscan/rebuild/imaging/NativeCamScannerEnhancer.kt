@@ -2,6 +2,10 @@ package com.docscan.rebuild.imaging
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.BitmapShader
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Shader
 import com.docscan.rebuild.BuildConfig
 import com.docscan.rebuild.model.Treatment
 import com.intsig.nativelib.MagicEnhancer
@@ -35,7 +39,7 @@ internal object NativeCamScannerEnhancer {
                 check(imageProcessorLoaded)
                 checkStatus(ImageProcessor.ReflectBinaryColorShiftBitmap(bitmap, 1))
             }
-            Treatment.NATIVE_PRO_LOCAL -> checkStatus(MagicEnhancer.ImageSilverBulletBitmap(bitmap, 1, 1, 1))
+            Treatment.NATIVE_PRO_LOCAL -> silverBullet(bitmap)
             Treatment.NATIVE_BOARD -> board(bitmap, paper = false)
             Treatment.NATIVE_BOARD_PAPER -> board(bitmap, paper = true)
             Treatment.NATIVE_INVERT_BOARD -> {
@@ -45,6 +49,28 @@ internal object NativeCamScannerEnhancer {
             }
             else -> error("This treatment does not use the reference engine")
         }
+    }
+
+    private fun silverBullet(bitmap: Bitmap) {
+        // The JNI copy crashes for unaligned crop dimensions (1970 x 1440).
+        // Keep every original pixel: extend the edges to the native working grid,
+        // run the same filter, then copy only the original rectangle back.
+        val width = (bitmap.width + 31) / 32 * 32
+        val height = (bitmap.height + 31) / 32 * 32
+        if (width == bitmap.width && height == bitmap.height) {
+            checkStatus(MagicEnhancer.ImageSilverBulletBitmap(bitmap, 1, 1, 1))
+            return
+        }
+        val padded = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        try {
+            val paint = Paint().apply {
+                shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                isFilterBitmap = false
+            }
+            Canvas(padded).drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            checkStatus(MagicEnhancer.ImageSilverBulletBitmap(padded, 1, 1, 1))
+            Canvas(bitmap).drawBitmap(padded, 0f, 0f, null)
+        } finally { padded.recycle() }
     }
 
     private fun board(bitmap: Bitmap, paper: Boolean) {

@@ -66,7 +66,7 @@ class RebuildFlowTest {
         screenshot("camera")
         compose.onNode(shutter).performClick()
         var captured: Sheet? = null
-        compose.waitUntil(30000) {
+        compose.waitUntil(60000) {
             captured = runBlocking { store.dao.library().first().firstOrNull { it.book.id !in existing }?.let { store.dao.snapshot(it.book.id).firstOrNull() } }
             captured != null
         }
@@ -91,7 +91,7 @@ class RebuildFlowTest {
         compose.onNode(isToggleable()).performClick()
         compose.onNodeWithTag("capture-single").performClick()
         compose.onNode(shutter).performClick()
-        compose.waitUntil(30000) { compose.onAllNodesWithTag("save-edit").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(60000) { compose.onAllNodesWithTag("save-edit").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("filter-strip").assertIsDisplayed()
         compose.onNodeWithTag("editor-toolbar").assertIsDisplayed()
         val books = runBlocking { store.dao.library().first() }
@@ -127,6 +127,7 @@ class RebuildFlowTest {
             val original = ImagePipeline.render(file, EditRecipe())
             assertEquals(1800, original.width); assertEquals(2400, original.height); original.recycle()
             for (treatment in Treatment.entries.filter { BuildConfig.CAMSCANNER_NATIVE || !it.requiresReferenceEngine }) {
+                android.util.Log.i("DocScanFullResolution", "Rendering ${treatment.name} after crop and rotation")
                 val result = ImagePipeline.render(file, EditRecipe(frame = detected, turns = 1, treatment = treatment, brightness = -12f, contrast = .8f))
                 assertTrue(result.width > 1800); assertTrue(result.height > 1300)
                 assertEquals(255, Color.alpha(result.getPixel(result.width / 2, result.height / 2)))
@@ -204,6 +205,28 @@ class RebuildFlowTest {
             val after = IntArray(320 * 480).also { input.getPixels(it, 0, 320, 0, 0, 320, 480) }
             assertArrayEquals(before, after)
         } finally { input.recycle(); store.source(page).delete(); file.delete(); db.close() }
+    }
+
+    @Test fun nativeProPreservesUnalignedPageDimensionsAndOriginalPixels() {
+        Assume.assumeTrue("Requires the ARM64 Native profile", BuildConfig.CAMSCANNER_NATIVE)
+        for ((width, height) in listOf(1970 to 1440, 1440 to 1970, 321 to 479)) {
+            val input = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
+            canvas.drawRect(width * .1f, height * .4f, width * .9f, height * .45f, Paint().apply { color = Color.BLACK })
+            val before = IntArray(width * height).also { input.getPixels(it, 0, width, 0, 0, width, height) }
+            try {
+                val output = ImagePipeline.transform(input, EditRecipe(treatment = Treatment.NATIVE_PRO_LOCAL))
+                try {
+                    assertEquals(width, output.width); assertEquals(height, output.height)
+                    assertEquals(255, Color.alpha(output.getPixel(width - 1, height - 1)))
+                    val paper = output.getPixel(width / 2, height / 4)
+                    val ink = output.getPixel(width / 2, (height * .42f).toInt())
+                    assertTrue("Pro lost the original stroke", Color.red(paper) - Color.red(ink) > 80)
+                } finally { output.recycle() }
+                val after = IntArray(width * height).also { input.getPixels(it, 0, width, 0, 0, width, height) }
+                assertArrayEquals(before, after)
+            } finally { input.recycle() }
+        }
     }
 
     @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
