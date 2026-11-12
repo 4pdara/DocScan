@@ -168,9 +168,15 @@ class BookFeaturesTest {
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { screenshot ->
                 try { val directory=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()};File(directory,"side-crop-handles.png").outputStream().use {screenshot.compress(Bitmap.CompressFormat.PNG,100,it)} } finally{screenshot.recycle()}
             }
+            android.util.Log.i("DocScanCropTest","side="+compose.onNodeWithTag("crop-handle-4").fetchSemanticsNode().boundsInRoot+" overlay="+compose.onNodeWithTag("crop-overlay").fetchSemanticsNode().boundsInRoot)
             compose.onNodeWithTag("crop-handle-4").performTouchInput {swipe(center,center+Offset(0f,55f),500)}
+            compose.waitForIdle()
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { screenshot ->
+                try {val directory=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()};File(directory,"side-crop-after-drag.png").outputStream().use{screenshot.compress(Bitmap.CompressFormat.PNG,100,it)}}finally{screenshot.recycle()}
+            }
             compose.onNodeWithTag("save-edit").performClick()
-            compose.waitUntil(15000){runBlocking{store.dao.page(page.id)!!.edit().frame.points[0].y>.16f}}
+            try {compose.waitUntil(15000){runBlocking{store.dao.page(page.id)!!.edit().frame.points[0].y>.16f}}}
+            catch(failure:Exception){android.util.Log.e("DocScanCropTest","Saved recipe="+runBlocking{store.dao.page(page.id)!!.recipe});throw failure}
             val points=runBlocking{store.dao.page(page.id)!!.edit().frame.points}
             assertEquals(points[0].y,points[1].y,.001f);assertEquals(.85f,points[2].y,.001f);assertEquals(.85f,points[3].y,.001f)
             assertEquals(hash(input),hash(store.source(page)))

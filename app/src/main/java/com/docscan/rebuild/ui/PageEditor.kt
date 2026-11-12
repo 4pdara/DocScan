@@ -272,13 +272,23 @@ private fun CropHandles(aspect: Float, frame: Frame, onChange: (Frame) -> Unit) 
     Box(Modifier.fillMaxSize().onSizeChanged { size=Size(it.width.toFloat(),it.height.toFloat()) }) {
         Canvas(Modifier.fillMaxSize().testTag("crop-overlay").magnifier(sourceCenter={if(handle>=0)location(latest.handles()[handle]) else Offset.Unspecified})
             .pointerInput(aspect) {
+                // Pointer events may arrive faster than composition. Keep a gesture-local frame
+                // instead of repeatedly applying deltas to the last composed frame.
+                var dragFrame: Frame? = null
                 detectDragGestures(onDragStart={touch ->
                     val r=fitImageRect(Size(this.size.width.toFloat(),this.size.height.toFloat()),aspect)
                     handle=latest.handles().indices.minBy { i -> val p=latest.handles()[i];(touch-Offset(r.left+p.x*r.width,r.top+p.y*r.height)).getDistance() }
                     val p=latest.handles()[handle]
                     if((touch-Offset(r.left+p.x*r.width,r.top+p.y*r.height)).getDistance()>40.dp.toPx())handle=-1
-                },onDragEnd={handle=-1},onDragCancel={handle=-1}) { event,delta ->
-                    if(handle>=0){event.consume();val r=fitImageRect(Size(this.size.width.toFloat(),this.size.height.toFloat()),aspect);change(latest.dragHandle(handle,delta.x/r.width,delta.y/r.height,aspect))}
+                    dragFrame = if(handle>=0) latest else null
+                },onDragEnd={handle=-1;dragFrame=null},onDragCancel={handle=-1;dragFrame=null}) { event,delta ->
+                    if(handle>=0) {
+                        event.consume()
+                        val r=fitImageRect(Size(this.size.width.toFloat(),this.size.height.toFloat()),aspect)
+                        val next=(dragFrame?:latest).dragHandle(handle,delta.x/r.width,delta.y/r.height,aspect)
+                        dragFrame=next
+                        change(next)
+                    }
                 }
             }) {
             val r=fitImageRect(this.size,aspect);val corners=frame.points.map { Offset(r.left+it.x*r.width,r.top+it.y*r.height) }
