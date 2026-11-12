@@ -69,12 +69,15 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             finally { busy = false }
         }
     }
-    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true): Sheet {
+    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true, seen: Frame? = null): Sheet {
         try {
             val page = store.captured(bookId, file)
             // The durable master already exists before proposing the crop.
             try {
-                val frame = if (detectBounds) withContext(Dispatchers.Default) { ImagePipeline.detect(store.source(page)) } else null
+                val detected = if (detectBounds) withContext(Dispatchers.Default) { ImagePipeline.detect(store.source(page)) } else null
+                // The page keeps the outline the user saw in the camera when the shot was taken. Detection on the full
+                // photo only refines it when both agree; otherwise it could crop a different shape than was shown.
+                val frame = Frame.choose(detected, seen?.takeIf { detectBounds })
                 if (frame != null) store.save(page, page.edit().copy(frame = frame))
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
@@ -244,12 +247,12 @@ fun ScanApp(store: ScanStore) {
                     val captured = store.dao.snapshot(id)
                     if (captured.isEmpty() && id == draft) { store.discard(id); draft = null; ocrMode = false; bookId = null; route = "library" }
                     else { pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" }
-                } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
+                } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, seen, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
                     else vm.perform {
                         var ok = false; var recognizeNow: String? = null
                         try {
-                            val captured = vm.receive(id, file, detectBounds)
+                            val captured = vm.receive(id, file, detectBounds, seen)
                             if (!batch) { pageId = captured.id; if (ocrMode) { ocrMode = false; ocrText = ""; recognizeNow = captured.id; route = "ocr" } else route = "editor" }
                             ok = true
                         } finally { complete(ok) }

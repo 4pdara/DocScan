@@ -96,4 +96,17 @@ class GeometryTest {
         assertFalse(gate.sample(Frame.FULL,a,2200).capture)
         gate.unstable();assertFalse(gate.sample(Frame.FULL,a,3200).capture)
     }
+    @Test fun capturedPhotoKeepsTheOutlineShownInTheCamera() {
+        fun quad(l: Float, t: Float, r: Float, b: Float) = Frame(listOf(Vertex(l, t), Vertex(r, t), Vertex(r, b), Vertex(l, b)))
+        val shown = quad(.1f, .1f, .8f, .9f)
+        // Detection on the full photo agrees: its more precise corners are used.
+        val close = quad(.11f, .1f, .81f, .9f)
+        assertEquals(close, Frame.choose(close, shown))
+        // Detection found another shape (a text block, the facing page): the user gets what the camera showed.
+        assertEquals(shown, Frame.choose(quad(.3f, .3f, .6f, .6f), shown))
+        assertEquals(shown, Frame.choose(null, shown))
+        // Nothing was shown (detection off or no page in view): only the photo's own detection counts.
+        assertEquals(close, Frame.choose(close, null))
+        assertNull(Frame.choose(null, null))
+    }
 }

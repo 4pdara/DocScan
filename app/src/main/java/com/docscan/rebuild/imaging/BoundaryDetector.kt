@@ -148,7 +148,12 @@ object BoundaryDetector {
                     val sides = frame.points.indices.map { i -> sideSupport(frame.points[i], frame.points[(i + 1) % 4], inside) }
                     val sup = DoubleArray(4) { sides[it].first }
                     // At most two sides may rest on the frame border: a whole-frame quad is not a detection.
-                    if (sides.count { it.second > .6 } > 2 || sup.min() < .3 || sup.average() < .55) return@forEach
+                    val onBorder = sides.count { it.second > .6 }
+                    if (onBorder > 2 || sup.average() < .55) return@forEach
+                    // A side on the frame border is inferred, so it needs less support (a cover whose patterned rim
+                    // touches the frame edge), but the document's real sides must then be clearly visible: a quad that
+                    // reaches the border across the facing page of an open book has a weak top or bottom side.
+                    if (sides.any { (support, border) -> support < (if (border > .6) .2 else if (onBorder > 0) .7 else .3) }) return@forEach
                     valid += Scored(frame, sqrt(frame.area().toDouble()) * .65 + sup.average() * .35, sup)
                 }
             } finally { patch.release() }

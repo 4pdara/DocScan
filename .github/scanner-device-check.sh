@@ -27,14 +27,14 @@ printf '%s\n' "$actual_page" > "$out/page-size.txt"
 [[ "$actual_page" == "$expected_page" ]]
 install_args=(-r)
 if [[ -n "$forced_abi" ]]; then install_args+=(--abi "$forced_abi"); fi
-adb install "${install_args[@]}" "$root/DocScan-0.2.2.apk" | tee "$out/app-install.txt"
+adb install "${install_args[@]}" "$root/DocScan-0.2.3.apk" | tee "$out/app-install.txt"
 grep -q '^Success' "$out/app-install.txt"
 adb shell dumpsys package "$app" > "$out/package.txt"
-grep -q "versionName=0.2.2" "$out/package.txt"
+grep -q "versionName=0.2.3" "$out/package.txt"
 if [[ -n "$forced_abi" ]]; then grep -q "primaryCpuAbi=$forced_abi" "$out/package.txt"; fi
 adb shell am start -W -n "$app/com.docscan.rebuild.MainActivity" | tee "$out/launch.txt"
 grep -q 'Status: ok' "$out/launch.txt"
-adb install -r -t "$root/tests/DocScan-0.2.2-tests.apk"
+adb install -r -t "$root/tests/DocScan-0.2.3-tests.apk"
 args=()
 if [[ "$suite" == 'smoke' ]]; then
   # The 19-test set the 0.1.8 release pipeline used, plus the original-filter and detection measurements, on Android 8 and 16 KB images (storage, processing, editing,

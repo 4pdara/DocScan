@@ -68,6 +68,14 @@ data class Frame(val points: List<Vertex>) {
     }
     companion object {
         val FULL = Frame(listOf(Vertex(0f, 0f), Vertex(1f, 0f), Vertex(1f, 1f), Vertex(0f, 1f)))
+        /**
+         * The crop for a captured photo: the outline shown in the camera at the shot, refined by detection on the
+         * full photo only when both agree (every corner within 4% of the frame); otherwise what the user saw.
+         */
+        fun choose(detected: Frame?, shown: Frame?): Frame? {
+            val seen = shown?.takeIf { it.valid() } ?: return detected
+            return if (detected != null && detected.motion(seen) <= .04f) detected else seen
+        }
     }
 }
 

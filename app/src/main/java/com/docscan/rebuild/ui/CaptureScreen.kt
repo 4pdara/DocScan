@@ -57,7 +57,7 @@ import kotlin.math.max
 private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
 
 @Composable
-fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, (Boolean) -> Unit) -> Unit) {
+fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, Frame?, (Boolean) -> Unit) -> Unit) {
     val context = LocalContext.current; val lifecycle = LocalLifecycleOwner.current
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
@@ -76,11 +76,11 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         val imageCapture = capture ?: return
         if (busy || !capturing.compareAndSet(false, true)) return
         taking = true; gate.markCaptured(observation.signature)
-        val cropCaptured = detectBounds; val batchCaptured = batch
+        val cropCaptured = detectBounds; val batchCaptured = batch; val seen = observation.frame
         val file = File(context.cacheDir, "capture-${UUID.randomUUID()}.jpg")
         imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                latestCaptured(file, cropCaptured, batchCaptured) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
+                latestCaptured(file, cropCaptured, batchCaptured, seen) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
             }
             override fun onError(exception: ImageCaptureException) { file.delete(); taking = false; capturing.set(false); gate.failed(); error = true }
         })
