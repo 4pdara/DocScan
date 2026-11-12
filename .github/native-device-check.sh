@@ -2,7 +2,11 @@
 set -euo pipefail
 locale="${1:-en}"
 apk_root="${2:-native-apks}"
-application_id="${3:-com.docscan.rebuild.csnative}"
+application_id="${3:-}"
+if [[ -z "$application_id" ]]; then
+  application_id=$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk_root/debug/app-debug.apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+fi
+[[ -n "$application_id" ]]
 mkdir -p native-device-results
 collect_results() {
   test_status=$?

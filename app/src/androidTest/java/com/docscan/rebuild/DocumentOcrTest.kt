@@ -43,6 +43,8 @@ class DocumentOcrTest {
         try {
             val book=store.create("Batch"); val pages=(0..2).map { store.captured(book.id,file) }
             val manual="תיקון ידני 50%_\\ ספר"; store.dao.recognized(pages[0].id,manual,pages[0].recipe)
+            store.save(pages[0], pages[0].edit())
+            assertEquals("Saving an unchanged legacy recipe must keep corrected OCR", manual, store.dao.page(pages[0].id)!!.currentText())
             val token=OcrRequest()
             try {
                 OfflineOcr(store).recognizeBook(book.id,OcrOptions("eng",OcrLayout.BLOCK),request=token) {

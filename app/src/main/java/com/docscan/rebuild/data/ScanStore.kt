@@ -122,7 +122,10 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
     suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
         require(edit.frame.valid() && edit.curvature.valid())
         require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
-        dao.recipe(page.id, RecipeCodec.encode(edit))
+        // A legacy/default recipe can have different JSON while rendering identically.
+        // Opening and saving it without changes must not erase manually corrected OCR.
+        val current = requireNotNull(dao.page(page.id))
+        if (current.edit() != edit) dao.recipe(page.id, RecipeCodec.encode(edit))
     }
     suspend fun move(bookId: String, id: String, direction: Int) = withContext(Dispatchers.IO) {
         lock.withLock { database.withTransaction {
