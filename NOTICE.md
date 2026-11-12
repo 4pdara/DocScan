@@ -16,3 +16,5 @@ The standard build contains no CamScanner native libraries or models. The option
 ## Offline OCR (0.1.8)
 Tesseract4Android 4.9.0 is an Apache-2.0 wrapper around Tesseract 5.5.1 and its native dependencies (including Leptonica and image codecs with their respective licenses): https://github.com/adaptech-cz/Tesseract4Android/tree/4.9.0 . Standard, non-OpenMP distribution is used, with all four supported ABIs. Review its bundled transitive notices before a store release.
 The Hebrew and English tessdata_fast language data are Apache-2.0: https://github.com/tesseract-ocr/tessdata_fast/tree/87416418657359cb625c412a48b6e1d6d41c29bd . These verified models are downloaded during the build into generated assets; model binaries are not stored in Git. Recognition runs locally without adding an Internet permission. This dependency is separate from the optional reference processing engine.
+
+The APK bundles the original OCR component license texts under assets/licenses (Tesseract4Android, Tesseract, tessdata_fast, Leptonica, libpng and the IJG libjpeg README). This software is based in part on the work of the Independent JPEG Group.

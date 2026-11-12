@@ -24,6 +24,7 @@ class LibraryBackup(private val store: ScanStore) {
     suspend fun export(output: OutputStream) = withContext(Dispatchers.IO) {
         val (books,pages)=store.database.withTransaction { store.dao.allBooks() to store.dao.allPages() }
         require(books.size<=10000 && pages.size<=20000) { "Library exceeds backup entry limit" }
+        require(books.all { it.title.length<=1000 } && pages.all { it.recipe.length<=65536 && (it.ocrText?.length?:0)<=2_000_000 }) { "Library metadata exceeds backup limits" }
         val sources=pages.distinctBy { it.source }.map { store.source(it) }
         require(sources.all { it.length()<=100L*1024*1024 } && sources.sumOf { it.length() }<=8L*1024*1024*1024) { "Library exceeds backup size limit" }
         val manifest=JSONObject().put("format","docscan-backup").put("version",1)
@@ -59,7 +60,7 @@ class LibraryBackup(private val store: ScanStore) {
                     val limit=if(name=="manifest.json")16L*1024*1024 else 100L*1024*1024
                     var size=0L;FileOutputStream(target).use { out ->
                         val buffer=ByteArray(65536)
-                        while(true){val n=zip.read(buffer);if(n<0)break;size+=n;total+=n;require(size<=limit && total<=8L*1024*1024*1024){"Backup too large"};out.write(buffer,0,n)}
+                        while(true){val n=zip.read(buffer);if(n<0)break;size+=n;if(name!="manifest.json")total+=n;require(size<=limit && total<=8L*1024*1024*1024){"Backup too large"};out.write(buffer,0,n)}
                         out.fd.sync()
                     };zip.closeEntry()
                 }
