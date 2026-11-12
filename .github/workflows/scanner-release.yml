@@ -81,6 +81,7 @@ jobs:
             api: 26
             arch: x86
             target: google_apis
+            suite: smoke
             locale: en
             page: 4096
             abi: ''
@@ -89,6 +90,7 @@ jobs:
             api: 30
             arch: x86_64
             target: google_apis
+            suite: full
             locale: en
             page: 4096
             abi: ''
@@ -97,6 +99,7 @@ jobs:
             api: 35
             arch: x86_64
             target: google_apis
+            suite: full
             locale: he
             page: 4096
             abi: ''
@@ -106,6 +109,7 @@ jobs:
             api: 35
             arch: x86_64
             target: google_apis
+            suite: full
             locale: he
             page: 4096
             abi: arm64-v8a
@@ -114,6 +118,7 @@ jobs:
             api: 35
             arch: x86_64
             target: google_apis_ps16k
+            suite: smoke
             locale: he
             page: 16384
             abi: ''
@@ -154,7 +159,7 @@ jobs:
           emulator-boot-timeout: 300
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
-          script: bash .github/scanner-device-check.sh ${{ matrix.locale }} ${{ matrix.page }} ${{ matrix.abi }}
+          script: bash .github/scanner-device-check.sh ${{ matrix.locale }} ${{ matrix.page }} ${{ matrix.suite }} ${{ matrix.abi }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
