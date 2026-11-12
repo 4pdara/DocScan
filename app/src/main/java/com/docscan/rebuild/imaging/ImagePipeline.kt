@@ -114,7 +114,7 @@ object ImagePipeline {
                 Core.extractChannel(current, alpha, 3)
                 Core.insertChannel(alpha, result, 3)
             }
-            return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { Utils.matToBitmap(result, it) }
+            return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { Utils.matToBitmap(result, it); PageMarks.draw(it, recipe) }
         } finally { source.release(); current.release(); result.release(); alpha.release() }
     }
 

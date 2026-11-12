@@ -42,7 +42,7 @@ fun LibraryScreen(
     onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit, onExtractText: () -> Unit = onScan,
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
     onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {},
-    onDeleteForever: (Set<String>) -> Unit = {}
+    onDeleteForever: (Set<String>) -> Unit = {}, onTool: (String) -> Unit = {}
 ) {
     var search by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("home") }
@@ -124,13 +124,7 @@ fun LibraryScreen(
         Column(Modifier.fillMaxSize().padding(padding).testTag("library")) {
             when {
                 section == "me" -> LocalProfile(onFiles = ::files, onTrash = ::trash, onBackup = onBackup, onRestoreBackup = onRestoreBackup)
-                section == "tools" -> {
-                    Text(stringResource(R.string.tools_tab), Modifier.padding(20.dp), style = MaterialTheme.typography.headlineSmall)
-                    HomeShortcuts(onScan, onExtractText, onImport, ::files, ::trash, { selection = true; section = "files" }, withSelection = true,
-                        onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
-                        onPdf = { entries.firstOrNull { it.pageCount > 0 }?.let { onPdf(it.book.id) } ?: onScan() },
-                        onShare = { entries.firstOrNull { it.pageCount > 0 }?.let { onShare(it.book.id) } ?: onScan() })
-                }
+                section == "tools" -> ToolsSections({ tool -> if (tool == "settings") section = "me" else onTool(tool) }, onFiles = ::files, onTrash = ::trash, onSelect = { selection = true; section = "files" })
                 else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list"), contentPadding = PaddingValues(bottom = 96.dp)) {
                     if (section == "home" && !selection && !inTrash && search.isBlank()) item(key = "shortcuts") {
                         HomeShortcuts(onScan, onExtractText, onImport, ::files, ::trash, { selection = true; section = "files" },
@@ -252,5 +246,41 @@ private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () 
         Text(stringResource(R.string.backup_hint),style=MaterialTheme.typography.bodySmall)
         TextButton(onBackup,modifier=Modifier.testTag("backup-library")) { Icon(Icons.Outlined.Archive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.backup_library)) }
         TextButton(onRestoreBackup,modifier=Modifier.testTag("restore-library")) { Icon(Icons.Outlined.Unarchive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.restore_backup)) }
+        HorizontalDivider(Modifier.padding(vertical=12.dp))
+        MarkSettingsCard()
+    }
+}
+
+/** The Tools tab, grouped like a scanner's tool page: scan, import, convert, edit, utilities. */
+@Composable
+private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash: () -> Unit, onSelect: () -> Unit) {
+    data class Tool(val label: Int, val icon: ImageVector, val tint: Color, val action: () -> Unit)
+    val blue = Color(0xFF4480E8); val red = Color(0xFFFF715D)
+    val groups = listOf(
+        R.string.tools_scan to listOf(Tool(R.string.smart_scan, Icons.Outlined.DocumentScanner, HomeGreen) { onTool("scan") }, Tool(R.string.extract_text, Icons.Outlined.TextFields, HomeGreen) { onTool("ocr") }),
+        R.string.tools_import to listOf(Tool(R.string.import_images, Icons.Outlined.Image, blue) { onTool("import") }, Tool(R.string.import_pdf, Icons.Outlined.FileOpen, blue) { onTool("import") }),
+        R.string.tools_convert to listOf(Tool(R.string.to_word, Icons.Outlined.Description, blue) { onTool("word") }, Tool(R.string.pdf_to_images, Icons.Outlined.PhotoLibrary, HomeGreen) { onTool("images") },
+            Tool(R.string.long_image, Icons.Outlined.ViewDay, HomeGreen) { onTool("long") }),
+        R.string.tools_edit to listOf(Tool(R.string.watermark, Icons.Outlined.WaterDrop, blue) { onTool("watermark") }, Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") },
+            Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") }),
+        R.string.tools_utilities to listOf(Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
+            Tool(R.string.select_documents, Icons.Outlined.Checklist, HomeGreen, onSelect), Tool(R.string.trash, Icons.Outlined.RestoreFromTrash, HomeGreen, onTrash),
+            Tool(R.string.mark_settings, Icons.Outlined.Settings, HomeMuted) { onTool("settings") }))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp).testTag("tools-sections")) {
+        groups.forEach { (title, tools) ->
+            Text(stringResource(title), Modifier.padding(start = 10.dp, top = 14.dp, bottom = 6.dp), style = MaterialTheme.typography.titleMedium)
+            tools.chunked(4).forEach { row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { tool ->
+                        Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = tool.action).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.size(52.dp).background(tool.tint.copy(alpha = .1f), CircleShape), contentAlignment = Alignment.Center) { Icon(tool.icon, null, Modifier.size(26.dp), tint = tool.tint) }
+                            Spacer(Modifier.height(6.dp))
+                            Text(stringResource(tool.label), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 2, minLines = 2, modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp))
+                        }
+                    }
+                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
     }
 }

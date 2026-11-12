@@ -164,6 +164,45 @@
     <plurals name="delete_forever_title"><item quantity="one">למחוק מסמך אחד לצמיתות?</item><item quantity="two">למחוק %1$d מסמכים לצמיתות?</item><item quantity="many">למחוק %1$d מסמכים לצמיתות?</item><item quantity="other">למחוק %1$d מסמכים לצמיתות?</item></plurals>
     <string name="delete_forever_message">המסמכים, העמודים שלהם וצילומי המקור יימחקו מהמכשיר. אי אפשר לבטל את זה. גיבוי ספרייה שנשמר קודם עדיין מכיל אותם.</string>
     <string name="deleted_forever">נמחק לצמיתות</string>
+    <string name="pdf_size">גודל ה־PDF</string>
+    <string name="pdf_size_original">איכות מקורית (הקובץ הגדול ביותר)</string>
+    <string name="pdf_size_balanced">מאוזן (עמודים עד 2000 פיקסלים)</string>
+    <string name="pdf_size_small">קטן (עמודים עד 1200 פיקסלים)</string>
+    <string name="watermark">סימן מים</string>
+    <string name="watermark_hint">הטקסט יופיע באלכסון על כל עמוד. השארת השדה ריק מסירה את סימן המים. צילומי המקור לא משתנים.</string>
+    <string name="remove_watermark">הסרת סימן המים</string>
+    <string name="apply_all_pages">החלה על כל העמודים</string>
+    <string name="print">הדפסה</string>
+    <string name="to_word">ל־Word</string>
+    <string name="word_saved">מסמך ה־Word נשמר</string>
+    <string name="long_image">תמונה ארוכה</string>
+    <string name="timestamp">חותמת זמן</string>
+    <string name="remove_timestamp">הסרת חותמת הזמן</string>
+    <string name="extract_pages">חילוץ עמודים</string>
+    <string name="extract_to_pdf">שמירה כ־PDF</string>
+    <string name="choose_document">בחירת מסמך</string>
+    <string name="no_documents_for_tool">עדיין אין מסמך עם עמודים. סרקו או ייבאו קודם.</string>
+    <string name="tools_scan">סריקה</string>
+    <string name="tools_import">ייבוא</string>
+    <string name="tools_convert">המרה</string>
+    <string name="tools_edit">עריכה</string>
+    <string name="tools_utilities">כלי עזר</string>
+    <string name="import_pdf">ייבוא PDF</string>
+    <string name="pdf_to_images">לתמונות</string>
+    <string name="place_diagonal">באלכסון</string>
+    <string name="place_center">לרוחב במרכז</string>
+    <string name="place_top">למעלה</string>
+    <string name="place_bottom">למטה</string>
+    <string name="place_side">לאורך הצד</string>
+    <string name="corner_bottom_right">למטה מימין</string>
+    <string name="corner_bottom_left">למטה משמאל</string>
+    <string name="corner_top_right">למעלה מימין</string>
+    <string name="corner_top_left">למעלה משמאל</string>
+    <string name="mark_settings">סימן מים וחותמת זמן</string>
+    <string name="mark_settings_hint">כבויים כברירת מחדל. כשמפעילים אותם, הם מתווספים רק לסריקות ולייבואים חדשים; עמודים שכבר נשמרו לא משתנים. אפשר להוסיף אותם גם למסמך מסוים דרך הכלים שלו.</string>
+    <string name="watermark_new_scans">סימן מים בסריקות חדשות</string>
+    <string name="watermark_text">הטקסט של סימן המים</string>
+    <string name="timestamp_new_scans">חותמת זמן בסריקות חדשות</string>
 </resources>
 
 

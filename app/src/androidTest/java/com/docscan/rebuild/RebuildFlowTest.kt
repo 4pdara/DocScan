@@ -121,6 +121,57 @@ class RebuildFlowTest {
         compose.waitUntil(10000) { runBlocking { store.dao.allBooks().none { it.id !in existing } } }
     }
 
+    @Test fun documentToolsWritePdfSizesExtractsLongImageWordAndImportedPdf(): Unit = runBlocking {
+        val store = (compose.activity.application as ScanApplication).store
+        val output = DocumentOutput(context, store)
+        val book = store.create("Tools ${System.nanoTime()}")
+        val first = store.captured(book.id, fixture("tools-1.jpg")); val second = store.captured(book.id, fixture("tools-2.jpg"))
+        // Settings: both marks are off until turned on, and then reach new pages with the chosen text and places.
+        val settings = MarkSettings(context)
+        val saved = listOf(settings.watermarkOn, settings.stampOn)
+        try {
+            settings.watermarkOn = false; settings.stampOn = false
+            assertEquals(EditRecipe(), settings.applyTo(EditRecipe()))
+            settings.watermarkOn = true; settings.watermarkText = "עותק"; settings.watermarkPlace = MarkPlace.SIDE; settings.stampOn = true; settings.stampPlace = StampPlace.TOP_LEFT
+            val applied = settings.applyTo(EditRecipe())
+            assertEquals("עותק", applied.watermark); assertEquals(MarkPlace.SIDE, applied.watermarkPlace); assertNotNull(applied.stamp); assertEquals(StampPlace.TOP_LEFT, applied.stampPlace)
+            assertEquals(applied, RecipeCodec.decode(RecipeCodec.encode(applied)))
+        } finally { settings.watermarkOn = saved[0]; settings.stampOn = saved[1] }
+        // Watermark and timestamp are stored with the page edit and drawn on its output; the source never changes.
+        val plain = ImagePipeline.render(store.source(first), first.edit())
+        store.save(first, first.edit().copy(watermark = "טיוטה", stamp = "13.11.2026 10:00"))
+        val marked = store.dao.page(first.id)!!.edit()
+        assertEquals("טיוטה", marked.watermark); assertEquals("13.11.2026 10:00", marked.stamp)
+        assertEquals(marked, RecipeCodec.decode(RecipeCodec.encode(marked)))
+        val stamped = ImagePipeline.render(store.source(first), marked)
+        try {
+            assertEquals(plain.width, stamped.width); assertEquals(plain.height, stamped.height)
+            val a = IntArray(plain.width * plain.height); val b = IntArray(a.size)
+            plain.getPixels(a, 0, plain.width, 0, 0, plain.width, plain.height); stamped.getPixels(b, 0, plain.width, 0, 0, plain.width, plain.height)
+            assertTrue("Marks are drawn", a.indices.count { a[it] != b[it] } > 1000)
+        } finally { plain.recycle(); stamped.recycle() }
+        fun pages(file: File) = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { PdfRenderer(it).use { r -> r.pageCount } }
+        val full = output.pdf(book.id); val small = output.pdf(book.id, DocumentOutput.PdfSize.SMALL); val one = output.pdf(book.id, pageIds = setOf(second.id))
+        val longImage = output.longImage(book.id); val word = output.word(listOf("שלום עולם\nספר", "second page & <tags>"))
+        try {
+            assertEquals(2, pages(full)); assertEquals(2, pages(small)); assertEquals(1, pages(one))
+            assertTrue("Small PDF ${small.length()} < original ${full.length()}", small.length() < full.length())
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(longImage.path, bounds)
+            assertTrue(bounds.outWidth in 1..2000); assertTrue("Both pages are stacked", bounds.outHeight > bounds.outWidth * 2)
+            java.util.zip.ZipFile(word).use { zip ->
+                val xml = zip.getInputStream(zip.getEntry("word/document.xml")).readBytes().toString(Charsets.UTF_8)
+                assertTrue(xml.contains("שלום עולם") && xml.contains("<w:bidi/>") && xml.contains("&amp; &lt;tags&gt;") && xml.contains("w:type=\"page\""))
+                assertNotNull(zip.getEntry("[Content_Types].xml")); assertNotNull(zip.getEntry("_rels/.rels"))
+            }
+            // A PDF imports as one page per PDF page.
+            val imported = store.create("Imported ${System.nanoTime()}")
+            val sheets = store.importPdf(imported.id, Uri.fromFile(full))
+            assertEquals(2, sheets.size); assertTrue(sheets.all { it.width > 1000 && store.source(it).length() > 0 })
+            store.trash(setOf(imported.id)); store.deleteForever(setOf(imported.id))
+        } finally { listOf(full, small, one, longImage, word).forEach { it.delete() } }
+        store.trash(setOf(book.id)); store.deleteForever(setOf(book.id))
+    }
+
     @Test fun discardedScanRemovesItsPagesAndUnsharedOriginalsOnly(): Unit = runBlocking {
         val store = (compose.activity.application as ScanApplication).store
         val kept = store.create("Kept ${System.nanoTime()}"); val draft = store.create("Draft ${System.nanoTime()}")
@@ -700,7 +751,7 @@ class RebuildFlowTest {
         compose.onNodeWithTag("home-tab-files").performClick()
         compose.onNodeWithText(title).assertIsDisplayed()
         compose.onNodeWithTag("home-tab-tools").performClick()
-        compose.onNodeWithTag("home-shortcuts").assertIsDisplayed()
+        compose.onNodeWithTag("tools-sections").assertIsDisplayed()
         compose.onNodeWithTag("home-tab-me").performClick()
         compose.onNodeWithText(compose.activity.getString(R.string.local_profile)).assertIsDisplayed()
         compose.onNodeWithTag("home-tab-home").performClick()

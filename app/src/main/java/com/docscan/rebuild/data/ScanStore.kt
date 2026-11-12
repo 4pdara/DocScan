@@ -9,6 +9,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -72,7 +73,11 @@ object RecipeCodec {
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
         .put("outputAspect", r.outputAspect?.toDouble() ?: JSONObject.NULL)
         .put("curveTop", r.curvature.top.toDouble()).put("curveBottom", r.curvature.bottom.toDouble())
-        .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) })).toString()
+        .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) }))
+        .apply {
+            r.watermark?.let { put("watermark", it); put("watermarkPlace", r.watermarkPlace.name) }
+            r.stamp?.let { put("stamp", it); put("stampPlace", r.stampPlace.name) }
+        }.toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
         val frame = if (q != null && q.length() == 4) Frame((0..3).map { val p = q.getJSONArray(it); Vertex(p.getDouble(0).toFloat(), p.getDouble(1).toFloat()) }) else Frame.FULL
@@ -81,7 +86,10 @@ object RecipeCodec {
             o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
             o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
             o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f },
-            BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve())
+            BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve(),
+            o.optString("watermark").trim().take(80).ifBlank { null }, o.optString("stamp").trim().take(80).ifBlank { null },
+            runCatching { MarkPlace.valueOf(o.optString("watermarkPlace", "DIAGONAL")) }.getOrDefault(MarkPlace.DIAGONAL),
+            runCatching { StampPlace.valueOf(o.optString("stampPlace", "BOTTOM_RIGHT")) }.getOrDefault(StampPlace.BOTTOM_RIGHT))
     }.getOrDefault(EditRecipe())
 }
 
@@ -96,6 +104,29 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
     }
     suspend fun import(id: String, uri: Uri): Sheet = withContext(Dispatchers.IO) {
         context.contentResolver.openInputStream(uri).use { stream -> requireNotNull(stream); store(id, stream) }
+    }
+    /**
+     * Each page of a PDF becomes a page of the document: rendered at 200 dpi on white (long edge at most 3000
+     * pixels) and kept as a JPEG original. The PDF itself is not modified or stored.
+     */
+    suspend fun importPdf(id: String, uri: Uri): List<Sheet> = withContext(Dispatchers.IO) {
+        val descriptor = requireNotNull(context.contentResolver.openFileDescriptor(uri, "r")) { "Cannot open PDF" }
+        descriptor.use { fd ->
+            android.graphics.pdf.PdfRenderer(fd).use { renderer ->
+                require(renderer.pageCount in 1..500) { "Unsupported PDF" }
+                (0 until renderer.pageCount).map { index ->
+                    coroutineContext.ensureActive()
+                    val bitmap = renderer.openPage(index).use { page ->
+                        val scale = minOf(200.0 / 72, 3000.0 / maxOf(page.width, page.height))
+                        val bitmap = android.graphics.Bitmap.createBitmap((page.width * scale).toInt().coerceAtLeast(1), (page.height * scale).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                        bitmap.eraseColor(android.graphics.Color.WHITE)
+                        page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_PRINT); bitmap
+                    }
+                    val bytes = try { java.io.ByteArrayOutputStream().also { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it)) }.toByteArray() } finally { bitmap.recycle() }
+                    store(id, bytes.inputStream())
+                }
+            }
+        }
     }
     suspend fun captured(id: String, file: File): Sheet = withContext(Dispatchers.IO) { file.inputStream().use { store(id, it) } }
     /** Commit bytes atomically before inserting metadata. No recompression, resizing or EXIF rewriting. */

@@ -1,6 +1,9 @@
 package com.docscan.rebuild.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -21,11 +24,46 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
+import com.docscan.rebuild.export.DocumentOutput
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: () -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState) {
+fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: (DocumentOutput.PdfSize) -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState,
+    onPrint: () -> Unit = {}, onWatermark: (String?, com.docscan.rebuild.model.MarkPlace) -> Unit = { _, _ -> }, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
+    onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {}) {
     var reorder by rememberSaveable { mutableStateOf(false) }
+    var pdfChoice by rememberSaveable { mutableStateOf(false) }
+    var watermark by rememberSaveable { mutableStateOf<String?>(null) }
+    var watermarkPlace by rememberSaveable { mutableStateOf(pages.firstOrNull()?.edit()?.watermarkPlace ?: com.docscan.rebuild.model.MarkPlace.DIAGONAL) }
+    var extracting by rememberSaveable { mutableStateOf(false) }
+    var chosen by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val stamped = pages.isNotEmpty() && pages.all { it.edit().stamp != null }
+    // A tool picked on the Tools tab opens here on the chosen document.
+    LaunchedEffect(startTool) {
+        when (startTool) {
+            "watermark" -> watermark = pages.firstOrNull()?.edit()?.watermark.orEmpty()
+            "extract" -> { extracting = true; chosen = emptyList() }
+            "compress" -> pdfChoice = true
+        }
+        if (startTool != null) onToolStarted()
+    }
+    if (pdfChoice) AlertDialog(onDismissRequest = { pdfChoice = false }, title = { Text(stringResource(R.string.pdf_size)) },
+        text = { Column {
+            listOf(DocumentOutput.PdfSize.ORIGINAL to R.string.pdf_size_original, DocumentOutput.PdfSize.BALANCED to R.string.pdf_size_balanced, DocumentOutput.PdfSize.SMALL to R.string.pdf_size_small).forEach { (size, label) ->
+                TextButton({ pdfChoice = false; onPdf(size) }, Modifier.fillMaxWidth().testTag("pdf-size-${size.name.lowercase()}")) { Text(stringResource(label), Modifier.fillMaxWidth()) }
+            }
+        } }, confirmButton = {}, dismissButton = { TextButton({ pdfChoice = false }) { Text(stringResource(R.string.cancel)) } })
+    watermark?.let { text ->
+        AlertDialog(onDismissRequest = { watermark = null }, title = { Text(stringResource(R.string.watermark)) },
+            text = { Column {
+                Text(stringResource(R.string.watermark_hint), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(text, { watermark = it.take(40) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("watermark-text"))
+                Spacer(Modifier.height(8.dp))
+                PlaceChips(markPlaceLabels, watermarkPlace, { watermarkPlace = it })
+            } },
+            confirmButton = { TextButton({ onWatermark(text.trim().ifBlank { null }, watermarkPlace); watermark = null }, modifier = Modifier.testTag("apply-watermark")) { Text(stringResource(if (text.isBlank()) R.string.remove_watermark else R.string.apply_all_pages)) } },
+            dismissButton = { TextButton({ watermark = null }) { Text(stringResource(R.string.cancel)) } })
+    }
     var actions by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var newTitle by remember(title) { mutableStateOf(title) }
@@ -34,7 +72,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
         confirmButton = { TextButton(onClick = { if (newTitle.isNotBlank()) { onRename(newTitle); rename = false } }) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
     if (actions) ModalBottomSheet(onDismissRequest = { actions = false }, containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.testTag("document-more-sheet")) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().testTag("save-gallery").clickable(enabled = pages.isNotEmpty()) { actions = false; onGallery() }) {
@@ -44,7 +82,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DocumentAction(R.string.export_pdf, Icons.Outlined.PictureAsPdf, Modifier.weight(1f), pages.isNotEmpty()) { actions = false; onPdf() }
+                DocumentAction(R.string.export_pdf, Icons.Outlined.PictureAsPdf, Modifier.weight(1f), pages.isNotEmpty()) { actions = false; pdfChoice = true }
                 DocumentAction(R.string.share, Icons.Outlined.Share, Modifier.weight(1f), pages.isNotEmpty()) { actions = false; onShare() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -52,9 +90,21 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 DocumentAction(R.string.rename, Icons.Outlined.Edit, Modifier.weight(1f)) { actions = false; rename = true }
                 DocumentAction(R.string.reorder, Icons.Outlined.SwapVert, Modifier.weight(1f), pages.size > 1) { actions = false; reorder = !reorder }
             }
+            Text(stringResource(R.string.tools_tab), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.print, Icons.Outlined.Print, Modifier.weight(1f).testTag("tool-print"), pages.isNotEmpty()) { actions = false; onPrint() }
+                DocumentAction(R.string.to_word, Icons.Outlined.Description, Modifier.weight(1f).testTag("tool-word"), pages.isNotEmpty()) { actions = false; onWord() }
+                DocumentAction(R.string.long_image, Icons.Outlined.ViewDay, Modifier.weight(1f).testTag("tool-long-image"), pages.isNotEmpty()) { actions = false; onLongImage() }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.watermark, Icons.Outlined.WaterDrop, Modifier.weight(1f).testTag("tool-watermark"), pages.isNotEmpty()) { actions = false; watermark = pages.firstOrNull()?.edit()?.watermark.orEmpty() }
+                DocumentAction(if (stamped) R.string.remove_timestamp else R.string.timestamp, Icons.Outlined.Schedule, Modifier.weight(1f).testTag("tool-timestamp"), pages.isNotEmpty()) { actions = false; onStamp(!stamped) }
+                DocumentAction(R.string.extract_pages, Icons.Outlined.ContentCut, Modifier.weight(1f).testTag("tool-extract"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
+            }
             TextButton(onClick = { actions = false }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
         }
     }
+    BackHandler(extracting) { extracting = false }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         TopAppBar(title = { Column(Modifier.clickable { rename = true }) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
@@ -65,11 +115,17 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 IconButton(onClick = { actions = true }, modifier = Modifier.testTag("export-menu")) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.more_actions)) }
             })
     }, bottomBar = {
-        Surface(shadowElevation = 4.dp) {
+        if (extracting) Surface(shadowElevation = 4.dp) {
+            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton({ extracting = false }) { Text(stringResource(R.string.cancel)) }
+                Text(stringResource(R.string.selected_count, chosen.size), Modifier.weight(1f))
+                Button({ extracting = false; onExtract(chosen.toSet()) }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("extract-selected")) { Text(stringResource(R.string.extract_to_pdf)) }
+            }
+        } else Surface(shadowElevation = 4.dp) {
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp).testTag("document-actions"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TextButton(onCamera, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.Add, null); Text(stringResource(R.string.add_pages), maxLines = 1) }
                 IconButton(onShare, enabled = pages.isNotEmpty()) { Icon(Icons.Outlined.Share, stringResource(R.string.share)) }
-                Button(onPdf, enabled = pages.isNotEmpty(), shape = RoundedCornerShape(22.dp), modifier = Modifier.weight(1f).testTag("save-pdf"), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(stringResource(R.string.export_pdf), maxLines = 1) }
+                Button({ pdfChoice = true }, enabled = pages.isNotEmpty(), shape = RoundedCornerShape(22.dp), modifier = Modifier.weight(1f).testTag("save-pdf"), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(stringResource(R.string.export_pdf), maxLines = 1) }
             }
         }
     }) { padding ->
@@ -79,6 +135,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 Column {
 
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (extracting) Checkbox(page.id in chosen, { chosen = if (page.id in chosen) chosen - page.id else chosen + page.id }, modifier = Modifier.testTag("choose-${page.id}"))
                         TextButton(onClick = { onEdit(page) }) { Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(stringResource(R.string.edit)) }
                         Spacer(Modifier.weight(1f))
                         if (reorder) {
@@ -87,7 +144,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                         }
                         Text(stringResource(R.string.page_counter, index + 1, pages.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Surface(Modifier.fillMaxWidth().clickable { onEdit(page) }, shadowElevation = 3.dp) {
+                    Surface(Modifier.fillMaxWidth().clickable { if (extracting) chosen = if (page.id in chosen) chosen - page.id else chosen + page.id else onEdit(page) }, shadowElevation = 3.dp) {
                         PagePicture(store, page, Modifier.fillMaxWidth().testTag("page-image-${page.id}"), naturalHeight = true, description = stringResource(R.string.page_number, index + 1))
                     }
                 }

@@ -85,7 +85,17 @@ enum class Treatment(val referenceEngineVariant: Boolean = false) {
     NATIVE_MAGIC_COLOR(true), NATIVE_NO_SHADOW(true), NATIVE_INVERT(true), NATIVE_PRO_LOCAL(true),
     LIGHTEN, ECO, NATIVE_BOARD(true), NATIVE_BOARD_PAPER(true), NATIVE_INVERT_BOARD(true)
 }
-data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve())
+/**
+ * [watermark]: text drawn diagonally across the page; [stamp]: a date and time printed in the bottom corner.
+ * Both are drawn on every output of the page (preview, PDF, gallery, print); the source photo never changes.
+ */
+data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve(),
+    val watermark: String? = null, val stamp: String? = null, val watermarkPlace: MarkPlace = MarkPlace.DIAGONAL, val stampPlace: StampPlace = StampPlace.BOTTOM_RIGHT)
+
+/** Where a watermark is drawn: corner to corner, across the middle, along the top or bottom, or up the side. */
+enum class MarkPlace { DIAGONAL, CENTER, TOP, BOTTOM, SIDE }
+/** The corner that holds the timestamp. */
+enum class StampPlace { BOTTOM_RIGHT, BOTTOM_LEFT, TOP_RIGHT, TOP_LEFT }
 
 /** Vertical page warp after perspective correction, before rotation. Values are image-height fractions. */
 data class BookCurve(val top: Float = 0f, val bottom: Float = 0f) {

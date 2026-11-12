@@ -96,14 +96,28 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
         }
     }
 
-    /** Page geometry is in PDF points. Each raster is rendered at source resolution before drawing. */
-    suspend fun pdf(bookId: String): File = withContext(Dispatchers.IO) {
-        val pages = store.dao.snapshot(bookId); require(pages.isNotEmpty())
+    /** PDF size: [maxEdge] null keeps every page at its full rendered resolution; smaller values make a lighter file. */
+    enum class PdfSize(val maxEdge: Int?) { ORIGINAL(null), BALANCED(2000), SMALL(1200) }
+
+    /**
+     * Page geometry is in PDF points. Each raster is rendered at source resolution before drawing, then reduced
+     * only when a smaller [size] was chosen. [pageIds] limits the file to those pages (page extraction), in order.
+     */
+    suspend fun pdf(bookId: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null): File = withContext(Dispatchers.IO) {
+        val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
         val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pdf")
         val document = PdfDocument()
         try {
             pages.forEachIndexed { index, sheet ->
-                val bitmap = ImagePipeline.render(store.source(sheet), sheet.edit())
+                coroutineContext.ensureActive()
+                val bitmap = ImagePipeline.render(store.source(sheet), sheet.edit()).let { full ->
+                    val edge = size.maxEdge
+                    if (edge == null || maxOf(full.width, full.height) <= edge) full else {
+                        val scale = edge.toDouble() / maxOf(full.width, full.height)
+                        Bitmap.createScaledBitmap(full, (full.width * scale).roundToInt().coerceAtLeast(1), (full.height * scale).roundToInt().coerceAtLeast(1), true)
+                            .also { if (it !== full) full.recycle() }
+                    }
+                }
                 try {
                     val width = 595; val height = (width * bitmap.height.toDouble() / bitmap.width).roundToInt().coerceAtLeast(1)
                     val page = document.startPage(PdfDocument.PageInfo.Builder(width, height, index + 1).create())
@@ -116,5 +130,65 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
         } catch (failure: Throwable) { target.delete(); throw failure }
         finally { document.close() }
     }
-}
 
+    /**
+     * The whole document as one tall JPEG, pages one under the other at a common width. The width keeps the image
+     * within 16 million pixels (64 MB while it is drawn) and never wider than 2000 pixels.
+     */
+    suspend fun longImage(bookId: String): File = withContext(Dispatchers.IO) {
+        val pages = store.dao.snapshot(bookId); require(pages.isNotEmpty())
+        val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.jpg")
+        val sizes = pages.map { sheet ->
+            val recipe = sheet.edit()
+            com.docscan.rebuild.model.CropGeometry.dimensions(recipe.frame, sheet.width, sheet.height, recipe.outputAspect).rotated(recipe.turns)
+        }
+        val heightPerWidth = sizes.sumOf { it.height.toDouble() / it.width }
+        val width = minOf(2000.0, kotlin.math.sqrt(16_000_000.0 / heightPerWidth)).roundToInt().coerceAtLeast(1)
+        val heights = sizes.map { (width * it.height.toDouble() / it.width).roundToInt().coerceAtLeast(1) }
+        val result = Bitmap.createBitmap(width, heights.sum(), Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = android.graphics.Canvas(result); canvas.drawColor(android.graphics.Color.WHITE)
+            var top = 0
+            pages.forEachIndexed { index, sheet ->
+                coroutineContext.ensureActive()
+                val bitmap = ImagePipeline.render(store.source(sheet), sheet.edit())
+                try { canvas.drawBitmap(bitmap, null, RectF(0f, top.toFloat(), width.toFloat(), (top + heights[index]).toFloat()), Paint(Paint.FILTER_BITMAP_FLAG)) }
+                finally { bitmap.recycle() }
+                top += heights[index]
+            }
+            FileOutputStream(target).use { check(result.compress(Bitmap.CompressFormat.JPEG, jpegQuality, it)); it.fd.sync() }
+            target
+        } catch (failure: Throwable) { target.delete(); throw failure }
+        finally { result.recycle() }
+    }
+
+    /**
+     * A Word document of the recognized text, one page per scanned page, right-to-left paragraphs for Hebrew.
+     * Written directly as Office Open XML; no third-party library.
+     */
+    suspend fun word(pageTexts: List<String>): File = withContext(Dispatchers.IO) {
+        val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.docx")
+        fun xml(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+            .filter { it == '\t' || it == '\n' || it >= ' ' }
+        val body = StringBuilder()
+        pageTexts.forEachIndexed { index, text ->
+            text.lines().forEachIndexed { line, content ->
+                val rtl = content.any { it in '\u0590'..'\u05FF' }
+                val pageBreak = if (index > 0 && line == 0) "<w:r><w:br w:type=\"page\"/></w:r>" else ""
+                val props = if (rtl) "<w:pPr><w:bidi/><w:jc w:val=\"right\"/></w:pPr>" else ""
+                val run = if (rtl) "<w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space=\"preserve\">${xml(content)}</w:t></w:r>" else "<w:r><w:t xml:space=\"preserve\">${xml(content)}</w:t></w:r>"
+                body.append("<w:p>").append(props).append(pageBreak).append(run).append("</w:p>")
+            }
+        }
+        val parts = linkedMapOf(
+            "[Content_Types].xml" to """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>""",
+            "_rels/.rels" to """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>""",
+            "word/document.xml" to """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>$body<w:sectPr/></w:body></w:document>""")
+        try {
+            java.util.zip.ZipOutputStream(FileOutputStream(target)).use { zip ->
+                parts.forEach { (name, content) -> zip.putNextEntry(java.util.zip.ZipEntry(name)); zip.write(content.toByteArray(Charsets.UTF_8)); zip.closeEntry() }
+            }
+            target
+        } catch (failure: Throwable) { target.delete(); throw failure }
+    }
+}

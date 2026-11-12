@@ -78,7 +78,9 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
                 // The page keeps the outline the user saw in the camera when the shot was taken. Detection on the full
                 // photo only refines it when both agree; otherwise it could crop a different shape than was shown.
                 val frame = Frame.choose(detected, seen?.takeIf { detectBounds })
-                if (frame != null) store.save(page, page.edit().copy(frame = frame))
+                // Marks chosen in Settings (off by default) go on new pages only.
+                val recipe = MarkSettings(store.context).applyTo(if (frame != null) page.edit().copy(frame = frame) else page.edit())
+                if (recipe != page.edit()) store.save(page, recipe)
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
             catch (e: Exception) { notices.send(R.string.processing_error) }
@@ -131,6 +133,9 @@ fun ScanApp(store: ScanStore) {
     var ocrMode by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var importBook by rememberSaveable { mutableStateOf<String?>(null) }
+    // A Tools-tab action waiting for the user to pick its document, and the tool the document screen should open.
+    var pickFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var documentTool by rememberSaveable { mutableStateOf<String?>(null) }
     val books by vm.library.collectAsState()
     val trash by vm.trash.collectAsState()
     val pages by remember(bookId) { bookId?.let { store.dao.pages(it) } ?: flowOf(emptyList()) }.collectAsState(emptyList())
@@ -146,17 +151,46 @@ fun ScanApp(store: ScanStore) {
             val target = importBook ?: store.create(defaultTitle()).id
             if (target == draft) draft = null
             bookId = target; route = "document"
-            for (uri in uris) store.import(target, uri)
+            val marks = MarkSettings(context)
+            for (uri in uris) {
+                val added = if (context.contentResolver.getType(uri) == "application/pdf") store.importPdf(target, uri) else listOf(store.import(target, uri))
+                if (marks.active) added.forEach { store.save(it, marks.applyTo(it.edit())) }
+            }
         }
     }
+    var pdfSize by rememberSaveable { mutableStateOf(DocumentOutput.PdfSize.ORIGINAL) }
+    var pdfPages by rememberSaveable { mutableStateOf<List<String>?>(null) }
     val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val id = bookId
+        val id = bookId; val size = pdfSize; val only = pdfPages?.toSet(); pdfSize = DocumentOutput.PdfSize.ORIGINAL; pdfPages = null
         if (uri != null && id != null) vm.perform(R.string.pdf_saved) {
-            val file = DocumentOutput(context, store).pdf(id)
+            val file = DocumentOutput(context, store).pdf(id, size, only)
             try { withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { out -> file.inputStream().use { it.copyTo(out) } } } }
             finally { file.delete() }
         }
     }
+    fun fileName(title: String, extension: String) = "${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.$extension"
+    fun copyTo(uri: android.net.Uri, file: File) = requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { out -> file.inputStream().use { it.copyTo(out) } }
+    val wordSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) { uri ->
+        val id = bookId
+        if (uri != null && id != null) vm.perform(R.string.word_saved) {
+            // Pages recognized for their current edit reuse that text; the others are recognized now, on the device.
+            val texts = store.dao.snapshot(id).map { page -> if (page.ocrRecipe == page.recipe && page.ocrText != null) page.ocrText else OfflineOcr(store).recognize(page, ocrLanguage) }
+            val file = DocumentOutput(context, store).word(texts)
+            try { withContext(Dispatchers.IO) { copyTo(uri, file) } } finally { file.delete() }
+        }
+    }
+    val longImageSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/jpeg")) { uri ->
+        val id = bookId
+        if (uri != null && id != null) vm.perform(R.string.image_saved) {
+            val file = DocumentOutput(context, store).longImage(id)
+            try { withContext(Dispatchers.IO) { copyTo(uri, file) } } finally { file.delete() }
+        }
+    }
+    fun printDocument(id: String) {
+        val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)
+        vm.perform { val file = DocumentOutput(context, store).pdf(id); com.docscan.rebuild.export.PdfPrint.print(context, title, file) }
+    }
+    fun markPages(change: (EditRecipe) -> EditRecipe) { val id = bookId ?: return; vm.perform(R.string.saved) { store.dao.snapshot(id).forEach { store.save(it, change(it.edit())) } } }
     val backupSaver=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if(uri!=null)vm.perform(R.string.backup_saved) {
             withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri,"wt")).use { LibraryBackup(store).export(it) } }
@@ -235,6 +269,32 @@ fun ScanApp(store: ScanStore) {
         title = { Text(stringResource(R.string.unsaved_title)) }, text = { Text(stringResource(R.string.unsaved_message)) },
         confirmButton = { TextButton(::discardDraft, modifier = Modifier.testTag("discard-scan")) { Text(stringResource(R.string.leave_without_saving), color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton({ confirmDiscard = false }) { Text(stringResource(R.string.cancel)) } })
+    pickFor?.let { tool ->
+        // Document tools from the Tools tab work on a document the user picks here.
+        val choices = books.filter { it.pageCount > 0 }
+        AlertDialog(onDismissRequest = { pickFor = null }, title = { Text(stringResource(R.string.choose_document)) },
+            text = {
+                if (choices.isEmpty()) Text(stringResource(R.string.no_documents_for_tool))
+                else LazyColumn(Modifier.heightIn(max = 360.dp).testTag("document-picker")) {
+                    items(choices, key = { it.book.id }) { entry ->
+                        TextButton({
+                            pickFor = null; val id = entry.book.id; bookId = id
+                            val title = entry.book.title
+                            when (tool) {
+                                "print" -> printDocument(id)
+                                "word" -> wordSaver.launch(fileName(title, "docx"))
+                                "long" -> longImageSaver.launch(fileName(title, "jpg"))
+                                "images" -> requestGallery()
+                                "timestamp" -> { route = "document"; val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val corner = MarkSettings(context).stampPlace; markPages { it.copy(stamp = now, stampPlace = corner) } }
+                                else -> { documentTool = tool; route = "document" }
+                            }
+                        }, Modifier.fillMaxWidth()) {
+                            Text(entry.book.title, Modifier.fillMaxWidth(), maxLines = 2)
+                        }
+                    }
+                }
+            }, confirmButton = {}, dismissButton = { TextButton({ pickFor = null }) { Text(stringResource(R.string.cancel)) } })
+    }
     ScannerScreenTheme(dark = route == "camera" || route == "editor" || route == "review") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
@@ -247,7 +307,7 @@ fun ScanApp(store: ScanStore) {
                     val captured = store.dao.snapshot(id)
                     if (captured.isEmpty() && id == draft) { store.discard(id); draft = null; ocrMode = false; bookId = null; route = "library" }
                     else { pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" }
-                } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, seen, complete ->
+                } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) }, onCaptured = { file, detectBounds, batch, seen, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
                     else vm.perform {
                         var ok = false; var recognizeNow: String? = null
@@ -279,11 +339,18 @@ fun ScanApp(store: ScanStore) {
                     } })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
-                onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
-                onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onGallery = { requestGallery() }, onShare = { sharePdf() },
+                onPrint = { bookId?.let(::printDocument) }, onWord = { wordSaver.launch(fileName(currentTitle, "docx")) }, onLongImage = { longImageSaver.launch(fileName(currentTitle, "jpg")) },
+                onWatermark = { text, place -> markPages { it.copy(watermark = text, watermarkPlace = place) } },
+                onStamp = { add -> val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val corner = MarkSettings(context).stampPlace
+                    markPages { it.copy(stamp = if (add) now else null, stampPlace = corner) } },
+                onExtract = { ids -> pdfPages = ids.toList(); pdfSaver.launch(fileName(currentTitle, "pdf")) },
+                startTool = documentTool, onToolStarted = { documentTool = null },
+                onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) },
+                onPdf = { size -> pdfSize = size; pdfSaver.launch(fileName(currentTitle, "pdf")) }, onGallery = { requestGallery() }, onShare = { sharePdf() },
                 onMove = { page, direction -> bookId?.let { id -> vm.perform { store.move(id, page.id, direction) } } },
                 onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack)
-            else -> LibraryScreen(store, books, trash, onScan = { startScan() }, onExtractText = { startScan(recognize = true) }, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" },
+            else -> LibraryScreen(store, books, trash, onScan = { startScan() }, onExtractText = { startScan(recognize = true) },
+                onTool = { tool -> when (tool) { "scan" -> startScan(); "ocr" -> startScan(recognize = true); "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }, onOpen = { bookId = it; route = "document" },
                 onShare = { id -> sharePdf(id) }, onPdf = { id ->
                     bookId = id
                     val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)

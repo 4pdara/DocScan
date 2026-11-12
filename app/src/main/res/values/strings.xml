@@ -164,6 +164,45 @@
     <plurals name="delete_forever_title"><item quantity="one">Delete %1$d document permanently?</item><item quantity="other">Delete %1$d documents permanently?</item></plurals>
     <string name="delete_forever_message">The documents, their pages and original photos are removed from the device. This cannot be undone; a library backup made earlier still contains them.</string>
     <string name="deleted_forever">Deleted permanently</string>
+    <string name="pdf_size">PDF size</string>
+    <string name="pdf_size_original">Original quality (largest file)</string>
+    <string name="pdf_size_balanced">Balanced (pages up to 2000 pixels)</string>
+    <string name="pdf_size_small">Small (pages up to 1200 pixels)</string>
+    <string name="watermark">Watermark</string>
+    <string name="watermark_hint">The text is drawn diagonally on every page. Leave it empty to remove the watermark. The original photos do not change.</string>
+    <string name="remove_watermark">Remove watermark</string>
+    <string name="apply_all_pages">Apply to all pages</string>
+    <string name="print">Print</string>
+    <string name="to_word">To Word</string>
+    <string name="word_saved">Word document saved</string>
+    <string name="long_image">Long image</string>
+    <string name="timestamp">Timestamp</string>
+    <string name="remove_timestamp">Remove timestamp</string>
+    <string name="extract_pages">Extract pages</string>
+    <string name="extract_to_pdf">Save as PDF</string>
+    <string name="choose_document">Choose a document</string>
+    <string name="no_documents_for_tool">No document with pages yet. Scan or import first.</string>
+    <string name="tools_scan">Scan</string>
+    <string name="tools_import">Import</string>
+    <string name="tools_convert">Convert</string>
+    <string name="tools_edit">Edit</string>
+    <string name="tools_utilities">Utilities</string>
+    <string name="import_pdf">Import PDF</string>
+    <string name="pdf_to_images">To images</string>
+    <string name="place_diagonal">Diagonal</string>
+    <string name="place_center">Across the middle</string>
+    <string name="place_top">Top</string>
+    <string name="place_bottom">Bottom</string>
+    <string name="place_side">Along the side</string>
+    <string name="corner_bottom_right">Bottom right</string>
+    <string name="corner_bottom_left">Bottom left</string>
+    <string name="corner_top_right">Top right</string>
+    <string name="corner_top_left">Top left</string>
+    <string name="mark_settings">Watermark and timestamp</string>
+    <string name="mark_settings_hint">Off by default. When turned on, they are added to new scans and imports only; saved pages do not change. Any document can also get them from its tools.</string>
+    <string name="watermark_new_scans">Watermark on new scans</string>
+    <string name="watermark_text">Watermark text</string>
+    <string name="timestamp_new_scans">Timestamp on new scans</string>
 </resources>
 
 
