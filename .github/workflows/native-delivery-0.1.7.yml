@@ -1,5 +1,8 @@
 name: Publish verified Native 0.1.7
 on:
+  push:
+    branches: [rebuild/camscanner-reference]
+    paths: [.github/native-0.1.7-signature.json]
   workflow_dispatch:
 permissions:
   contents: write
@@ -30,12 +33,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/4pdara/DocScan/actions/artifacts/13896262536/zip > /tmp/native-input.zip
           python3 - <<'PY'
           from pathlib import Path
-          import hashlib,json,zipfile
+          import hashlib,json,subprocess,zipfile
           plan=json.loads(Path('.github/native-0.1.7-signature.json').read_text())
           archive=Path('/tmp/native-input.zip')
+          with archive.open('wb') as stream:
+              subprocess.run(['gh','api',f"repos/4pdara/DocScan/actions/artifacts/{plan['artifact_id']}/zip"],stdout=stream,check=True)
           assert hashlib.sha256(archive.read_bytes()).hexdigest()==plan['artifact_zip_sha256']
           with zipfile.ZipFile(archive) as z:
               Path('/tmp/native-input.apk').write_bytes(z.read('debug/app-debug.apk'))
