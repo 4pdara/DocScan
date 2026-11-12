@@ -50,6 +50,24 @@ class BookFeaturesTest {
             try {val frame=requireNotNull(ImagePipeline.detect(file));assertTrue("Outer cover: $frame",frame.motion(expected)<.065f)}finally{file.delete()}
         }
     }
+    @Test fun colourOnlyBoundariesRemainEligibleForSharpAutomaticCapture() {
+        ImagePipeline.ensureAvailable()
+        val bitmap=Bitmap.createBitmap(500,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap)
+        canvas.drawColor(Color.rgb(0,102,0));canvas.drawRect(70f,70f,430f,530f,Paint().apply{color=Color.rgb(200,0,0)})
+        val rgba=org.opencv.core.Mat();val gray=org.opencv.core.Mat();val blurred=org.opencv.core.Mat();val blurredGray=org.opencv.core.Mat()
+        try {
+            org.opencv.android.Utils.bitmapToMat(bitmap,rgba)
+            org.opencv.imgproc.Imgproc.cvtColor(rgba,gray,org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY)
+            assertTrue(CaptureQuality.sharp(gray,rgba))
+            org.opencv.imgproc.Imgproc.GaussianBlur(rgba,blurred,org.opencv.core.Size(0.0,0.0),10.0)
+            org.opencv.imgproc.Imgproc.cvtColor(blurred,blurredGray,org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY)
+            assertFalse(CaptureQuality.sharp(blurredGray,blurred))
+            val original=CaptureQuality.signature(rgba,Frame.FULL)
+            canvas.drawColor(Color.rgb(200,0,0));canvas.drawRect(70f,70f,430f,530f,Paint().apply{color=Color.rgb(0,102,0)})
+            org.opencv.android.Utils.bitmapToMat(bitmap,rgba)
+            assertTrue(CaptureStability.contentChanged(original,CaptureQuality.signature(rgba,Frame.FULL)))
+        }finally{bitmap.recycle();rgba.release();gray.release();blurred.release();blurredGray.release()}
+    }
     @Test fun splitPreservesOriginalBytesPerspectiveAndHebrewPageOrder():Unit=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val store=ScanStore(context,db);val input=fixture("spread")
         try {

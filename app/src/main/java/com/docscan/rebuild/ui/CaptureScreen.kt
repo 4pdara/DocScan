@@ -45,9 +45,9 @@ import androidx.core.view.WindowCompat
 import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.imaging.ImagePipeline
+import com.docscan.rebuild.imaging.CaptureQuality
 import com.docscan.rebuild.model.*
 import org.opencv.core.*
-import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -218,25 +218,13 @@ private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: Bou
     }
     val gray = Mat(height, width, CvType.CV_8UC1); gray.put(0, 0, pixels)
     val rgba = Mat(height, width, CvType.CV_8UC4); rgba.put(0, 0, colours)
-    val laplace = Mat(); val mean = MatOfDouble(); val deviation = MatOfDouble()
     try {
         val frame = tracker.sample(ImagePipeline.detectGray(gray, rgba))
-        Imgproc.Laplacian(gray, laplace, CvType.CV_64F); Core.meanStdDev(laplace, mean, deviation)
-        val sharp = deviation.toArray().firstOrNull()?.let { it * it >= 45 } ?: false
-        val signature = if (frame == null) emptyList() else fingerprint(gray, frame)
+        val sharp = frame != null && CaptureQuality.sharp(gray, rgba)
+        val signature = if (frame == null) emptyList() else CaptureQuality.signature(rgba, frame)
         val decision = if (automatic && (sharp || frame == null)) gate.sample(frame, signature, now) else { gate.unstable(); CaptureStability.Decision(0f, false) }
         val rotation = image.imageInfo.rotationDegrees
         return CameraObservation(frame?.turned(rotation), if (rotation % 180 == 0) width.toFloat() / height else height.toFloat() / width, decision.progress, signature, decision.capture)
-    } finally { gray.release(); rgba.release(); laplace.release(); mean.release(); deviation.release() }
-}
-
-private fun fingerprint(gray: Mat, frame: Frame): List<Float> {
-    val from = MatOfPoint2f(*frame.points.map { Point(it.x * (gray.cols() - 1).toDouble(), it.y * (gray.rows() - 1).toDouble()) }.toTypedArray())
-    val to = MatOfPoint2f(Point(0.0, 0.0), Point(63.0, 0.0), Point(63.0, 63.0), Point(0.0, 63.0))
-    val transform = Imgproc.getPerspectiveTransform(from, to); val small = Mat()
-    try {
-        Imgproc.warpPerspective(gray, small, transform, Size(64.0, 64.0))
-        return (0 until 64).map { cell -> val region = small.submat(Rect((cell % 8) * 8, (cell / 8) * 8, 8, 8)); try { Core.mean(region).`val`[0].toFloat() } finally { region.release() } }
-    } finally { from.release(); to.release(); transform.release(); small.release() }
+    } finally { gray.release(); rgba.release() }
 }
 

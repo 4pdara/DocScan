@@ -18,8 +18,7 @@ APP = 'com.docscan.rebuild.csnative'
 CERT = '69dce468c27a15728cf501feb9bf76d67263031f5ee34604f78b6be55465e89c'
 APP_NAME = 'DocScan-0.1.8-universal.apk'
 ABIS = {'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'}
-# Room schema exports are generated documentation, independent of the packaged source.
-SOURCE_PATHS = ['app', ':(exclude)app/schemas/**', 'gradle', 'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties']
+SOURCE_PATHS = ['app', 'gradle', 'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties']
 
 
 def sha(path):

@@ -43,7 +43,7 @@ if [[ "$suite" == 'smoke' ]]; then
   for test in localProcessingWorksWhenTheOptionalArm64EngineIsUnavailable realNativePipelineDetectsCropsAndKeepsFullResolution sourceRecipeAndOrderSurviveDatabaseReopen pdfContainsAllPagesAndLeavesMastersUntouched referenceRecipesRoundTripAndNeverFallBackToAnotherFilter lightenAndEcoKeepReadableStrokesResolutionAndOriginal invalidCropCannotOverwriteSourceOrSavedRecipe detectsDarkAndEqualLuminanceColouredBookCovers galleryAndPdfUseTheSameEditedGeometryAtFullResolution existingVersionOneDatabaseMigratesWithoutChangingItsSourceOrRecipe editorImageExportUsesTheUnsavedRecipeInsteadOfTheMaster editorHasInlineFiltersAndActionsAboveSystemNavigation; do
     classes+="${classes:+,}com.docscan.rebuild.RebuildFlowTest#$test"
   done
-  for test in texturedCoversWithGlareAndBrokenCornersKeepTheirOuterBoundary splitPreservesOriginalBytesPerspectiveAndHebrewPageOrder fullBackupRestoresSourcesCurvesOcrTrashAndSharedSplitSources unsafeAndCorruptArchivesCannotChangeTheExistingLibrary dewarpStraightensCurvedLinesWithoutResizingOrChangingSource offlineHebrewAndEnglishRecognitionSurvivesReopenAndEditInvalidatesIt; do
+  for test in colourOnlyBoundariesRemainEligibleForSharpAutomaticCapture texturedCoversWithGlareAndBrokenCornersKeepTheirOuterBoundary splitPreservesOriginalBytesPerspectiveAndHebrewPageOrder fullBackupRestoresSourcesCurvesOcrTrashAndSharedSplitSources unsafeAndCorruptArchivesCannotChangeTheExistingLibrary dewarpStraightensCurvedLinesWithoutResizingOrChangingSource offlineHebrewAndEnglishRecognitionSurvivesReopenAndEditInvalidatesIt; do
     classes+=",com.docscan.rebuild.BookFeaturesTest#$test"
   done
   args=(-e class "$classes")
@@ -53,7 +53,7 @@ python3 - "$suite" <<'PY'
 from pathlib import Path
 import re,sys
 text=Path('universal-device-results/instrumentation.txt').read_text()
-expected=18 if sys.argv[1]=='smoke' else 30
+expected=19 if sys.argv[1]=='smoke' else 31
 if f'OK ({expected} tests)' not in text or re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|INSTRUMENTATION_ABORTED',text):
     raise SystemExit('Exact signed APK installation suite did not pass')
 PY
