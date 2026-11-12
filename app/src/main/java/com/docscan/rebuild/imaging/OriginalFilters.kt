@@ -30,7 +30,8 @@ internal object OriginalFilters {
                 Treatment.NATIVE_INVERT -> { cleanPaper(rgb, result); Core.bitwise_not(result, result) }
                 Treatment.NATIVE_BOARD -> board(rgb, result, paper = false)
                 Treatment.NATIVE_BOARD_PAPER -> board(rgb, result, paper = true)
-                Treatment.NATIVE_INVERT_BOARD -> { Core.bitwise_not(rgb, rgb); board(rgb, result, paper = false) }
+                // Board polarity is detected automatically, so inverting first would equal Board; this is the light variant.
+                Treatment.NATIVE_INVERT_BOARD -> board(rgb, result, paper = false, lightSurface = true)
                 else -> error("Not an original document filter: $treatment")
             }
         } finally { rgb.release() }
@@ -87,9 +88,10 @@ internal object OriginalFilters {
 
     /**
      * Strokes separated from a whiteboard or blackboard photo. [paper] false draws chalk on the board
-     * colour; true draws dark ink on white, keeping whiteboard marker colours.
+     * colour ([lightSurface]: board-green strokes on a chalk-white surface instead); true draws dark ink
+     * on white, keeping whiteboard marker colours.
      */
-    private fun board(rgb: Mat, out: Mat, paper: Boolean) {
+    private fun board(rgb: Mat, out: Mat, paper: Boolean, lightSurface: Boolean = false) {
         val gray = Mat(); val background = Mat(); val strength = Mat()
         try {
             Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
@@ -103,7 +105,8 @@ internal object OriginalFilters {
             try {
                 if (!paper) {
                     val chalk = doubleArrayOf(242.0, 242.0, 232.0)
-                    for (c in 0 until 3) Mat().also { strength.convertTo(it, CvType.CV_8U, (chalk[c] - BOARD_GREEN[c]) / 255.0, BOARD_GREEN[c]); channels += it }
+                    val surface = if (lightSurface) chalk else BOARD_GREEN; val stroke = if (lightSurface) BOARD_GREEN else chalk
+                    for (c in 0 until 3) Mat().also { strength.convertTo(it, CvType.CV_8U, (stroke[c] - surface[c]) / 255.0, surface[c]); channels += it }
                 } else if (!lightBoard) {
                     for (c in 0 until 3) Mat().also { strength.convertTo(it, CvType.CV_8U, -230.0 / 255.0, 255.0); channels += it }
                 } else {

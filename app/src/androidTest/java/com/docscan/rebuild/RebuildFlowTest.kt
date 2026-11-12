@@ -288,9 +288,11 @@ class RebuildFlowTest {
             }
             render(whiteboard, Treatment.NATIVE_INVERT_BOARD).let { out ->
                 try {
-                    val surface = out.getPixel(150, 100)
-                    assertTrue("Inverted board surface should be green", abs(Color.green(surface) - 74) <= 12)
-                    assertTrue("Inverted board stroke should be chalk", lum(out.getPixel(150, 205)) >= 190)
+                    for (x in listOf(150, 480)) {
+                        assertTrue("Inverted board surface should be chalk-white", lum(out.getPixel(x, 100)) >= 225)
+                        val stroke = out.getPixel(x, 205)
+                        assertTrue("Inverted board stroke should be board green: ${Integer.toHexString(stroke)}", abs(Color.red(stroke) - 40) <= 12 && abs(Color.green(stroke) - 74) <= 12 && abs(Color.blue(stroke) - 70) <= 12)
+                    }
                 } finally { out.recycle() }
             }
         } finally { whiteboard.recycle(); blackboard.recycle() }
