@@ -70,10 +70,37 @@ internal object NativeCamScannerEnhancer {
             check(bounds.outWidth == bitmap.width && bounds.outHeight == bitmap.height) {
                 "Native Pro changed dimensions: ${bitmap.width}x${bitmap.height} -> ${bounds.outWidth}x${bounds.outHeight}"
             }
-            val processed = checkNotNull(BitmapFactory.decodeFile(output.path)) { "Native Pro produced no image" }
-            try { Canvas(bitmap).drawBitmap(processed, 0f, 0f, null) }
+            val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888; inMutable = true }
+            val processed = checkNotNull(BitmapFactory.decodeFile(output.path, options)) { "Native Pro produced no image" }
+            try {
+                preserveDarkContent(bitmap, processed)
+                Canvas(bitmap).drawBitmap(processed, 0f, 0f, null)
+            }
             finally { processed.recycle() }
         } finally { input.delete(); output.delete() }
+    }
+
+    private fun preserveDarkContent(original: Bitmap, processed: Bitmap) {
+        // Local shadow normalization can mistake broad black strokes for paper
+        // shading. Keep dark source detail whenever the native result lightens
+        // it. This deliberately favors retaining ink over removing dark marks.
+        // Row buffers keep the safeguard independent of the page's pixel count.
+        val source = IntArray(original.width)
+        val result = IntArray(original.width)
+        fun luminance(color: Int) = (Color.red(color) * 77 + Color.green(color) * 150 + Color.blue(color) * 29) shr 8
+        for (y in 0 until original.height) {
+            original.getPixels(source, 0, original.width, 0, y, original.width, 1)
+            processed.getPixels(result, 0, original.width, 0, y, original.width, 1)
+            var changed = false
+            for (x in source.indices) {
+                val ink = luminance(source[x])
+                if (ink < 80 && luminance(result[x]) > ink) {
+                    result[x] = source[x]
+                    changed = true
+                }
+            }
+            if (changed) processed.setPixels(result, 0, original.width, 0, y, original.width, 1)
+        }
     }
 
     private fun board(bitmap: Bitmap, paper: Boolean) {
