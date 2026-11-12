@@ -17,7 +17,11 @@ collect() {
 trap collect EXIT
 adb shell getprop ro.build.version.sdk > universal-device-results/api.txt
 adb shell getprop ro.product.cpu.abilist > universal-device-results/abis.txt
-actual_page=$(adb shell getconf PAGESIZE | tr -d '\r')
+actual_page=$(adb shell getconf PAGESIZE 2>/dev/null | tr -d '\r' || true)
+if ! [[ "$actual_page" =~ ^[0-9]+$ ]]; then
+  # Android 8 has no getconf executable. Read the running shell's kernel VMA size.
+  actual_page=$(adb shell cat /proc/self/smaps | awk '!found && /^KernelPageSize:/ { print $2 * 1024; found = 1 }' | tr -d '\r')
+fi
 printf '%s\n' "$actual_page" > universal-device-results/page-size.txt
 [[ "$actual_page" == "$expected_page" ]]
 if [[ "$legacy_case" == 'reject-arm64' ]]; then
