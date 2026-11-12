@@ -52,7 +52,6 @@ object ImagePipeline {
 
     fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null): Bitmap {
         ensureAvailable(); require(recipe.frame.valid() && recipe.curvature.valid())
-        check(!recipe.treatment.requiresReferenceEngine || referenceEngineAvailable) { "Reference engine is not bundled for this device" }
         val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
             Utils.bitmapToMat(bitmap, source)
@@ -103,19 +102,7 @@ object ImagePipeline {
                             NativeCamScannerEnhancer.applyInPlace(work, recipe.treatment)
                             Utils.bitmapToMat(work, result)
                         } finally { work.recycle() }
-                    } else {
-                    // Local illumination correction, not a learned restoration or book dewarp model.
-                    val background = Mat(); val rgb = Mat(); val reduced = Mat()
-                    try {
-                        Imgproc.cvtColor(current, rgb, Imgproc.COLOR_RGBA2RGB)
-                        val scale = min(1.0, 480.0 / max(rgb.cols(), rgb.rows()))
-                        Imgproc.resize(rgb, reduced, Size(max(1.0, rgb.cols() * scale), max(1.0, rgb.rows() * scale)), 0.0, 0.0, Imgproc.INTER_AREA)
-                        Imgproc.GaussianBlur(reduced, reduced, Size(0.0, 0.0), 15.0)
-                        Imgproc.resize(reduced, background, rgb.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
-                        Core.max(background, Scalar(1.0, 1.0, 1.0), background)
-                        Core.divide(rgb, background, result, 245.0)
-                    } finally { background.release(); rgb.release(); reduced.release() }
-                    }
+                    } else OriginalFilters.apply(current, recipe.treatment, result)
                 }
             }
             if (recipe.brightness != 0f || recipe.contrast != 1f) result.convertTo(result, -1, recipe.contrast.toDouble(), recipe.brightness.toDouble())

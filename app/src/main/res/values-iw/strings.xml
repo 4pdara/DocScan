@@ -66,6 +66,7 @@
     <string name="native_app_name">DocScan ניסוי Native</string>
     <string name="native_preview_app_name">DocScan Native 0.1.7</string>
     <string name="release_app_name">DocScan סורק</string>
+    <string name="clean_paper">ניקוי נייר</string>
     <string name="native_paper">CamScanner</string>
     <string name="save_gallery">שמירת תמונות לגלריה</string>
     <string name="gallery_saved">התמונות נשמרו בגלריה באלבום DocScan</string>
@@ -94,7 +95,7 @@
     <string name="native_magic_color">Magic Color</string>
     <string name="native_no_shadow">ללא צללים</string>
     <string name="native_invert">היפוך צבעים</string>
-    <string name="native_pro_local">Pro מקומי</string>
+    <string name="native_pro_local">Pro</string>
     <string name="lighten">הבהרה</string>
     <string name="eco">חיסכון בדיו</string>
     <string name="native_board">לוח</string>

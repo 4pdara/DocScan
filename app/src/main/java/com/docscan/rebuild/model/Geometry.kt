@@ -71,7 +71,8 @@ data class Frame(val points: List<Vertex>) {
     }
 }
 
-enum class Treatment(val requiresReferenceEngine: Boolean = false) {
+/** [referenceEngineVariant]: the private research profile can route this filter to its engine; every build has an original implementation. */
+enum class Treatment(val referenceEngineVariant: Boolean = false) {
     ORIGINAL, COLOR, GRAY, INK, PAPER,
     NATIVE_MAGIC_COLOR(true), NATIVE_NO_SHADOW(true), NATIVE_INVERT(true), NATIVE_PRO_LOCAL(true),
     LIGHTEN, ECO, NATIVE_BOARD(true), NATIVE_BOARD_PAPER(true), NATIVE_INVERT_BOARD(true)

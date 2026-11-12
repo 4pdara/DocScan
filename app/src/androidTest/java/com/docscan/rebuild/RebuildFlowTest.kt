@@ -26,6 +26,7 @@ import org.junit.Assert.*
 import org.junit.runner.RunWith
 import java.io.File
 import java.security.MessageDigest
+import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class RebuildFlowTest {
@@ -68,7 +69,7 @@ class RebuildFlowTest {
         }
         val before = IntArray(321 * 479).also { input.getPixels(it, 0, 321, 0, 0, 321, 479) }
         try {
-            for (treatment in Treatment.entries.filter { !it.requiresReferenceEngine }) {
+            for (treatment in Treatment.entries) {
                 val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
                 try {
                     assertEquals(321, output.width); assertEquals(479, output.height)
@@ -152,7 +153,7 @@ class RebuildFlowTest {
             assertEquals(.1f, detected.points[0].x, .035f); assertEquals(.092f, detected.points[0].y, .035f)
             val original = ImagePipeline.render(file, EditRecipe())
             assertEquals(1800, original.width); assertEquals(2400, original.height); original.recycle()
-            for (treatment in Treatment.entries.filter { ImagePipeline.referenceEngineAvailable || !it.requiresReferenceEngine }) {
+            for (treatment in Treatment.entries) {
                 android.util.Log.i("DocScanFullResolution", "Rendering ${treatment.name} after crop and rotation")
                 val result = ImagePipeline.render(file, EditRecipe(frame = detected, turns = 1, treatment = treatment, brightness = -12f, contrast = .8f))
                 assertTrue(result.width > 1800); assertTrue(result.height > 1300)
@@ -181,18 +182,118 @@ class RebuildFlowTest {
         ImagePipeline.ensureAvailable()
         val delay = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
         if (delay > 0) android.os.SystemClock.sleep(delay)
-        val input = Bitmap.createBitmap(96, 128, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(100, 140, 180)) }
+        // A shaded page with dark text and a red mark: every engine-style filter must render it, and no
+        // two of them may silently produce the same pixels (a fallback to another filter).
+        val input = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
+        Canvas(input).apply {
+            drawColor(Color.rgb(222, 218, 205))
+            drawRect(0f, 0f, 90f, 320f, Paint().apply { color = Color.rgb(130, 126, 118) })
+            drawRect(30f, 60f, 210f, 70f, Paint().apply { color = Color.rgb(30, 30, 35) })
+            drawCircle(170f, 220f, 26f, Paint().apply { color = Color.rgb(200, 40, 40) })
+        }
+        val before = IntArray(240 * 320).also { input.getPixels(it, 0, 240, 0, 0, 240, 320) }
+        val outputs = mutableMapOf<Treatment, IntArray>()
         try {
-            for (treatment in Treatment.entries.filter { it.requiresReferenceEngine }) {
+            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.referenceEngineVariant }) {
                 val recipe = EditRecipe(treatment = treatment, brightness = 6f, outputAspect = .75f)
                 assertEquals(recipe, RecipeCodec.decode(RecipeCodec.encode(recipe)))
-                if (!ImagePipeline.referenceEngineAvailable) {
-                    try { ImagePipeline.transform(input, recipe).recycle(); fail("Reference filter must not fall back") }
-                    catch (expected: IllegalStateException) { assertTrue(expected.message.orEmpty().contains("not bundled")) }
+                val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
+                try {
+                    assertEquals(240, output.width); assertEquals(320, output.height)
+                    outputs[treatment] = IntArray(240 * 320).also { output.getPixels(it, 0, 240, 0, 0, 240, 320) }
+                } finally { output.recycle() }
+            }
+            val treatments = outputs.keys.toList()
+            for (i in treatments.indices) for (j in i + 1 until treatments.size)
+                assertFalse("${treatments[i]} and ${treatments[j]} produced identical pixels", outputs[treatments[i]]!!.contentEquals(outputs[treatments[j]]!!))
+            assertArrayEquals(before, IntArray(240 * 320).also { input.getPixels(it, 0, 240, 0, 0, 240, 320) })
+        } finally { input.recycle() }
+    }
+
+    @Test fun originalFiltersRemoveShadowsKeepInkColourAndSeparateBoardStrokes() {
+        ImagePipeline.ensureAvailable()
+        Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
+        fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+        // Page photo: warm paper, a strong shadow over the left third, black text in and out of it, a red stamp.
+        val page = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
+        Canvas(page).apply {
+            drawColor(Color.rgb(226, 220, 204))
+            drawRect(0f, 0f, 200f, 800f, Paint().apply { color = Color.rgb(118, 114, 104) })
+            val ink = Paint().apply { color = Color.rgb(28, 28, 32) }
+            for (row in 0 until 8) drawRect(40f, 120f + row * 70f, 560f, 132f + row * 70f, ink)
+            drawCircle(450f, 700f, 40f, Paint().apply { color = Color.rgb(205, 45, 40) })
+        }
+        val before = IntArray(600 * 800).also { page.getPixels(it, 0, 600, 0, 0, 600, 800) }
+        fun render(input: Bitmap, treatment: Treatment) = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
+        try {
+            for (treatment in listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_PRO_LOCAL, Treatment.NATIVE_NO_SHADOW)) {
+                val out = render(page, treatment)
+                try {
+                    val shaded = lum(out.getPixel(100, 90)); val lit = lum(out.getPixel(400, 90))
+                    val textShaded = lum(out.getPixel(100, 126)); val textLit = lum(out.getPixel(400, 126))
+                    assertTrue("$treatment left the shadow: $shaded vs $lit", abs(shaded - lit) <= 22)
+                    assertTrue("$treatment lost text in the shadow: $textShaded vs $shaded", shaded - textShaded >= 90)
+                    assertTrue("$treatment lost text: $textLit vs $lit", lit - textLit >= 120)
+                    if (treatment == Treatment.NATIVE_NO_SHADOW) assertTrue("No Shadow should keep the paper tone", lit in 190..245)
+                    else assertTrue("$treatment paper is not white: $lit", lit >= 238)
+                    val stamp = out.getPixel(450, 700)
+                    assertTrue("$treatment removed the red stamp", Color.red(stamp) - Color.green(stamp) >= 80)
+                    assertEquals(600, out.width); assertEquals(800, out.height); assertEquals(255, Color.alpha(out.getPixel(10, 10)))
+                } finally { out.recycle() }
+            }
+            render(page, Treatment.NATIVE_INVERT).let { out ->
+                try {
+                    assertTrue("Inverted paper should be dark", lum(out.getPixel(100, 90)) <= 40 && lum(out.getPixel(400, 90)) <= 40)
+                    assertTrue("Inverted text should be light", lum(out.getPixel(400, 126)) >= 190)
+                } finally { out.recycle() }
+            }
+            assertArrayEquals(before, IntArray(600 * 800).also { page.getPixels(it, 0, 600, 0, 0, 600, 800) })
+        } finally { page.recycle() }
+
+        // Whiteboard (dark marker on light, unevenly lit board) and blackboard (chalk on dark green).
+        val whiteboard = Bitmap.createBitmap(600, 450, Bitmap.Config.ARGB_8888).apply {
+            Canvas(this).apply {
+                drawColor(Color.rgb(214, 216, 212)); drawRect(380f, 0f, 600f, 450f, Paint().apply { color = Color.rgb(170, 172, 168) })
+                drawRect(60f, 200f, 540f, 210f, Paint().apply { color = Color.rgb(35, 50, 140) })
+            }
+        }
+        val blackboard = Bitmap.createBitmap(600, 450, Bitmap.Config.ARGB_8888).apply {
+            Canvas(this).apply {
+                drawColor(Color.rgb(48, 66, 58)); drawRect(60f, 200f, 540f, 210f, Paint().apply { color = Color.rgb(222, 222, 214) })
+            }
+        }
+        try {
+            for (board in listOf(whiteboard, blackboard)) {
+                render(board, Treatment.NATIVE_BOARD).let { out ->
+                    try {
+                        for (x in listOf(150, 480)) {
+                            val surface = out.getPixel(x, 100)
+                            assertTrue("Board surface should be green: ${Integer.toHexString(surface)}", abs(Color.red(surface) - 40) <= 12 && abs(Color.green(surface) - 74) <= 12 && abs(Color.blue(surface) - 70) <= 12)
+                            assertTrue("Board stroke should be chalk", lum(out.getPixel(x, 205)) >= 190)
+                        }
+                    } finally { out.recycle() }
+                }
+                render(board, Treatment.NATIVE_BOARD_PAPER).let { out ->
+                    try {
+                        for (x in listOf(150, 480)) {
+                            assertTrue("Board to paper should be white", lum(out.getPixel(x, 100)) >= 245)
+                            assertTrue("Board to paper should keep a dark stroke", lum(out.getPixel(x, 205)) <= 110)
+                        }
+                    } finally { out.recycle() }
                 }
             }
-            assertEquals(Color.rgb(100, 140, 180), input.getPixel(40, 50))
-        } finally { input.recycle() }
+            render(whiteboard, Treatment.NATIVE_BOARD_PAPER).let { out ->
+                try { val stroke = out.getPixel(150, 205); assertTrue("Marker colour should survive", Color.blue(stroke) - Color.red(stroke) >= 25) }
+                finally { out.recycle() }
+            }
+            render(whiteboard, Treatment.NATIVE_INVERT_BOARD).let { out ->
+                try {
+                    val surface = out.getPixel(150, 100)
+                    assertTrue("Inverted board surface should be green", abs(Color.green(surface) - 74) <= 12)
+                    assertTrue("Inverted board stroke should be chalk", lum(out.getPixel(150, 205)) >= 190)
+                } finally { out.recycle() }
+            }
+        } finally { whiteboard.recycle(); blackboard.recycle() }
     }
 
     @Test fun lightenAndEcoKeepReadableStrokesResolutionAndOriginal(): Unit = runBlocking {
@@ -274,7 +375,7 @@ class RebuildFlowTest {
         repeat(8) { canvas.drawRect(10f, 12f + it * 12, 85f, 15f + it * 12, paint) }
         val before = IntArray(96 * 128).also { input.getPixels(it, 0, 96, 0, 0, 96, 128) }
         try {
-            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.requiresReferenceEngine }) {
+            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.referenceEngineVariant }) {
                 val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
                 try {
                     assertEquals(96, output.width); assertEquals(128, output.height)
@@ -298,7 +399,7 @@ class RebuildFlowTest {
         val args = androidx.test.platform.app.InstrumentationRegistry.getArguments()
         val caseId = args.getString("researchCaseId", "manual")
         require(caseId.matches(Regex("[A-Za-z0-9_-]{1,100}")))
-        val allowed = listOf(Treatment.PAPER) + Treatment.entries.filter { it.requiresReferenceEngine }
+        val allowed = listOf(Treatment.PAPER) + Treatment.entries.filter { it.referenceEngineVariant }
         val selected = args.getString("researchTreatments")?.split(",")?.map { Treatment.valueOf(it) } ?: allowed
         require(selected.isNotEmpty() && selected.all { it in allowed })
         val width = (args.getString("researchWidth")?.toIntOrNull() ?: 96).also { require(it in setOf(96, 320, 1280)) }

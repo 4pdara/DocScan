@@ -53,7 +53,7 @@ fun fitImageRect(size: Size, aspect: Float): Rect {
 }
 
 private fun Treatment.label(): Int = when (this) {
-    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (ImagePipeline.referenceEngineAvailable) R.string.native_paper else R.string.paper
+    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (ImagePipeline.referenceEngineAvailable) R.string.native_paper else R.string.clean_paper
     Treatment.NATIVE_MAGIC_COLOR -> R.string.native_magic_color
     Treatment.NATIVE_NO_SHADOW -> R.string.native_no_shadow
     Treatment.NATIVE_INVERT -> R.string.native_invert
@@ -92,7 +92,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         confirmButton = { TextButton(onClick = { onRename?.invoke(draftTitle.trim()); rename = false }, enabled = draftTitle.isNotBlank()) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
     val nativeAvailable = ImagePipeline.referenceEngineAvailable
-    val treatments = if (nativeAvailable) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD) else Treatment.entries.filter { !it.requiresReferenceEngine }
+    // All 14 filters in every build: the research engine when present, otherwise DocScan's original filters.
+    val treatments = listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD)
     if (export) ModalBottomSheet(onDismissRequest = { export = false }, modifier = Modifier.testTag("editor-export-sheet")) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.export_scan), style = MaterialTheme.typography.titleLarge)
