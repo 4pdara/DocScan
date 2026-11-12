@@ -8,6 +8,9 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+val previewVersion = "0.1.8.1"
+val previewId = "v" + previewVersion.replace(".", "_")
+
 val camScannerNativeDir = providers.gradleProperty("camScannerNativeDir").orNull
 val camScannerNative = camScannerNativeDir != null
 val universalPreview = providers.gradleProperty("universalPreview").orNull?.toBooleanStrict() ?: false
@@ -37,21 +40,17 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = when {
-            standaloneNativePreview -> "com.docscan.rebuild.csnative.preview"
-            camScannerNative -> "com.docscan.rebuild.csnative"
-            else -> "com.docscan.rebuild"
+            standaloneNativePreview -> "com.docscan.rebuild.csnative.preview.$previewId"
+            camScannerNative -> "com.docscan.rebuild.csnative.$previewId"
+            else -> "com.docscan.rebuild.preview.$previewId"
         }
         buildConfigField("boolean", "CAMSCANNER_NATIVE", camScannerNative.toString())
         buildConfigField("boolean", "UNIVERSAL_PREVIEW", universalPreview.toString())
-        manifestPlaceholders["docscanAppLabel"] = when {
-            standaloneNativePreview -> "@string/native_preview_app_name"
-            camScannerNative -> "@string/native_app_name"
-            else -> "@string/app_name"
-        }
+        manifestPlaceholders["docscanAppLabel"] = "DOCSCAN V$previewVersion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = if (universalPreview) "0.1.8-universal-preview" else if (camScannerNative) "0.1.8-native-preview" else "0.1.8-preview"
+        versionCode = 10
+        versionName = previewVersion
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }

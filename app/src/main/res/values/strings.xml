@@ -5,7 +5,7 @@
     <string name="import_images">Import images</string>
     <string name="empty_title">Your new document library</string>
     <string name="empty_hint">Scan a page or import photos to get started.</string>
-    <string name="search">Search documents</string>
+    <string name="search">Search names and recognized text</string>
     <string name="back">Back</string>
     <string name="done">Done</string>
     <string name="save">Save</string>
@@ -153,6 +153,25 @@
     <string name="backup_hint">A full backup includes originals, edits, page order, trash and recognized text. Restore adds documents without replacing existing ones. Save the backup outside the app.</string>
     <string name="backup_saved">Library backup saved</string>
     <string name="backup_restored">Backup restored; existing documents preserved</string>
+    <string name="ocr_language">Recognition language</string>
+    <string name="ocr_layout">Text layout</string>
+    <string name="ocr_layout_auto">Auto / columns</string>
+    <string name="ocr_layout_column">Single column</string>
+    <string name="ocr_layout_block">Uniform block</string>
+    <string name="ocr_layout_sparse">Scattered text</string>
+    <string name="ocr_document">Document text (OCR)</string>
+    <string name="ocr_document_start">Recognize document</string>
+    <string name="ocr_batch_hint">Recognize pages in order, offline and at full resolution. Completed pages are saved immediately. Tap a page to review and correct its text. Export becomes available when every page has current text.</string>
+    <string name="ocr_replace_existing">Recognize saved text again (replaces manual corrections)</string>
+    <string name="ocr_pages_ready">%1$d of %2$d pages have current text</string>
+    <string name="ocr_batch_result">Recognized: %1$d · Kept: %2$d · Failed: %3$d</string>
+    <string name="ocr_failed_pages">Could not recognize pages: %1$s. Completed pages remain saved.</string>
+    <string name="ocr_page_missing">No current text. Tap to recognize this page.</string>
+    <string name="ocr_no_text">No text found on this page. Review the image or try another layout.</string>
+    <string name="ocr_search_match">Found in recognized text</string>
+    <string name="ocr_progress">Page %1$d / %2$d · %3$d%%</string>
+    <string name="ocr_cancel_hint">Cancel stops recognition; completed pages stay saved. Preparing the image may take a moment.</string>
+    <string name="ocr_cancelled">Recognition cancelled; completed pages kept</string>
 </resources>
 
 

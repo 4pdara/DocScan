@@ -47,12 +47,18 @@ fun LibraryScreen(
     var inTrash by rememberSaveable { mutableStateOf(false) }
     var selection by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
-    val visible = (if (inTrash) trash else entries).filter { it.book.title.contains(search, true) }
+    val textMatches by remember(search) {
+        if (search.isBlank()) kotlinx.coroutines.flow.flowOf(emptyList<String>())
+        else store.dao.textMatches(com.docscan.rebuild.model.TextSearch.pattern(search))
+    }.collectAsState(emptyList())
+    val visible = (if (inTrash) trash else entries).filter {
+        it.book.title.contains(search.trim(), true) || it.book.id in textMatches
+    }
     fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id; selection = true }
     fun clear() { selection = false; selected = emptyList() }
     fun files() { section = "files"; inTrash = false; clear() }
     fun trash() { section = "files"; inTrash = !inTrash; clear() }
-    LaunchedEffect(entries, trash, inTrash, search) { selected = selected.filter { id -> visible.any { it.book.id == id } } }
+    LaunchedEffect(entries, trash, inTrash, search, textMatches) { selected = selected.filter { id -> visible.any { it.book.id == id } } }
     BackHandler(selection || inTrash || section != "home") {
         when { selection -> clear(); inTrash -> inTrash = false; else -> section = "home" }
     }
@@ -146,7 +152,7 @@ fun LibraryScreen(
                         }
                     }
                     itemsIndexed(visible, key = { _, entry -> entry.book.id }) { index, entry ->
-                        RecentDocumentRow(store, entry, entry.book.id in selected,
+                        RecentDocumentRow(store, entry, entry.book.id in selected, textMatch = search.isNotBlank() && entry.book.id in textMatches,
                             onOpen = { if (selection || inTrash) toggle(entry.book.id) else onOpen(entry.book.id) },
                             onSelect = { toggle(entry.book.id) })
                         if (index == 0 && section == "home" && !selection && !inTrash && search.isBlank() && entry.pageCount > 0) {
@@ -165,7 +171,7 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Boolean, onOpen: () -> Unit, onSelect: () -> Unit) {
+private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Boolean, textMatch: Boolean = false, onOpen: () -> Unit, onSelect: () -> Unit) {
     val pages by remember(entry.book.id) { store.dao.pages(entry.book.id) }.collectAsState(emptyList())
     Row(Modifier.fillMaxWidth().background(if (checked) Color(0xFFE9F9F5) else Color.White)
         .combinedClickable(onClick = onOpen, onLongClick = onSelect).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -175,6 +181,7 @@ private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Bo
         }
         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
             Text(entry.book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (textMatch) Text(stringResource(R.string.ocr_search_match), style = MaterialTheme.typography.labelSmall, color = HomeGreen)
             Spacer(Modifier.height(6.dp))
             Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(entry.book.created)),
                 style = MaterialTheme.typography.bodySmall, color = HomeMuted, maxLines = 1)

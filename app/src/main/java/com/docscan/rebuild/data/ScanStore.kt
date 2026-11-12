@@ -26,6 +26,7 @@ data class Notebook(@PrimaryKey val id: String, val title: String, val created: 
 @Entity(tableName = "sheets", foreignKeys = [ForeignKey(entity = Notebook::class, parentColumns = ["id"], childColumns = ["notebookId"], onDelete = ForeignKey.CASCADE)], indices = [Index("notebookId")])
 data class Sheet(@PrimaryKey val id: String, val notebookId: String, val position: Int, val source: String, val width: Int, val height: Int, val mime: String, val recipe: String = "{}", @ColumnInfo(defaultValue = "NULL") val ocrText: String? = null, @ColumnInfo(defaultValue = "NULL") val ocrRecipe: String? = null) {
     fun edit() = RecipeCodec.decode(recipe)
+    fun currentText(): String? = ocrText.takeIf { ocrRecipe == recipe }
 }
 data class LibraryEntry(@Embedded val book: Notebook, val pageCount: Int, val cover: String?)
 
@@ -35,6 +36,8 @@ interface ScanQueries {
     fun library(trashed: Boolean = false): Flow<List<LibraryEntry>>
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") fun pages(id: String): Flow<List<Sheet>>
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") suspend fun snapshot(id: String): List<Sheet>
+    @Query("SELECT DISTINCT notebookId FROM sheets WHERE ocrRecipe=recipe AND ocrText LIKE :pattern ESCAPE '\\'")
+    fun textMatches(pattern: String): Flow<List<String>>
     @Query("SELECT * FROM sheets WHERE id=:id") suspend fun page(id: String): Sheet?
     @Query("SELECT * FROM notebooks WHERE id=:id") suspend fun book(id: String): Notebook?
     @Query("SELECT * FROM notebooks ORDER BY created, id") suspend fun allBooks(): List<Notebook>

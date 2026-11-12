@@ -5,7 +5,7 @@
     <string name="import_images">ייבוא תמונות</string>
     <string name="empty_title">ספריית המסמכים החדשה שלך</string>
     <string name="empty_hint">אפשר לצלם עמוד או לייבא תמונות כדי להתחיל.</string>
-    <string name="search">חיפוש מסמכים</string>
+    <string name="search">חיפוש בשמות ובטקסט שזוהה</string>
     <string name="back">חזרה</string>
     <string name="done">סיום</string>
     <string name="save">שמירה</string>
@@ -153,6 +153,25 @@
     <string name="backup_hint">גיבוי מלא כולל מקורות, עריכות, סדר עמודים, סל מחזור וטקסט מזוהה. שחזור מוסיף מסמכים בלי להחליף קיימים. שמור את הגיבוי מחוץ לאפליקציה.</string>
     <string name="backup_saved">גיבוי הספרייה נשמר</string>
     <string name="backup_restored">הגיבוי שוחזר והמסמכים הקיימים נשמרו</string>
+    <string name="ocr_language">שפת הזיהוי</string>
+    <string name="ocr_layout">פריסת הטקסט</string>
+    <string name="ocr_layout_auto">אוטומטי / טורים</string>
+    <string name="ocr_layout_column">טור אחד</string>
+    <string name="ocr_layout_block">גוש טקסט</string>
+    <string name="ocr_layout_sparse">טקסט מפוזר</string>
+    <string name="ocr_document">טקסט המסמך (OCR)</string>
+    <string name="ocr_document_start">זיהוי המסמך</string>
+    <string name="ocr_batch_hint">זיהוי מקומי לפי סדר העמודים וברזולוציה מלאה. כל עמוד שהושלם נשמר מיד. אפשר לפתוח עמוד לבדיקת הטקסט ותיקונו. הייצוא זמין כשיש טקסט עדכני לכל העמודים.</string>
+    <string name="ocr_replace_existing">זיהוי מחדש גם של טקסט שמור (מחליף תיקונים ידניים)</string>
+    <string name="ocr_pages_ready">יש טקסט עדכני ל־%1$d מתוך %2$d עמודים</string>
+    <string name="ocr_batch_result">זוהו: %1$d · נשמרו ללא שינוי: %2$d · נכשלו: %3$d</string>
+    <string name="ocr_failed_pages">הזיהוי לא הושלם בעמודים: %1$s. העמודים שהושלמו נשמרו.</string>
+    <string name="ocr_page_missing">אין טקסט עדכני. אפשר לפתוח ולזהות את העמוד.</string>
+    <string name="ocr_no_text">לא זוהה טקסט בעמוד. כדאי לבדוק את התמונה או לנסות פריסה אחרת.</string>
+    <string name="ocr_search_match">נמצא בטקסט שזוהה</string>
+    <string name="ocr_progress">עמוד %1$d / %2$d · %3$d%%</string>
+    <string name="ocr_cancel_hint">ביטול עוצר את הזיהוי; עמודים שהושלמו נשמרים. הכנת התמונה עשויה להימשך עוד רגע.</string>
+    <string name="ocr_cancelled">הזיהוי בוטל; עמודים שהושלמו נשמרו</string>
 </resources>
 
 

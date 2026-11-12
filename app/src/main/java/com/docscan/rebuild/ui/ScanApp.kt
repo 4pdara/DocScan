@@ -42,6 +42,9 @@ import com.docscan.rebuild.data.*
 import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.OfflineOcr
+import com.docscan.rebuild.imaging.OcrRequest
+import com.docscan.rebuild.imaging.OcrProgress
+import com.docscan.rebuild.imaging.OcrBatchResult
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -57,10 +60,25 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
     val trash = store.dao.library(true).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     var busy by mutableStateOf(false); private set
     val notices = Channel<Int>(Channel.BUFFERED)
+    val ocrProgress = MutableStateFlow<OcrProgress?>(null)
+    var ocrResult by mutableStateOf<OcrBatchResult?>(null); private set
+    private var ocrRequest: OcrRequest? = null
+    fun cancelOcr() { ocrRequest?.cancel() }
+    fun recognize(action: suspend (OcrRequest, (OcrProgress) -> Unit) -> OcrBatchResult?) {
+        perform {
+            val request = OcrRequest(); ocrRequest = request; ocrResult = null
+            ocrProgress.value = OcrProgress(1, 1, 0)
+            try { ocrResult = action(request) { ocrProgress.value = it } }
+            catch (cancelled: CancellationException) {
+                if (!request.isCancelled) throw cancelled
+                notices.send(R.string.ocr_cancelled)
+            } finally { ocrRequest = null; ocrProgress.value = null }
+        }
+    }
     fun perform(success: Int? = null, action: suspend () -> Unit) {
         if (busy) return
+        busy = true
         viewModelScope.launch {
-            busy = true
             try { action(); if (success != null) notices.send(success) }
             catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
@@ -123,6 +141,12 @@ fun ScanApp(store: ScanStore) {
     var pageId by rememberSaveable { mutableStateOf<String?>(null) }
     var ocrText by rememberSaveable { mutableStateOf("") }
     var ocrLanguage by rememberSaveable { mutableStateOf("heb+eng") }
+    var ocrLayoutName by rememberSaveable { mutableStateOf(OcrLayout.AUTO.name) }
+    val ocrLayout = OcrLayout.valueOf(ocrLayoutName)
+    var ocrReturn by rememberSaveable { mutableStateOf("editor") }
+    var ocrRecipe by rememberSaveable { mutableStateOf("{}") }
+    var exportTextBook by rememberSaveable { mutableStateOf<String?>(null) }
+    val ocrProgress by vm.ocrProgress.collectAsState()
     var importBook by rememberSaveable { mutableStateOf<String?>(null) }
     val books by vm.library.collectAsState()
     val trash by vm.trash.collectAsState()
@@ -157,8 +181,13 @@ fun ScanApp(store: ScanStore) {
         }
     }
     val textSaver=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val target = exportTextBook; exportTextBook = null
         if(uri!=null)vm.perform(R.string.text_saved) {
-            withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri,"wt")).bufferedWriter(Charsets.UTF_8).use { it.write(ocrText) } }
+            withContext(Dispatchers.IO) {
+                requireNotNull(context.contentResolver.openOutputStream(uri,"wt")).bufferedWriter(Charsets.UTF_8).use {
+                    if (target != null) DocumentOutput(context, store).text(target, it) else it.write(ocrText)
+                }
+            }
         }
     }
     val sourceSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -211,15 +240,25 @@ fun ScanApp(store: ScanStore) {
         }
     }
     fun startScan() { vm.perform { bookId = store.create(defaultTitle()).id; route = "camera" } }
-    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "ocr") "editor" else if (route == "editor" || route == "review" || route == "camera") "document" else "library" }
+    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "ocr") ocrReturn else if (route == "documentOcr") "document" else if (route == "editor" || route == "review" || route == "camera") "document" else "library" }
     ScannerScreenTheme(dark = route == "camera" || route == "editor" || route == "review") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "ocr" -> OcrScreen(ocrText,{ocrText=it},ocrLanguage,{ocrLanguage=it},snack,
-                onBack={route="editor"},onSave={textSaver.launch("recognized-text.txt")},
-                onRecognize={val id=pageId;if(id!=null)vm.perform {
-                    val page=requireNotNull(store.dao.page(id));ocrText=OfflineOcr(store).recognize(page,ocrLanguage)
-                }},onKeep={val id=pageId;if(id!=null)vm.perform(R.string.saved) {val page=requireNotNull(store.dao.page(id));store.dao.recognized(id,ocrText,page.recipe)} })
+                onBack={route=ocrReturn},onSave={exportTextBook=null;textSaver.launch("recognized-text.txt")},
+                onRecognize={val id=pageId;if(id!=null)vm.recognize { request, progress ->
+                    val page=requireNotNull(store.dao.page(id))
+                    ocrText=OfflineOcr(store).recognize(page,options=OcrOptions(ocrLanguage,ocrLayout),request=request,progress=progress)
+                    ocrRecipe=page.recipe
+                    null
+                }},onKeep={val id=pageId;if(id!=null)vm.perform(R.string.saved) {
+                    check(store.dao.recognized(id,ocrText,ocrRecipe)==1) { "Page changed during text editing" }
+                }},layout=ocrLayout,onLayout={ocrLayoutName=it.name})
+            "documentOcr" -> DocumentOcrScreen(pages,ocrLanguage,{ocrLanguage=it},ocrLayout,{ocrLayoutName=it.name},vm.ocrResult,snack,
+                onBack={route="document"},onRecognize={replace -> val id=bookId;if(id!=null)vm.recognize { request,progress ->
+                    OfflineOcr(store).recognizeBook(id,OcrOptions(ocrLanguage,ocrLayout),replace,request,progress)
+                }},onExport={exportTextBook=bookId;textSaver.launch("recognized-document.txt")},
+                onPage={page -> pageId=page.id;ocrText=page.currentText().orEmpty();ocrRecipe=page.recipe;ocrReturn="documentOcr";route="ocr"})
             "camera" -> bookId?.let { id ->
                 CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { vm.perform { val captured = store.dao.snapshot(id); pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
@@ -238,14 +277,14 @@ fun ScanApp(store: ScanStore) {
                     onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;route="document"} },
                     onOcr = { recipe -> vm.perform {
                         store.save(page,recipe);val current=requireNotNull(store.dao.page(page.id))
-                        ocrText=if(current.ocrRecipe==current.recipe)current.ocrText.orEmpty() else "";route="ocr"
+                        ocrText=current.currentText().orEmpty();ocrRecipe=current.recipe;ocrReturn="editor";route="ocr"
                     } })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
                 onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onGallery = { requestGallery() }, onShare = { sharePdf() },
                 onMove = { page, direction -> bookId?.let { id -> vm.perform { store.move(id, page.id, direction) } } },
-                onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack)
+                onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack, onOcr={route="documentOcr"})
             else -> LibraryScreen(store, books, trash, onScan = ::startScan, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" },
                 onShare = { id -> sharePdf(id) }, onPdf = { id ->
                     bookId = id
@@ -256,7 +295,16 @@ fun ScanApp(store: ScanStore) {
         if (vm.busy) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .12f)).clickable(enabled = true, onClick = {}), contentAlignment = Alignment.Center) {
                 Surface(shape = RoundedCornerShape(20.dp), shadowElevation = 4.dp) {
-                    Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) { CircularProgressIndicator(Modifier.size(26.dp)); Text(stringResource(R.string.busy)) }
+                    Column(Modifier.padding(24.dp).widthIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            CircularProgressIndicator(Modifier.size(26.dp))
+                            Text(ocrProgress?.let { stringResource(R.string.ocr_progress, it.page, it.total, it.percent) } ?: stringResource(R.string.busy))
+                        }
+                        if (ocrProgress != null) {
+                            Text(stringResource(R.string.ocr_cancel_hint), style = MaterialTheme.typography.bodySmall)
+                            TextButton(vm::cancelOcr, modifier = Modifier.testTag("ocr-cancel")) { Text(stringResource(R.string.cancel)) }
+                        }
+                    }
                 }
             }
         }

@@ -93,6 +93,18 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
         }
     }
 
+    /** UTF-8 callers stream pages in document order. Refuse incomplete/stale OCR instead of omitting pages. */
+    suspend fun text(bookId: String, writer: java.io.Writer) = withContext(Dispatchers.IO) {
+        val pages = store.dao.snapshot(bookId)
+        require(pages.isNotEmpty() && pages.all { it.currentText() != null }) { "Recognize all pages before exporting text" }
+        pages.forEachIndexed { index, page ->
+            coroutineContext.ensureActive()
+            if (index > 0) writer.write("\n\n\u000c\n\n")
+            writer.write(requireNotNull(page.currentText()))
+        }
+        writer.flush()
+    }
+
     /** Page geometry is in PDF points. Each raster is rendered at source resolution before drawing. */
     suspend fun pdf(bookId: String): File = withContext(Dispatchers.IO) {
         val pages = store.dao.snapshot(bookId); require(pages.isNotEmpty())
