@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: universal-build-${{ github.ref }}
   cancel-in-progress: true
@@ -41,6 +42,23 @@ jobs:
           PY
       - name: Build and check all four supported processor architectures
         run: ./gradlew -PcamScannerNativeDir=/tmp/native-input -PuniversalPreview=true testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+      - name: Prepare a small exact APK transfer for private signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/4pdara/DocScan/actions/artifacts/13946827753/zip > /tmp/universal-baseline.zip
+          echo 'a3f24b2a7fb6e565e48f376976dcd2afeb3b79fcc6701d16cae582a30be5930c  /tmp/universal-baseline.zip' | sha256sum -c -
+          python3 - <<'PYCODE'
+          import zipfile
+          with zipfile.ZipFile('/tmp/universal-baseline.zip') as z:z.extractall('/tmp/universal-baseline')
+          PYCODE
+          python3 research/build_apk_delta.py --baseline /tmp/universal-baseline/debug/app-debug.apk --apk app/build/outputs/apk/debug/app-debug.apk --output signing-delta/app
+          python3 research/build_apk_delta.py --baseline /tmp/universal-baseline/androidTest/debug/app-debug-androidTest.apk --apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk --output signing-delta/tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Universal-0.1.7.1-signing-delta
+          path: signing-delta/
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: Universal-0.1.7.1-signing-input

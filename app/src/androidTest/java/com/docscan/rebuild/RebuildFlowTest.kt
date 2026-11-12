@@ -87,6 +87,7 @@ class RebuildFlowTest {
         val shutter = hasContentDescription(compose.activity.getString(R.string.capture)) and isEnabled()
         compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(isToggleable()).performClick()
+        compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
         screenshot("camera")
         compose.onNode(shutter).performClick()
         var captured: Sheet? = null
@@ -114,6 +115,7 @@ class RebuildFlowTest {
         compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(isToggleable()).performClick()
         compose.onNodeWithTag("capture-single").performClick()
+        compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(shutter).performClick()
         compose.waitUntil(60000) { compose.onAllNodesWithTag("save-edit").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("filter-strip").assertIsDisplayed()

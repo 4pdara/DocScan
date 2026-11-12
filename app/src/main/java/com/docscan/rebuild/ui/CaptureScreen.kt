@@ -110,7 +110,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                             if (!capturing.get() && now - lastAnalysis >= 180) {
                                 lastAnalysis = now
                                 val result = inspectFrame(image, gate, autoFlag.get(), now)
-                                main.execute { if (!disposed) { observation = result; if (result.trigger) latestShoot() } }
+                                main.execute { if (!disposed) { observation = result; if (result.trigger && autoFlag.get()) latestShoot() } }
                             }
                         } catch (e: Exception) { main.execute { if (!disposed) error = true } }
                         finally { image.close() }
@@ -172,7 +172,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
             FilterChip(selected = detectBounds, onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() },
                 label = { Text(stringResource(if (detectBounds) R.string.detect_bounds else R.string.full_photo)) })
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(automatic, { automatic = it; if (it) detectBounds = true; gate.failed() })
+                Checkbox(automatic, { automatic = it; autoFlag.set(it); if (it) detectBounds = true; gate.failed() })
                 Text(stringResource(R.string.auto_capture), style = MaterialTheme.typography.labelSmall)
             }
         }
