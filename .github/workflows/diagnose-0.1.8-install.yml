@@ -1,0 +1,57 @@
+name: Diagnose the published 0.1.8 installation failure
+# Read-only diagnosis: installs the exact published release files in emulators the way an ARM64
+# Android 15 phone does (ARM64 libraries, update over 0.1.7.1) and records the package manager's answer.
+on:
+  push:
+    branches: [feature/original-filters]
+    paths: [.github/workflows/diagnose-0.1.8-install.yml, .github/diagnose-0.1.8.sh]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [35, 34]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reserve emulator space
+        run: sudo rm -rf /usr/share/dotnet
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: false
+      - name: Download the exact published APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download native-v0.1.7-preview --repo "$GITHUB_REPOSITORY" --pattern DocScan-0.1.7-universal.apk --dir apks
+          gh release download native-v0.1.8-preview --repo "$GITHUB_REPOSITORY" --pattern DocScan-0.1.8-universal.apk --dir apks
+          printf '%s\n' '238f730c2bf5a5435b2df20f0d02915aa809403181178bcb67932a3409dbda88  apks/DocScan-0.1.7-universal.apk' \
+            'b1ce8c7dd0d20e02f917c0448c2da5c8cde4dbc53512ae404496868448832557  apks/DocScan-0.1.8-universal.apk' | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disk-size: 3072M
+          emulator-boot-timeout: 300
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -memory 4096
+          script: bash .github/diagnose-0.1.8.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnose-0.1.8-api${{ matrix.api }}
+          path: diag/
