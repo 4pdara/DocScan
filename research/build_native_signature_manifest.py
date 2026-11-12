@@ -8,6 +8,7 @@ import base64
 import gzip
 import hashlib
 import json
+import re
 from pathlib import Path
 import struct
 import tempfile
@@ -16,7 +17,10 @@ import zipfile
 from publish_native_release import compressed_entry, restore
 
 
-def build(ci_apk, signed_apk, artifact_zip, artifact_id, metadata, runs, previous_tag_sha, output):
+def build(ci_apk, signed_apk, artifact_zip, artifact_id, metadata, runs, previous_tag_sha, output, artifact_zip_sha256=None):
+    archive_digest = artifact_zip_sha256 or hashlib.sha256(artifact_zip.read_bytes()).hexdigest()
+    if not re.fullmatch('[0-9a-f]{64}', archive_digest):
+        raise ValueError('Invalid CI artifact archive digest')
     data = signed_apk.read_bytes()
     literals = bytearray()
     segments = []
@@ -48,7 +52,7 @@ def build(ci_apk, signed_apk, artifact_zip, artifact_id, metadata, runs, previou
         literal(cursor, len(data))
     payload = gzip.compress(bytes(literals), mtime=0)
     plan = dict(format=1, apk_name=signed_apk.name, source_commit=metadata['source_commit'],
-                artifact_id=artifact_id, artifact_zip_sha256=hashlib.sha256(artifact_zip.read_bytes()).hexdigest(),
+                artifact_id=artifact_id, artifact_zip_sha256=archive_digest,
                 baseline_sha256=hashlib.sha256(ci_apk.read_bytes()).hexdigest(),
                 apk_size=len(data), apk_sha256=hashlib.sha256(data).hexdigest(),
                 literal_size=len(literals), payload_size=len(payload), payload_sha256=hashlib.sha256(payload).hexdigest(),
@@ -68,10 +72,13 @@ def build(ci_apk, signed_apk, artifact_zip, artifact_id, metadata, runs, previou
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    for option in ('ci-apk', 'signed-apk', 'artifact-zip', 'metadata', 'runs', 'output'):
+    for option in ('ci-apk', 'signed-apk', 'metadata', 'runs', 'output'):
         parser.add_argument('--' + option, required=True, type=Path)
+    archive = parser.add_mutually_exclusive_group(required=True)
+    archive.add_argument('--artifact-zip', type=Path)
+    archive.add_argument('--artifact-zip-sha256', help='Full archive digest reported by GitHub; prepare verifies the downloaded archive')
     parser.add_argument('--artifact-id', required=True, type=int)
     parser.add_argument('--previous-tag-sha', required=True)
     args = parser.parse_args()
     build(args.ci_apk, args.signed_apk, args.artifact_zip, args.artifact_id,
-          json.loads(args.metadata.read_text()), json.loads(args.runs.read_text()), args.previous_tag_sha, args.output)
+          json.loads(args.metadata.read_text()), json.loads(args.runs.read_text()), args.previous_tag_sha, args.output, args.artifact_zip_sha256)

@@ -116,7 +116,8 @@ jobs:
           disk-size: 2048M
           emulator-boot-timeout: 300
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          # 16 KB Google API images otherwise kill instrumentation during boot-time memory pressure.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
           script: bash .github/universal-device-check.sh ${{ matrix.locale }} ${{ matrix.suite }} ${{ matrix.page }} ${{ matrix.legacy }}
       - uses: actions/upload-artifact@v4
         if: always()
