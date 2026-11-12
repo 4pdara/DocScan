@@ -35,5 +35,5 @@ if not re.search(r'OK \(\d+ tests?\)',text) or re.search(r'FAILURES!!!|INSTRUMEN
 PY
 adb shell pm path "$application_id"
 [[ "$(adb shell pm path "$legacy_app" | tr -d '\r')" == "$legacy_path" ]]
-adb shell run-as "$legacy_app" test -f files/coinstall-preserved
+adb shell run-as "$legacy_app" cat files/coinstall-preserved >/dev/null
 echo 'Parallel install and legacy private data verified' | tee device-results/coinstall.txt
