@@ -24,7 +24,7 @@ import java.util.UUID
 data class Notebook(@PrimaryKey val id: String, val title: String, val created: Long, @ColumnInfo(defaultValue = "NULL") val trashedAt: Long? = null)
 
 @Entity(tableName = "sheets", foreignKeys = [ForeignKey(entity = Notebook::class, parentColumns = ["id"], childColumns = ["notebookId"], onDelete = ForeignKey.CASCADE)], indices = [Index("notebookId")])
-data class Sheet(@PrimaryKey val id: String, val notebookId: String, val position: Int, val source: String, val width: Int, val height: Int, val mime: String, val recipe: String = "{}") {
+data class Sheet(@PrimaryKey val id: String, val notebookId: String, val position: Int, val source: String, val width: Int, val height: Int, val mime: String, val recipe: String = "{}", @ColumnInfo(defaultValue = "NULL") val ocrText: String? = null, @ColumnInfo(defaultValue = "NULL") val ocrRecipe: String? = null) {
     fun edit() = RecipeCodec.decode(recipe)
 }
 data class LibraryEntry(@Embedded val book: Notebook, val pageCount: Int, val cover: String?)
@@ -37,17 +37,26 @@ interface ScanQueries {
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") suspend fun snapshot(id: String): List<Sheet>
     @Query("SELECT * FROM sheets WHERE id=:id") suspend fun page(id: String): Sheet?
     @Query("SELECT * FROM notebooks WHERE id=:id") suspend fun book(id: String): Notebook?
+    @Query("SELECT * FROM notebooks ORDER BY created, id") suspend fun allBooks(): List<Notebook>
+    @Query("SELECT * FROM sheets ORDER BY notebookId, position, id") suspend fun allPages(): List<Sheet>
+    @Query("UPDATE sheets SET ocrText=:text, ocrRecipe=:recipe WHERE id=:id AND sheets.recipe=:recipe") suspend fun recognized(id: String, text: String, recipe: String): Int
     @Insert suspend fun insert(book: Notebook)
     @Insert suspend fun insert(page: Sheet)
-    @Query("UPDATE sheets SET recipe=:recipe WHERE id=:id") suspend fun recipe(id: String, recipe: String)
+    @Query("UPDATE sheets SET ocrText=CASE WHEN recipe=:recipe THEN ocrText ELSE NULL END, ocrRecipe=CASE WHEN recipe=:recipe THEN ocrRecipe ELSE NULL END, recipe=:recipe WHERE id=:id") suspend fun recipe(id: String, recipe: String)
     @Query("UPDATE notebooks SET title=:title WHERE id=:id") suspend fun rename(id: String, title: String)
     @Query("UPDATE sheets SET position=:position WHERE id=:id") suspend fun position(id: String, position: Int)
     @Query("UPDATE notebooks SET trashedAt=:at WHERE id IN (:ids)") suspend fun trash(ids: List<String>, at: Long?)
 }
-@Database(entities = [Notebook::class, Sheet::class], version = 2, exportSchema = true)
+@Database(entities = [Notebook::class, Sheet::class], version = 3, exportSchema = true)
 abstract class ScanDatabase : RoomDatabase() {
     abstract fun queries(): ScanQueries
     companion object {
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sheets ADD COLUMN ocrText TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE sheets ADD COLUMN ocrRecipe TEXT DEFAULT NULL")
+            }
+        }
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE notebooks ADD COLUMN trashedAt INTEGER DEFAULT NULL") }
         }
@@ -58,6 +67,7 @@ object RecipeCodec {
     fun encode(r: EditRecipe): String = JSONObject().put("turns", r.turns).put("filter", r.treatment.name)
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
         .put("outputAspect", r.outputAspect?.toDouble() ?: JSONObject.NULL)
+        .put("curveTop", r.curvature.top.toDouble()).put("curveBottom", r.curvature.bottom.toDouble())
         .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) })).toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
@@ -66,12 +76,13 @@ object RecipeCodec {
             runCatching { Treatment.valueOf(o.optString("filter", "ORIGINAL")) }.getOrDefault(Treatment.ORIGINAL),
             o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
             o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
-            o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f })
+            o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f },
+            BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve())
     }.getOrDefault(EditRecipe())
 }
 
 class ScanStore(val context: Context, val database: ScanDatabase) {
-    private val lock = Mutex()
+    internal val lock = Mutex()
     val dao = database.queries()
     private val masters = File(context.filesDir, "masters").apply { mkdirs() }
     private val incoming = File(context.cacheDir, "incoming").apply { mkdirs() }
@@ -106,7 +117,7 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
         } finally { temporary.delete() }
     }
     suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
-        require(edit.frame.valid())
+        require(edit.frame.valid() && edit.curvature.valid())
         require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
         dao.recipe(page.id, RecipeCodec.encode(edit))
     }
@@ -116,6 +127,22 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             if (i >= 0 && j in pages.indices) { dao.position(pages[i].id, pages[j].position); dao.position(pages[j].id, pages[i].position) }
         } }
     }
+    /** Two recipes reference the same immutable full source; the split never recompresses it. */
+    suspend fun split(page: Sheet, recipe: EditRecipe, position: Float, rightFirst: Boolean): Sheet = withContext(Dispatchers.IO) {
+        lock.withLock { database.withTransaction {
+            val current = requireNotNull(dao.page(page.id))
+            val (left,right) = recipe.frame.split(position)
+            val crops = if(rightFirst) listOf(right,left) else listOf(left,right)
+            val base = recipe.copy(outputAspect=null,curvature=BookCurve())
+            val pages = dao.snapshot(current.notebookId)
+            pages.filter { it.position>current.position }.sortedByDescending { it.position }.forEach { dao.position(it.id,it.position+1) }
+            dao.recipe(current.id,RecipeCodec.encode(base.copy(frame=crops[0])))
+            val second = current.copy(id=UUID.randomUUID().toString(),position=current.position+1,recipe=RecipeCodec.encode(base.copy(frame=crops[1])),ocrText=null,ocrRecipe=null)
+            dao.insert(second)
+            requireNotNull(dao.page(current.id))
+        } }
+    }
+
     /** Recoverable removal: never deletes original files, recipes or page order. */
     suspend fun trash(ids: Set<String>, restore: Boolean = false) = withContext(Dispatchers.IO) {
         lock.withLock { database.withTransaction { dao.trash(ids.toList(), if (restore) null else System.currentTimeMillis()) } }

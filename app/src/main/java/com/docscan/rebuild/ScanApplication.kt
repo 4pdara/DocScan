@@ -11,7 +11,7 @@ class ScanApplication : Application() {
         super.onCreate()
         NativeCamScannerEnhancer.configureCache(cacheDir)
     }
-    val database by lazy { Room.databaseBuilder(this, ScanDatabase::class.java, "rebuild-v1.db").addMigrations(ScanDatabase.MIGRATION_1_2).build() }
+    val database by lazy { Room.databaseBuilder(this, ScanDatabase::class.java, "rebuild-v1.db").addMigrations(ScanDatabase.MIGRATION_1_2, ScanDatabase.MIGRATION_2_3).build() }
     val store by lazy { ScanStore(this, database) }
 }
 

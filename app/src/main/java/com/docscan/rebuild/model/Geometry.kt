@@ -19,6 +19,44 @@ data class Frame(val points: List<Vertex>) {
     fun area(): Float = abs(points.indices.sumOf { i ->
         val a = points[i]; val b = points[(i + 1) % points.size]; (a.x * b.y - a.y * b.x).toDouble()
     }.toFloat()) / 2
+    fun handles(): List<Vertex> = points + points.indices.map { i ->
+        val a = points[i]; val b = points[(i + 1) % 4]; Vertex((a.x + b.x) / 2, (a.y + b.y) / 2)
+    }
+    /** Edge handles translate both endpoints along the edge normal, in image pixel space. */
+    fun dragHandle(handle: Int, dx: Float, dy: Float, aspect: Float = 1f): Frame {
+        require(handle in 0..7 && aspect.isFinite() && aspect > 0f)
+        if (!dx.isFinite() || !dy.isFinite()) return this
+        val affected = if (handle < 4) listOf(handle) else listOf(handle - 4, (handle - 3) % 4)
+        var x = dx; var y = dy
+        if (handle >= 4) {
+            val a = points[affected[0]]; val b = points[affected[1]]
+            val nx = -(b.y - a.y); val ny = (b.x - a.x) * aspect
+            val denominator = nx * nx + ny * ny
+            if (denominator < .000001f) return this
+            val distance = (dx * aspect * nx + dy * ny) / denominator
+            x = nx * distance / aspect; y = ny * distance
+        }
+        var fraction = 1f
+        affected.forEach { i ->
+            val p = points[i]
+            if (x > 0) fraction = min(fraction, (1 - p.x) / x) else if (x < 0) fraction = min(fraction, -p.x / x)
+            if (y > 0) fraction = min(fraction, (1 - p.y) / y) else if (y < 0) fraction = min(fraction, -p.y / y)
+        }
+        repeat(12) {
+            val candidate = Frame(points.mapIndexed { i, p -> if (i in affected) Vertex((p.x + x * fraction).coerceIn(0f, 1f), (p.y + y * fraction).coerceIn(0f, 1f)) else p })
+            if (candidate.valid()) return candidate
+            fraction *= .5f
+        }
+        return this
+    }
+    fun split(position: Float): Pair<Frame, Frame> {
+        require(position.isFinite() && position in .15f.. .85f)
+        fun between(a: Vertex, b: Vertex) = Vertex(a.x + (b.x-a.x)*position, a.y + (b.y-a.y)*position)
+        val top = between(points[0], points[1]); val bottom = between(points[3], points[2])
+        val left = Frame(listOf(points[0], top, bottom, points[3])); val right = Frame(listOf(top, points[1], points[2], bottom))
+        require(left.valid() && right.valid())
+        return left to right
+    }
     fun motion(other: Frame) = points.zip(other.points).maxOf { (a, b) -> a.distance(b) }
     fun turned(degrees: Int): Frame {
         var vertices = points
@@ -38,12 +76,21 @@ enum class Treatment(val requiresReferenceEngine: Boolean = false) {
     NATIVE_MAGIC_COLOR(true), NATIVE_NO_SHADOW(true), NATIVE_INVERT(true), NATIVE_PRO_LOCAL(true),
     LIGHTEN, ECO, NATIVE_BOARD(true), NATIVE_BOARD_PAPER(true), NATIVE_INVERT_BOARD(true)
 }
-data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null)
+data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve())
+
+/** Vertical page warp after perspective correction, before rotation. Values are image-height fractions. */
+data class BookCurve(val top: Float = 0f, val bottom: Float = 0f) {
+    fun valid() = top.isFinite() && bottom.isFinite() && top in -.2f.. .2f && bottom in -.2f.. .2f
+    val active: Boolean get() = top != 0f || bottom != 0f
+    fun sourceY(x: Float, y: Float): Float = y + 4f*x*(1f-x)*(top*(1f-y) + bottom*y)
+}
 
 /** A capture is latched until the content changes or the paper leaves the frame. */
 class CaptureStability {
     private var anchor: Frame? = null
     private var stableSince = 0L
+    private var stableSamples = 0
+    private var stableSignature: List<Float>? = null
     private var absentSince: Long? = null
     private var captured: List<Float>? = null
     data class Decision(val progress: Float, val capture: Boolean)
@@ -51,25 +98,26 @@ class CaptureStability {
         if (frame == null || !frame.valid()) {
             if (absentSince == null) absentSince = now
             if (now - (absentSince ?: now) >= 450) captured = null
-            anchor = null
+            anchor = null; stableSamples = 0; stableSignature = null
             return Decision(0f, false)
         }
         absentSince = null
         val previous = captured
         if (previous != null && !contentChanged(previous, signature)) return Decision(1f, false)
         val origin = anchor
-        if (origin == null || origin.motion(frame) > .018f) {
-            anchor = frame; stableSince = now
+        if (origin == null || origin.motion(frame) > .018f || stableSignature?.let { contentChanged(it, signature) } == true) {
+            anchor = frame; stableSince = now; stableSamples = 1; stableSignature = signature.toList()
             return Decision(0f, false)
         }
+        stableSamples++
         val progress = ((now - stableSince) / 750f).coerceIn(0f, 1f)
-        if (progress < 1f) return Decision(progress, false)
-        captured = signature.toList(); anchor = null
+        if (progress < 1f || stableSamples < 3) return Decision(progress, false)
+        captured = signature.toList(); anchor = null; stableSamples = 0; stableSignature = null
         return Decision(1f, true)
     }
-    @Synchronized fun failed() { captured = null; anchor = null }
-    @Synchronized fun markCaptured(signature: List<Float>) { captured = signature.toList(); anchor = null }
-    @Synchronized fun unstable() { anchor = null }
+    @Synchronized fun failed() { captured = null; anchor = null; stableSamples = 0; stableSignature = null }
+    @Synchronized fun markCaptured(signature: List<Float>) { captured = signature.toList(); anchor = null; stableSamples = 0; stableSignature = null }
+    @Synchronized fun unstable() { anchor = null; stableSamples = 0; stableSignature = null }
     companion object {
         fun contentChanged(a: List<Float>, b: List<Float>): Boolean {
             if (a.size != b.size || a.isEmpty()) return true
@@ -80,3 +128,24 @@ class CaptureStability {
 }
 
 
+
+/** Temporal consensus keeps a single erroneous boundary proposal out of auto capture. */
+class BoundaryTracker {
+    private var tracked: Frame? = null
+    private var pending: Frame? = null
+    fun sample(candidate: Frame?): Frame? {
+        if (candidate == null) { tracked = null; pending = null; return null }
+        val previous = tracked
+        if (previous == null || previous.motion(candidate) > .065f) {
+            val proposal = pending
+            pending = candidate
+            if (proposal == null || proposal.motion(candidate) > .025f) return null
+            tracked = candidate; pending = null
+            return candidate
+        }
+        pending = null
+        val smoothed = Frame(previous.points.zip(candidate.points).map { (a,b) -> Vertex(a.x*.55f+b.x*.45f,a.y*.55f+b.y*.45f) })
+        tracked = if (smoothed.valid()) smoothed else candidate
+        return tracked
+    }
+}

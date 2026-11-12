@@ -104,12 +104,13 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                     val analysis = ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).setTargetRotation(rotation).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                     previewUseCase = view; photoUseCase = photo; analysisUseCase = analysis
                     var lastAnalysis = 0L
+                    val tracker = BoundaryTracker()
                     analysis.setAnalyzer(executor) { image ->
                         try {
                             val now = SystemClock.elapsedRealtime()
                             if (!capturing.get() && now - lastAnalysis >= 180) {
                                 lastAnalysis = now
-                                val result = inspectFrame(image, gate, autoFlag.get(), now)
+                                val result = inspectFrame(image, gate, tracker, autoFlag.get(), now)
                                 main.execute { if (!disposed) { observation = result; if (result.trigger && autoFlag.get()) latestShoot() } }
                             }
                         } catch (e: Exception) { main.execute { if (!disposed) error = true } }
@@ -195,7 +196,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     }
 }
 
-private fun inspectFrame(image: ImageProxy, gate: CaptureStability, automatic: Boolean, now: Long): CameraObservation {
+private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: BoundaryTracker, automatic: Boolean, now: Long): CameraObservation {
     ImagePipeline.ensureAvailable()
     val plane = image.planes[0]; val bytes = plane.buffer.duplicate(); val step = max(1, image.width / 720)
     val width = (image.width + step - 1) / step; val height = (image.height + step - 1) / step
@@ -219,7 +220,7 @@ private fun inspectFrame(image: ImageProxy, gate: CaptureStability, automatic: B
     val rgba = Mat(height, width, CvType.CV_8UC4); rgba.put(0, 0, colours)
     val laplace = Mat(); val mean = MatOfDouble(); val deviation = MatOfDouble()
     try {
-        val frame = ImagePipeline.detectGray(gray, rgba)
+        val frame = tracker.sample(ImagePipeline.detectGray(gray, rgba))
         Imgproc.Laplacian(gray, laplace, CvType.CV_64F); Core.meanStdDev(laplace, mean, deviation)
         val sharp = deviation.toArray().firstOrNull()?.let { it * it >= 45 } ?: false
         val signature = if (frame == null) emptyList() else fingerprint(gray, frame)

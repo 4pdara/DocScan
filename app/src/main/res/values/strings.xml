@@ -32,7 +32,7 @@
     <string name="brightness">Brightness</string>
     <string name="contrast">Contrast</string>
     <string name="reset">Reset</string>
-    <string name="crop_hint">Drag the corners. Your original stays unchanged.</string>
+    <string name="crop_hint">Drag a corner or side. Your original stays unchanged.</string>
     <string name="document">Document</string>
     <string name="add_pages">Add pages</string>
     <string name="export_pdf">Save PDF</string>
@@ -124,6 +124,35 @@
     <string name="previous_page">Previous page</string>
     <string name="next_page">Next page</string>
     <string name="local_processing_active">Local image processing is active on this device</string>
+    <string name="crop_corner">Crop corner %1$d</string>
+    <string name="crop_edge">Crop side %1$d</string>
+    <string name="move_left">Move left</string>
+    <string name="move_right">Move right</string>
+    <string name="split_book">Split book spread</string>
+    <string name="split_hint">Move the divider on the original photo. Each page keeps the full original.</string>
+    <string name="right_page_first">Right page first (Hebrew)</string>
+    <string name="split_apply">Create two pages</string>
+    <string name="book_split_saved">Two pages created; original preserved</string>
+    <string name="book_curve">Straighten book curves</string>
+    <string name="curve_hint">Manual correction: adjust the upper and lower curve until text lines look straight. Crop the page first.</string>
+    <string name="curve_top">Upper curve</string>
+    <string name="curve_bottom">Lower curve</string>
+    <string name="reset_curve">Reset curves</string>
+    <string name="ocr">Recognize text (OCR)</string>
+    <string name="ocr_hint">Offline recognition from the edited scan, at full resolution. Review and correct the result before use.</string>
+    <string name="ocr_both">Hebrew + English</string>
+    <string name="ocr_hebrew">Hebrew</string>
+    <string name="ocr_english">English</string>
+    <string name="ocr_empty">Tap Recognize text to begin</string>
+    <string name="recognize_text">Recognize text</string>
+    <string name="copy_text">Copy text</string>
+    <string name="save_text">Save text file</string>
+    <string name="text_saved">Text file saved</string>
+    <string name="backup_library">Back up library</string>
+    <string name="restore_backup">Restore from backup</string>
+    <string name="backup_hint">A full backup includes originals, edits, page order, trash and recognized text. Restore adds documents without replacing existing ones. Save the backup outside the app.</string>
+    <string name="backup_saved">Library backup saved</string>
+    <string name="backup_restored">Backup restored; existing documents preserved</string>
 </resources>
 
 

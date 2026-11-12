@@ -41,6 +41,7 @@ import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
+import com.docscan.rebuild.imaging.OfflineOcr
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -119,6 +120,8 @@ fun ScanApp(store: ScanStore) {
     var route by rememberSaveable { mutableStateOf("library") }
     var bookId by rememberSaveable { mutableStateOf<String?>(null) }
     var pageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var ocrText by rememberSaveable { mutableStateOf("") }
+    var ocrLanguage by rememberSaveable { mutableStateOf("heb+eng") }
     var importBook by rememberSaveable { mutableStateOf<String?>(null) }
     val books by vm.library.collectAsState()
     val trash by vm.trash.collectAsState()
@@ -140,6 +143,21 @@ fun ScanApp(store: ScanStore) {
             val file = DocumentOutput(context, store).pdf(id)
             try { withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { out -> file.inputStream().use { it.copyTo(out) } } } }
             finally { file.delete() }
+        }
+    }
+    val backupSaver=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if(uri!=null)vm.perform(R.string.backup_saved) {
+            withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri,"wt")).use { LibraryBackup(store).export(it) } }
+        }
+    }
+    val backupLoader=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null)vm.perform(R.string.backup_restored) {
+            withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use { LibraryBackup(store).restore(it) } }
+        }
+    }
+    val textSaver=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if(uri!=null)vm.perform(R.string.text_saved) {
+            withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri,"wt")).bufferedWriter(Charsets.UTF_8).use { it.write(ocrText) } }
         }
     }
     val sourceSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -192,10 +210,15 @@ fun ScanApp(store: ScanStore) {
         }
     }
     fun startScan() { vm.perform { bookId = store.create(defaultTitle()).id; route = "camera" } }
-    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "editor" || route == "review" || route == "camera") "document" else "library" }
+    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "ocr") "editor" else if (route == "editor" || route == "review" || route == "camera") "document" else "library" }
     ScannerScreenTheme(dark = route == "camera" || route == "editor" || route == "review") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
+            "ocr" -> OcrScreen(ocrText,{ocrText=it},ocrLanguage,{ocrLanguage=it},snack,
+                onBack={route="editor"},onSave={textSaver.launch("recognized-text.txt")},
+                onRecognize={val id=pageId;if(id!=null)vm.perform {
+                    val page=requireNotNull(store.dao.page(id));ocrText=OfflineOcr(store).recognize(page,ocrLanguage)
+                }},onKeep={val id=pageId;if(id!=null)vm.perform(R.string.saved) {val page=requireNotNull(store.dao.page(id));store.dao.recognized(id,ocrText,page.recipe)} })
             "camera" -> bookId?.let { id ->
                 CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { vm.perform { val captured = store.dao.snapshot(id); pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
@@ -210,7 +233,12 @@ fun ScanApp(store: ScanStore) {
                     title = currentTitle, pageIndex = pages.indexOfFirst { it.id == page.id }, pageCount = pages.size, saveOnBack = route == "review",
                     onNavigate = { index, recipe -> pages.getOrNull(index)?.let { target -> vm.perform { store.save(page, recipe); pageId = target.id } } },
                     onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } },
-                    onAddPages = { recipe -> vm.perform { store.save(page, recipe); route = "camera" } })
+                    onAddPages = { recipe -> vm.perform { store.save(page, recipe); route = "camera" } },
+                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id} },
+                    onOcr = { recipe -> vm.perform {
+                        store.save(page,recipe);val current=requireNotNull(store.dao.page(page.id))
+                        ocrText=if(current.ocrRecipe==current.recipe)current.ocrText.orEmpty() else "";route="ocr"
+                    } })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
@@ -222,7 +250,7 @@ fun ScanApp(store: ScanStore) {
                     bookId = id
                     val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)
                     pdfSaver.launch("${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf")
-                }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack)
+                }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack, onBackup={backupSaver.launch("DocScan-backup.zip")},onRestoreBackup={backupLoader.launch(arrayOf("application/zip","application/octet-stream"))})
         }
         if (vm.busy) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .12f)).clickable(enabled = true, onClick = {}), contentAlignment = Alignment.Center) {

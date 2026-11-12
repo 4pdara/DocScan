@@ -3,6 +3,7 @@ package com.docscan.rebuild.ui
 import com.docscan.rebuild.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.magnifier
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -19,6 +20,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
@@ -65,7 +69,7 @@ private fun Treatment.label(): Int = when (this) {
 fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onExportImage: (EditRecipe) -> Unit, onGallery: (EditRecipe) -> Unit, onOriginal: () -> Unit,
     title: String? = null, pageIndex: Int = 0, pageCount: Int = 1, saveOnBack: Boolean = false,
     onNavigate: ((Int, EditRecipe) -> Unit)? = null, onRename: ((String) -> Unit)? = null,
-    onAddPages: ((EditRecipe) -> Unit)? = null) {
+    onAddPages: ((EditRecipe) -> Unit)? = null, onSplit: ((EditRecipe, Float, Boolean) -> Unit)? = null, onOcr: ((EditRecipe) -> Unit)? = null) {
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
@@ -73,6 +77,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     var original by rememberSaveable { mutableStateOf(false) }
     var export by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
+    var more by remember { mutableStateOf(false) }
+    var split by remember(page.id) { mutableFloatStateOf(.5f) }
+    var rightFirst by rememberSaveable { mutableStateOf(true) }
     var draftTitle by remember(title) { mutableStateOf(title.orEmpty()) }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val latestNavigate by rememberUpdatedState(onNavigate)
@@ -106,6 +113,14 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back))
             }
         }, actions = {
+            Box {
+                IconButton(onClick = { more = true }, enabled = !busy, modifier = Modifier.testTag("page-tools")) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.more_actions)) }
+                DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.split_book)) }, enabled = onSplit != null, onClick = { more=false; tool="split"; original=false;zoom=1f;pan=Offset.Zero })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.book_curve)) }, onClick = { more=false; tool="curve"; original=false;zoom=1f;pan=Offset.Zero })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.ocr)) }, enabled = onOcr != null, onClick = { more=false;onOcr?.invoke(edit) })
+                }
+            }
             IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) {
                 Icon(Icons.Outlined.Download, stringResource(R.string.export_scan))
             }
@@ -117,6 +132,23 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                     if (BuildConfig.UNIVERSAL_PREVIEW && !nativeAvailable) Text(stringResource(R.string.local_processing_active),
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("local-processing-mode"), style = MaterialTheme.typography.labelSmall)
                     when (tool) {
+                        "split" -> Column(Modifier.padding(horizontal=16.dp)) {
+                            Text(stringResource(R.string.split_hint),style=MaterialTheme.typography.bodySmall)
+                            Slider(split,{split=it},valueRange=.15f.. .85f,modifier=Modifier.testTag("book-split-position"))
+                            Row(verticalAlignment=Alignment.CenterVertically) {
+                                Checkbox(rightFirst,{rightFirst=it});Text(stringResource(R.string.right_page_first),Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
+                                TextButton(onClick={onSplit?.invoke(edit,split,rightFirst)},enabled=!busy && runCatching { edit.frame.split(split) }.isSuccess){Text(stringResource(R.string.split_apply))}
+                                TextButton(onClick={tool="filters"}){Text(stringResource(R.string.cancel))}
+                            }
+                        }
+                        "curve" -> Column(Modifier.padding(horizontal=16.dp)) {
+                            Text(stringResource(R.string.curve_hint),style=MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.curve_top),style=MaterialTheme.typography.labelSmall)
+                            Slider(edit.curvature.top,{change(edit.copy(curvature=edit.curvature.copy(top=it)))},valueRange=-.2f.. .2f,modifier=Modifier.testTag("curve-top"))
+                            Text(stringResource(R.string.curve_bottom),style=MaterialTheme.typography.labelSmall)
+                            Slider(edit.curvature.bottom,{change(edit.copy(curvature=edit.curvature.copy(bottom=it)))},valueRange=-.2f.. .2f,modifier=Modifier.testTag("curve-bottom"))
+                            Row { TextButton(onClick={change(edit.copy(curvature=BookCurve()))}){Text(stringResource(R.string.reset_curve))};TextButton(onClick={tool="filters"}){Text(stringResource(R.string.done))} }
+                        }
                         "filters" -> LazyRow(Modifier.fillMaxWidth().testTag("filter-strip"), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(treatments, key = { it.name }) { treatment ->
                                 val selected = edit.treatment == treatment
@@ -165,31 +197,14 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp).clipToBounds().background(ScanCharcoal).testTag("page-preview")) {
-                if (tool == "crop") {
+                if (tool == "crop" || tool == "split") {
                     PagePicture(store, page, Modifier.fillMaxSize(), EditRecipe())
-                    var handle by remember(page.id) { mutableIntStateOf(-1) }
-                    Canvas(Modifier.fillMaxSize().pointerInput(page.id) {
-                        detectDragGestures(onDragStart = { touch ->
-                            val rect = fitImageRect(Size(size.width.toFloat(), size.height.toFloat()), page.width.toFloat() / page.height)
-                            handle = currentEdit.frame.points.indices.minBy { i -> val p = currentEdit.frame.points[i]; (touch - Offset(rect.left + p.x * rect.width, rect.top + p.y * rect.height)).getDistance() }
-                            val p = currentEdit.frame.points[handle]
-                            if ((touch - Offset(rect.left + p.x * rect.width, rect.top + p.y * rect.height)).getDistance() > 48.dp.toPx()) handle = -1
-                        }, onDragEnd = { handle = -1 }, onDragCancel = { handle = -1 }) { event, delta ->
-                            if (handle >= 0) {
-                                event.consume()
-                                val rect = fitImageRect(Size(size.width.toFloat(), size.height.toFloat()), page.width.toFloat() / page.height)
-                                val vertices = currentEdit.frame.points.toMutableList(); val v = vertices[handle]
-                                vertices[handle] = Vertex((v.x + delta.x / rect.width).coerceIn(0f, 1f), (v.y + delta.y / rect.height).coerceIn(0f, 1f))
-                                val next = Frame(vertices)
-                                if (next.valid()) change(currentEdit.copy(frame = next))
-                            }
-                        }
-                    }) {
-                        val rect = fitImageRect(size, page.width.toFloat() / page.height)
-                        val corners = edit.frame.points.map { Offset(rect.left + it.x * rect.width, rect.top + it.y * rect.height) }
-                        val path = Path().apply { moveTo(corners[0].x, corners[0].y); corners.drop(1).forEach { lineTo(it.x, it.y) }; close() }
-                        drawPath(path, Color(0xFF008F86), style = Stroke(2.dp.toPx()))
-                        corners.forEach { drawCircle(Color.White, 10.dp.toPx(), it); drawCircle(Color(0xFF008F86), 7.dp.toPx(), it) }
+                    if(tool=="crop") CropHandles(page.width.toFloat()/page.height,edit.frame) { frame -> change(currentEdit.copy(frame=frame)) }
+                    else Canvas(Modifier.fillMaxSize().testTag("split-preview")) {
+                        val rect=fitImageRect(size,page.width.toFloat()/page.height)
+                        val halves=runCatching { edit.frame.split(split) }.getOrNull()
+                        halves?.let { val a=it.first.points[1];val b=it.first.points[2]
+                            drawLine(ScanMint,Offset(rect.left+a.x*rect.width,rect.top+a.y*rect.height),Offset(rect.left+b.x*rect.width,rect.top+b.y*rect.height),4.dp.toPx()) }
                     }
                 } else {
                     PagePicture(store, page, Modifier.fillMaxSize().pointerInput(page.id, busy, rtl) {
@@ -225,7 +240,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                         Icon(if (rtl) Icons.Outlined.ChevronLeft else Icons.Outlined.ChevronRight, stringResource(R.string.next_page))
                     }
                 }
-                FilledTonalButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop", shape = RoundedCornerShape(6.dp),
+                FilledTonalButton(onClick = { original = !original; zoom = 1f; pan = Offset.Zero }, enabled = tool != "crop" && tool != "split", shape = RoundedCornerShape(6.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface)) {
                     Icon(Icons.Outlined.Compare, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text(stringResource(if (original) R.string.show_result else R.string.compare_original), style = MaterialTheme.typography.labelSmall)
@@ -244,3 +259,45 @@ private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.Ima
 }
 
 
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun CropHandles(aspect: Float, frame: Frame, onChange: (Frame) -> Unit) {
+    val latest by rememberUpdatedState(frame);val change by rememberUpdatedState(onChange)
+    var handle by remember { mutableIntStateOf(-1) }
+    var size by remember { mutableStateOf(Size.Zero) }
+    val rect=fitImageRect(size,aspect)
+    fun location(p:Vertex)=Offset(rect.left+p.x*rect.width,rect.top+p.y*rect.height)
+    Box(Modifier.fillMaxSize().onSizeChanged { size=Size(it.width.toFloat(),it.height.toFloat()) }) {
+        Canvas(Modifier.fillMaxSize().testTag("crop-overlay").magnifier(sourceCenter={if(handle>=0)location(latest.handles()[handle]) else Offset.Unspecified})
+            .pointerInput(aspect) {
+                detectDragGestures(onDragStart={touch ->
+                    val r=fitImageRect(Size(this.size.width.toFloat(),this.size.height.toFloat()),aspect)
+                    handle=latest.handles().indices.minBy { i -> val p=latest.handles()[i];(touch-Offset(r.left+p.x*r.width,r.top+p.y*r.height)).getDistance() }
+                    val p=latest.handles()[handle]
+                    if((touch-Offset(r.left+p.x*r.width,r.top+p.y*r.height)).getDistance()>40.dp.toPx())handle=-1
+                },onDragEnd={handle=-1},onDragCancel={handle=-1}) { event,delta ->
+                    if(handle>=0){event.consume();val r=fitImageRect(Size(this.size.width.toFloat(),this.size.height.toFloat()),aspect);change(latest.dragHandle(handle,delta.x/r.width,delta.y/r.height,aspect))}
+                }
+            }) {
+            val r=fitImageRect(this.size,aspect);val corners=frame.points.map { Offset(r.left+it.x*r.width,r.top+it.y*r.height) }
+            val path=Path().apply {moveTo(corners[0].x,corners[0].y);corners.drop(1).forEach {lineTo(it.x,it.y)};close()}
+            drawPath(path,ScanMint,style=Stroke(2.dp.toPx()))
+            frame.handles().forEachIndexed { i,p -> val point=Offset(r.left+p.x*r.width,r.top+p.y*r.height)
+                if(i==handle)drawCircle(ScanMint.copy(alpha=.25f),24.dp.toPx(),point)
+                drawCircle(Color.White,if(i<4)10.dp.toPx() else 9.dp.toPx(),point)
+                drawCircle(ScanMint,if(i<4)7.dp.toPx() else 6.dp.toPx(),point)
+            }
+        }
+        frame.handles().forEachIndexed { i,p ->
+            val point=location(p);val density=androidx.compose.ui.platform.LocalDensity.current
+            val half=with(density){24.dp.toPx()}
+            val label=stringResource(if(i<4)R.string.crop_corner else R.string.crop_edge,i%4+1)
+            val left=stringResource(R.string.move_left);val right=stringResource(R.string.move_right);val up=stringResource(R.string.move_up);val down=stringResource(R.string.move_down)
+            Box(Modifier.absoluteOffset { IntOffset((point.x-half).toInt(),(point.y-half).toInt()) }.size(48.dp).testTag("crop-handle-$i").semantics {
+                contentDescription=label
+                customActions=listOf(CustomAccessibilityAction(left){change(latest.dragHandle(i,-.01f,0f,aspect));true},CustomAccessibilityAction(right){change(latest.dragHandle(i,.01f,0f,aspect));true},CustomAccessibilityAction(up){change(latest.dragHandle(i,0f,-.01f,aspect));true},CustomAccessibilityAction(down){change(latest.dragHandle(i,0f,.01f,aspect));true})
+            })
+        }
+    }
+}

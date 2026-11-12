@@ -51,7 +51,7 @@ object ImagePipeline {
     }
 
     fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null): Bitmap {
-        ensureAvailable(); require(recipe.frame.valid())
+        ensureAvailable(); require(recipe.frame.valid() && recipe.curvature.valid())
         check(!recipe.treatment.requiresReferenceEngine || referenceEngineAvailable) { "Reference engine is not bundled for this device" }
         val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
@@ -65,6 +65,7 @@ object ImagePipeline {
                 try { Imgproc.warpPerspective(source, current, homography, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
                 finally { from.release(); to.release(); homography.release() }
             }
+            if (recipe.curvature.active) BookDewarp.apply(current, recipe.curvature)
             when (recipe.turns.mod(4)) {
                 1 -> Core.rotate(current, current, Core.ROTATE_90_CLOCKWISE)
                 2 -> Core.rotate(current, current, Core.ROTATE_180)
@@ -134,57 +135,8 @@ object ImagePipeline {
         finally { bitmap.recycle(); rgba.release(); gray.release() }
     }
 
-    /** Bright pages, dark covers and colour boundaries. Proposals still require four visible corners. */
     fun detectGray(input: Mat, rgba: Mat? = null): Frame? {
         ensureAvailable()
-        val blurred = Mat(); val edges = Mat(); val mask = Mat(); val hierarchy = Mat()
-        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
-        val contours = mutableListOf<MatOfPoint>()
-        try {
-            Imgproc.GaussianBlur(input, blurred, Size(5.0, 5.0), 0.0)
-            Imgproc.Canny(blurred, edges, 35.0, 110.0)
-            Imgproc.morphologyEx(edges, edges, Imgproc.MORPH_CLOSE, kernel)
-            Imgproc.findContours(edges, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
-            Imgproc.threshold(blurred, mask, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
-            val bright = mutableListOf<MatOfPoint>(); Imgproc.findContours(mask, bright, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE); contours.addAll(bright)
-            // Inverse threshold also finds dark book covers on a light table.
-            Imgproc.threshold(blurred, mask, 0.0, 255.0, Imgproc.THRESH_BINARY_INV or Imgproc.THRESH_OTSU)
-            val dark = mutableListOf<MatOfPoint>(); Imgproc.findContours(mask, dark, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE); contours.addAll(dark)
-            if (rgba != null) {
-                val channel = Mat()
-                try {
-                    // Equal-luminance coloured covers may have no boundary in the camera's Y plane.
-                    for (index in 0..2) {
-                        Core.extractChannel(rgba, channel, index)
-                        Imgproc.GaussianBlur(channel, channel, Size(5.0, 5.0), 0.0)
-                        Imgproc.Canny(channel, edges, 25.0, 85.0)
-                        Imgproc.morphologyEx(edges, edges, Imgproc.MORPH_CLOSE, kernel)
-                        val coloured = mutableListOf<MatOfPoint>()
-                        Imgproc.findContours(edges, coloured, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
-                        contours.addAll(coloured)
-                    }
-                } finally { channel.release() }
-            }
-            var best: Frame? = null; var bestArea = 0.0
-            for (contour in contours) {
-                val area = abs(Imgproc.contourArea(contour)) / (input.cols().toDouble() * input.rows())
-                if (area !in .06.. .97 || area <= bestArea) continue
-                val curve = MatOfPoint2f(*contour.toArray()); val approximation = MatOfPoint2f()
-                try {
-                    Imgproc.approxPolyDP(curve, approximation, Imgproc.arcLength(curve, true) * .025, true)
-                    if (approximation.total() != 4L) continue
-                    val raw = approximation.toArray().map { Vertex((it.x / (input.cols() - 1)).toFloat(), (it.y / (input.rows() - 1)).toFloat()) }
-                    val cx = raw.map { it.x }.average(); val cy = raw.map { it.y }.average()
-                    val clockwise = raw.sortedBy { atan2(it.y - cy, it.x - cx) }
-                    val start = clockwise.indices.minBy { clockwise[it].x + clockwise[it].y }
-                    val ordered = Frame((0..3).map { clockwise[(start + it) % 4] })
-                    if (!ordered.valid() || ordered.points.any { it.x < .005f || it.x > .995f || it.y < .005f || it.y > .995f }) continue
-                    best = ordered; bestArea = area
-                } finally { curve.release(); approximation.release() }
-            }
-            return best
-        } finally { contours.forEach { it.release() }; blurred.release(); edges.release(); mask.release(); hierarchy.release(); kernel.release() }
+        return BoundaryDetector.detect(input, rgba)
     }
 }
-
-

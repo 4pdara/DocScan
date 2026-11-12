@@ -1,4 +1,5 @@
 import java.security.MessageDigest
+import java.net.URI
 
 plugins {
     id("com.android.application")
@@ -49,8 +50,8 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = if (universalPreview) 8 else 7
-        versionName = if (universalPreview) "0.1.7.1-universal-preview" else if (camScannerNative) "0.1.7-native-preview" else "0.1.7-preview"
+        versionCode = 9
+        versionName = if (universalPreview) "0.1.8-universal-preview" else if (camScannerNative) "0.1.8-native-preview" else "0.1.8-preview"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
@@ -84,6 +85,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.5.1")
     implementation("androidx.camera:camera-view:1.5.1")
     implementation("org.opencv:opencv:4.12.0")
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
@@ -96,3 +98,29 @@ dependencies {
 }
 
 
+
+// Public Apache-2.0 OCR language data are verified and generated outside Git.
+val ocrAssets = layout.buildDirectory.dir("generated/ocr-assets")
+val prepareOcrAssets by tasks.registering {
+    val revision = "87416418657359cb625c412a48b6e1d6d41c29bd"
+    val models = mapOf("heb" to "11f9e43ab227f786352a50f75c94c2e9906f1baba86d93276da19da7ce0904db",
+        "eng" to "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2")
+    inputs.property("revision", revision); inputs.property("models", models)
+    outputs.dir(ocrAssets)
+    doLast {
+        val target = ocrAssets.get().dir("tessdata").asFile.apply { mkdirs() }
+        models.forEach { (language, expected) ->
+            val file = target.resolve("$language.traineddata")
+            fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+            if (!file.isFile || digest(file.readBytes()) != expected) {
+                val connection = URI("https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$revision/$language.traineddata").toURL().openConnection()
+                connection.connectTimeout = 30000; connection.readTimeout = 60000
+                val bytes = connection.getInputStream().use { it.readBytes() }
+                check(digest(bytes) == expected) { "OCR model digest mismatch: $language" }
+                file.writeBytes(bytes)
+            }
+        }
+    }
+}
+android.sourceSets.getByName("main").assets.srcDir(ocrAssets)
+tasks.named("preBuild").configure { dependsOn(prepareOcrAssets) }

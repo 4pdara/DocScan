@@ -32,7 +32,7 @@
     <string name="brightness">בהירות</string>
     <string name="contrast">ניגודיות</string>
     <string name="reset">איפוס</string>
-    <string name="crop_hint">גרור את הפינות. המקור נשמר ללא שינוי.</string>
+    <string name="crop_hint">גרור פינה או צלע. המקור נשמר ללא שינוי.</string>
     <string name="document">מסמך</string>
     <string name="add_pages">הוספת עמודים</string>
     <string name="export_pdf">שמירת PDF</string>
@@ -124,6 +124,35 @@
     <string name="previous_page">העמוד הקודם</string>
     <string name="next_page">העמוד הבא</string>
     <string name="local_processing_active">עיבוד מקומי פעיל במכשיר זה</string>
+    <string name="crop_corner">פינת חיתוך %1$d</string>
+    <string name="crop_edge">צלע חיתוך %1$d</string>
+    <string name="move_left">הזזה שמאלה</string>
+    <string name="move_right">הזזה ימינה</string>
+    <string name="split_book">פיצול צילום ספר</string>
+    <string name="split_hint">הזז את קו ההפרדה בתמונה המקורית. המקור המלא נשמר לכל עמוד.</string>
+    <string name="right_page_first">העמוד הימני ראשון (עברית)</string>
+    <string name="split_apply">יצירת שני עמודים</string>
+    <string name="book_split_saved">נוצרו שני עמודים והמקור נשמר</string>
+    <string name="book_curve">יישור קימורי ספר</string>
+    <string name="curve_hint">יישור ידני: כוון את הקימור העליון והתחתון עד ששורות הכתב ישרות. מומלץ לחתוך תחילה את העמוד.</string>
+    <string name="curve_top">קימור עליון</string>
+    <string name="curve_bottom">קימור תחתון</string>
+    <string name="reset_curve">איפוס קימורים</string>
+    <string name="ocr">זיהוי טקסט (OCR)</string>
+    <string name="ocr_hint">זיהוי מקומי מהסריקה הערוכה ברזולוציה מלאה. בדוק ותקן את התוצאה לפני שימוש.</string>
+    <string name="ocr_both">עברית ואנגלית</string>
+    <string name="ocr_hebrew">עברית</string>
+    <string name="ocr_english">אנגלית</string>
+    <string name="ocr_empty">לחץ על זיהוי טקסט כדי להתחיל</string>
+    <string name="recognize_text">זיהוי טקסט</string>
+    <string name="copy_text">העתקת טקסט</string>
+    <string name="save_text">שמירת קובץ טקסט</string>
+    <string name="text_saved">קובץ הטקסט נשמר</string>
+    <string name="backup_library">גיבוי הספרייה</string>
+    <string name="restore_backup">שחזור מגיבוי</string>
+    <string name="backup_hint">גיבוי מלא כולל מקורות, עריכות, סדר עמודים, סל מחזור וטקסט מזוהה. שחזור מוסיף מסמכים בלי להחליף קיימים. שמור את הגיבוי מחוץ לאפליקציה.</string>
+    <string name="backup_saved">גיבוי הספרייה נשמר</string>
+    <string name="backup_restored">הגיבוי שוחזר והמסמכים הקיימים נשמרו</string>
 </resources>
 
 

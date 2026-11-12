@@ -40,7 +40,7 @@ fun LibraryScreen(
     store: ScanStore, entries: List<LibraryEntry>, trash: List<LibraryEntry>,
     onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit,
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
-    onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState
+    onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {}
 ) {
     var search by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("home") }
@@ -111,7 +111,7 @@ fun LibraryScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).testTag("library")) {
             when {
-                section == "me" -> LocalProfile(onFiles = ::files, onTrash = ::trash)
+                section == "me" -> LocalProfile(onFiles = ::files, onTrash = ::trash, onBackup = onBackup, onRestoreBackup = onRestoreBackup)
                 section == "tools" -> {
                     Text(stringResource(R.string.tools_tab), Modifier.padding(20.dp), style = MaterialTheme.typography.headlineSmall)
                     HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
@@ -220,7 +220,7 @@ private fun HomeShortcuts(onScan: () -> Unit, onImport: () -> Unit, onFiles: () 
 }
 
 @Composable
-private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit) {
+private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () -> Unit, onRestoreBackup: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
         Icon(Icons.Outlined.DocumentScanner, null, Modifier.size(60.dp), tint = HomeGreen)
         Spacer(Modifier.height(16.dp)); Text("DocScan", style = MaterialTheme.typography.headlineMedium)
@@ -230,5 +230,9 @@ private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit) {
         Spacer(Modifier.height(18.dp)); Text(stringResource(R.string.quality), color = HomeGreen)
         TextButton(onFiles) { Text(stringResource(R.string.my_documents)) }
         TextButton(onTrash) { Text(stringResource(R.string.trash)) }
+        HorizontalDivider(Modifier.padding(vertical=12.dp))
+        Text(stringResource(R.string.backup_hint),style=MaterialTheme.typography.bodySmall)
+        TextButton(onBackup,modifier=Modifier.testTag("backup-library")) { Icon(Icons.Outlined.Archive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.backup_library)) }
+        TextButton(onRestoreBackup,modifier=Modifier.testTag("restore-library")) { Icon(Icons.Outlined.Unarchive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.restore_backup)) }
     }
 }

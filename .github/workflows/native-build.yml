@@ -46,7 +46,7 @@ jobs:
         run: ./gradlew -PcamScannerNativeDir=/tmp/native-build testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Native-0.1.7-build-input
+          name: Native-0.1.8-build-input
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
@@ -87,7 +87,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@v4
         with:
-          name: Native-0.1.7-build-input
+          name: Native-0.1.8-build-input
           path: native-apks
       - name: Enable KVM access
         run: |
@@ -103,7 +103,7 @@ jobs:
           disk-size: 2048M
           emulator-boot-timeout: 300
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
           script: bash .github/native-device-check.sh ${{ matrix.locale }} native-apks
       - uses: actions/upload-artifact@v4
         if: always()

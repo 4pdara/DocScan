@@ -496,7 +496,7 @@ class RebuildFlowTest {
             old.execSQL("INSERT INTO sheets VALUES ('old-sheet','old-book',0,?,1800,2400,'image/jpeg',?)", arrayOf(master.name, recipe))
             old.version = 1
         }
-        val db = Room.databaseBuilder(context, ScanDatabase::class.java, name).addMigrations(ScanDatabase.MIGRATION_1_2).build()
+        val db = Room.databaseBuilder(context, ScanDatabase::class.java, name).addMigrations(ScanDatabase.MIGRATION_1_2, ScanDatabase.MIGRATION_2_3).build()
         try {
             val store = ScanStore(context, db)
             assertNull(store.dao.book("old-book")!!.trashedAt)

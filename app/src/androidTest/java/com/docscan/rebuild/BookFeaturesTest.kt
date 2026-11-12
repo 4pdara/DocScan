@@ -1,0 +1,141 @@
+package com.docscan.rebuild
+
+import android.graphics.*
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextDirectionHeuristics
+import android.text.TextPaint
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.docscan.rebuild.data.*
+import com.docscan.rebuild.imaging.*
+import com.docscan.rebuild.model.*
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import java.io.*
+import java.security.MessageDigest
+import java.util.zip.*
+import kotlin.math.*
+
+class BookFeaturesTest {
+    @get:Rule val compose=createAndroidComposeRule<MainActivity>()
+    private val context get()=ApplicationProvider.getApplicationContext<android.content.Context>()
+    private fun hash(file:File)=MessageDigest.getInstance("SHA-256").digest(file.readBytes()).toList()
+    private fun fixture(name:String,width:Int=1600,height:Int=1000,draw:(Canvas)->Unit={}):File {
+        val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(Color.WHITE);draw(canvas)
+        val file=File(context.cacheDir,"$name-${System.nanoTime()}.png")
+        try {file.outputStream().use {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))}}finally{bitmap.recycle()};return file
+    }
+    @Test fun texturedCoversWithGlareAndBrokenCornersKeepTheirOuterBoundary() {
+        val expected=Frame(listOf(Vertex(.15f,.12f),Vertex(.83f,.18f),Vertex(.89f,.88f),Vertex(.1f,.81f)))
+        for(dark in listOf(true,false)) {
+            val file=fixture("textured-cover",1000,1200) { canvas ->
+                canvas.drawColor(if(dark)Color.rgb(210,198,179) else Color.rgb(66,68,77))
+                val path=Path().apply {expected.points.forEachIndexed {i,p->if(i==0)moveTo(p.x*1000,p.y*1200)else lineTo(p.x*1000,p.y*1200)};close()}
+                canvas.drawPath(path,Paint().apply {color=if(dark)Color.rgb(30,38,69) else Color.rgb(185,70,38)})
+                canvas.save();canvas.clipPath(path)
+                for(y in 230..900 step 45)canvas.drawLine(180f,y.toFloat(),800f,(y+50).toFloat(),Paint().apply {color=if(dark)Color.rgb(86,92,115) else Color.rgb(220,133,79);strokeWidth=4f})
+                canvas.drawRect(260f,400f,680f,770f,Paint().apply {color=Color.rgb(238,216,164)})
+                canvas.drawText("BOOK 123",280f,500f,Paint(Paint.ANTI_ALIAS_FLAG).apply {color=Color.BLACK;textSize=55f})
+                canvas.drawOval(RectF(550f,250f,850f,560f),Paint(Paint.ANTI_ALIAS_FLAG).apply {shader=RadialGradient(700f,400f,160f,Color.argb(190,255,255,255),Color.TRANSPARENT,Shader.TileMode.CLAMP)})
+                canvas.restore()
+                // One corner is occluded by a patch with the table colour.
+                canvas.drawCircle(150f,144f,15f,Paint().apply {color=if(dark)Color.rgb(210,198,179) else Color.rgb(66,68,77)})
+            }
+            try {val frame=requireNotNull(ImagePipeline.detect(file));assertTrue("Outer cover: $frame",frame.motion(expected)<.065f)}finally{file.delete()}
+        }
+    }
+    @Test fun splitPreservesOriginalBytesPerspectiveAndHebrewPageOrder():Unit=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val store=ScanStore(context,db);val input=fixture("spread")
+        try {
+            val book=store.create("Book spread");val p=store.captured(book.id,input);val after=store.captured(book.id,input);val digest=hash(input)
+            val recipe=EditRecipe(frame=Frame(listOf(Vertex(.1f,.1f),Vertex(.9f,.15f),Vertex(.85f,.9f),Vertex(.12f,.85f))),treatment=Treatment.GRAY)
+            store.split(p,recipe,.43f,true);val pages=store.dao.snapshot(book.id)
+            assertEquals(3,pages.size);assertEquals(listOf(0,1,2),pages.map {it.position});assertEquals(after.id,pages[2].id)
+            val(left,right)=recipe.frame.split(.43f);assertEquals(right,pages[0].edit().frame);assertEquals(left,pages[1].edit().frame)
+            assertEquals(pages[0].source,pages[1].source);assertEquals(digest,hash(store.source(pages[1])))
+            assertEquals(1600,pages[0].width);assertEquals(1000,pages[0].height)
+        } finally {store.dao.allPages().distinctBy {it.source}.forEach {store.source(it).delete()};input.delete();db.close()}
+    }
+    @Test fun fullBackupRestoresSourcesCurvesOcrTrashAndSharedSplitSources():Unit=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val store=ScanStore(context,db)
+        val otherDb=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val restored=ScanStore(context,otherDb);val input=fixture("backup")
+        try {
+            val book=store.create("Hebrew book ספר");val p=store.captured(book.id,input);store.split(p,p.edit(),.5f,true)
+            val first=store.dao.snapshot(book.id)[0];store.save(first,first.edit().copy(curvature=BookCurve(.05f,-.02f)))
+            val current=store.dao.page(first.id)!!;assertEquals(1,store.dao.recognized(current.id,"שלום עולם 123",current.recipe))
+            val trashed=store.create("Trash retained");store.trash(setOf(trashed.id))
+            val output=ByteArrayOutputStream();LibraryBackup(store).export(output)
+            val existing=restored.create("Existing library");assertEquals(2,LibraryBackup(restored).restore(ByteArrayInputStream(output.toByteArray())))
+            assertNotNull(restored.dao.book(existing.id));val copy=restored.dao.allBooks().first {it.title==book.title};assertNotEquals(book.id,copy.id)
+            val pages=restored.dao.snapshot(copy.id);assertEquals(2,pages.size);assertEquals(pages[0].source,pages[1].source)
+            assertEquals(current.recipe,pages[0].recipe);assertEquals("שלום עולם 123",pages[0].ocrText);assertEquals(current.recipe,pages[0].ocrRecipe)
+            pages.forEach {assertEquals(hash(input),hash(restored.source(it)))}
+            assertNotNull(restored.dao.allBooks().first {it.title==trashed.title}.trashedAt)
+        } finally {for(s in listOf(store,restored))s.dao.allPages().distinctBy {it.source}.forEach {s.source(it).delete()};input.delete();db.close();otherDb.close()}
+    }
+    @Test fun unsafeAndCorruptArchivesCannotChangeTheExistingLibrary():Unit=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val store=ScanStore(context,db);val book=store.create("Keep me");val input=fixture("safe");val page=store.captured(book.id,input)
+        try {
+            for(name in listOf("../escape.source","sources/../../escape.source","manifest.json")) {
+                val out=ByteArrayOutputStream();ZipOutputStream(out).use {z->z.putNextEntry(ZipEntry(name));z.write("invalid".toByteArray());z.closeEntry()}
+                try {LibraryBackup(store).restore(ByteArrayInputStream(out.toByteArray()));fail("Invalid archive accepted")}catch(_:Exception){}
+                assertEquals(1,store.dao.allBooks().size);assertEquals(hash(input),hash(store.source(page)))
+            }
+        } finally {input.delete();store.source(page).delete();db.close()}
+    }
+    @Test fun dewarpStraightensCurvedLinesWithoutResizingOrChangingSource() {
+        val curve=BookCurve(.07f,.035f)
+        val bitmap=Bitmap.createBitmap(900,1200,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(Color.WHITE)
+        for(base in listOf(.2f,.4f,.6f,.8f)) {
+            val path=Path();for(x in 0..899){val y=curve.sourceY(x/899f,base)*1199;if(x==0)path.moveTo(0f,y)else path.lineTo(x.toFloat(),y)}
+            canvas.drawPath(path,Paint().apply {color=Color.BLACK;style=Paint.Style.STROKE;strokeWidth=5f})
+        }
+        val before=IntArray(900*1200);bitmap.getPixels(before,0,900,0,0,900,1200)
+        val result=ImagePipeline.transform(bitmap,EditRecipe(curvature=curve))
+        try {
+            assertEquals(900,result.width);assertEquals(1200,result.height)
+            for(x in listOf(70,450,830))for(base in listOf(.2f,.4f,.6f,.8f))assertTrue(Color.red(result.getPixel(x,(base*1199).roundToInt()))<80)
+            val after=IntArray(before.size);bitmap.getPixels(after,0,900,0,0,900,1200);assertArrayEquals(before,after)
+            val encoded=RecipeCodec.encode(EditRecipe(curvature=curve));assertEquals(curve,RecipeCodec.decode(encoded).curvature)
+            assertEquals(BookCurve(),RecipeCodec.decode("{}").curvature)
+        }finally{bitmap.recycle();result.recycle()}
+    }
+    @Test fun offlineHebrewAndEnglishRecognitionSurvivesReopenAndEditInvalidatesIt():Unit=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val store=ScanStore(context,db);val book=store.create("OCR")
+        val files=mutableListOf<File>()
+        try {
+            for((lang,text,expected) in listOf(Triple("eng","BOOK SCANNING\nDOCUMENT 123456\nCLEAR PRINTED TEXT","DOCUMENT"),Triple("heb","שלום עולם\nספר חדש\nשלום עולם","שלום"))) {
+                val file=fixture("ocr-$lang",1800,1000){canvas ->
+                    val paint=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=100f;typeface=Typeface.create("sans-serif",Typeface.NORMAL)}
+                    val layout=StaticLayout.Builder.obtain(text,0,text.length,paint,1500).setAlignment(Layout.Alignment.ALIGN_NORMAL).setTextDirection(if(lang=="heb")TextDirectionHeuristics.RTL else TextDirectionHeuristics.LTR).build()
+                    canvas.save();canvas.translate(150f,200f);layout.draw(canvas);canvas.restore()
+                };files.add(file);val sheet=store.captured(book.id,file);val result=OfflineOcr(store).recognize(sheet,lang)
+                assertTrue("OCR $lang: $result",result.contains(expected));assertEquals(result,store.dao.page(sheet.id)!!.ocrText);assertEquals(hash(file),hash(store.source(sheet)))
+                store.save(sheet,sheet.edit().copy(brightness=2f));assertNull(store.dao.page(sheet.id)!!.ocrText)
+            }
+        }finally{files.forEach {it.delete()};store.dao.allPages().forEach {store.source(it).delete()};db.close()}
+    }
+    @Test fun cropHasEightHandlesAndDraggingASideMovesItsTwoCorners() {
+        val store=(compose.activity.application as ScanApplication).store;val title="Side handles ${System.nanoTime()}";val input=fixture("handles")
+        val page=runBlocking {val b=store.create(title);val p=store.captured(b.id,input);store.save(p,EditRecipe(frame=Frame(listOf(Vertex(.15f,.15f),Vertex(.85f,.15f),Vertex(.85f,.85f),Vertex(.15f,.85f)))));p}
+        try {
+            compose.onNodeWithTag("home-search").performTextInput(title)
+            compose.waitUntil(15000){compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithText(title).performClick();compose.onNodeWithTag("page-image-${page.id}").performClick()
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.crop)).performClick()
+            for(i in 0..7)compose.onNodeWithTag("crop-handle-$i").assertExists()
+            compose.onNodeWithTag("crop-handle-4").performTouchInput {swipe(center,center+Offset(0f,55f),500)}
+            compose.onNodeWithTag("save-edit").performClick()
+            compose.waitUntil(15000){runBlocking{store.dao.page(page.id)!!.edit().frame.points[0].y>.16f}}
+            val points=runBlocking{store.dao.page(page.id)!!.edit().frame.points}
+            assertEquals(points[0].y,points[1].y,.001f);assertEquals(.85f,points[2].y,.001f);assertEquals(.85f,points[3].y,.001f)
+            assertEquals(hash(input),hash(store.source(page)))
+        }finally{input.delete()}
+    }
+}

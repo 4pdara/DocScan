@@ -31,12 +31,12 @@ jobs:
       - name: Prepare installable preview
         run: |
           mkdir -p preview
-          cp app/build/outputs/apk/debug/app-debug.apk preview/DocScan-New-0.1.7-preview.apk
+          cp app/build/outputs/apk/debug/app-debug.apk preview/DocScan-New-0.1.8-preview.apk
           cd preview
-          sha256sum DocScan-New-0.1.7-preview.apk > SHA256SUMS.txt
+          sha256sum DocScan-New-0.1.8-preview.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: DocScan-New-0.1.7-preview
+          name: DocScan-New-0.1.8-preview
           path: preview/
           retention-days: 30
       - uses: actions/upload-artifact@v4
@@ -97,7 +97,7 @@ jobs:
           disk-size: 2048M
           emulator-boot-timeout: 300
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
           script: bash .github/device-check.sh ${{ matrix.locale }}
       - uses: actions/upload-artifact@v4
         if: always()

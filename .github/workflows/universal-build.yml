@@ -1,4 +1,4 @@
-name: Universal 0.1.7 compatibility build
+name: Universal 0.1.8 compatibility build
 on:
   push:
     branches: [rebuild/camscanner-reference]
@@ -56,12 +56,12 @@ jobs:
           python3 research/build_apk_delta.py --baseline /tmp/universal-baseline/androidTest/debug/app-debug-androidTest.apk --apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk --output signing-delta/tests
       - uses: actions/upload-artifact@v4
         with:
-          name: Universal-0.1.7.1-signing-delta
+          name: Universal-0.1.8-signing-delta
           path: signing-delta/
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: Universal-0.1.7.1-signing-input
+          name: Universal-0.1.8-signing-input
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

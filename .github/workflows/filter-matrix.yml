@@ -68,7 +68,7 @@ jobs:
           profile: pixel_2
           disk-size: 2048M
           emulator-boot-timeout: 300
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
           script: bash research/android_filter_matrix.sh
       - uses: actions/upload-artifact@v4
         if: always()
