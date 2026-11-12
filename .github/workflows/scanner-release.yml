@@ -1,0 +1,203 @@
+name: Build, verify and publish DocScan 0.1.9
+on:
+  push:
+    branches: [claude/version-0-1-8-android-15-fix-si8lbs]
+    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_0.1.9_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: scanner-release-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  TAG: scanner-v0.1.9
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Clean build, unit tests, lint, app and instrumentation APKs
+        run: ./gradlew -PphoneRelease=true clean testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+      - name: Check the exact APK before any device sees it
+        run: |
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          mkdir -p release-apks/tests
+          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-0.1.9.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-0.1.9-tests.apk
+          apk=release-apks/DocScan-0.1.9.apk
+          "$tools/apksigner" verify --verbose --print-certs "$apk" | tee release-apks/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' release-apks/signature.txt
+          "$tools/aapt" dump badging "$apk" | tee release-apks/badging.txt
+          grep -q "package: name='com.docscan.rebuild.scanner' versionCode='10' versionName='0.1.9'" release-apks/badging.txt
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do grep '^native-code:' release-apks/badging.txt | grep -q "'$abi'"; done
+          "$tools/zipalign" -c -v 4 "$apk" > /dev/null
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          banned = {'libopencv.so', 'libncnn.so', 'libMNN.so', 'libCVNN.so', 'libmagicenhancer.so', 'libimageprocessor.so'}
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              if z.testzip() is not None:
+                  raise SystemExit('Corrupt APK entry')
+              libs = [n for n in z.namelist() if n.startswith('lib/')]
+              found = sorted({n.rsplit('/', 1)[1] for n in libs} & banned)
+              if found:
+                  raise SystemExit('Research engine libraries must not ship: ' + ', '.join(found))
+              if any(z.getinfo(n).compress_type == zipfile.ZIP_STORED for n in libs):
+                  raise SystemExit('Native libraries must be compressed for install-time extraction')
+              print(len(libs), 'native libraries, none from the research engine')
+          PY
+          ( cd release-apks && sha256sum DocScan-0.1.9.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DocScan-0.1.9-exact-apks
+          path: release-apks/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scanner-build-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+  device:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: android8-x86
+            api: 26
+            arch: x86
+            target: google_apis
+            locale: en
+            page: 4096
+            abi: ''
+            emulator: '10696886'
+          - name: android11-x86_64
+            api: 30
+            arch: x86_64
+            target: google_apis
+            locale: en
+            page: 4096
+            abi: ''
+            emulator: ''
+          - name: android15-he
+            api: 35
+            arch: x86_64
+            target: google_apis
+            locale: he
+            page: 4096
+            abi: ''
+            emulator: ''
+          # The phone is ARM64: install and run the ARM64 libraries through the image's ARM translation.
+          - name: android15-he-arm64-libraries
+            api: 35
+            arch: x86_64
+            target: google_apis
+            locale: he
+            page: 4096
+            abi: arm64-v8a
+            emulator: ''
+          - name: android15-he-16k
+            api: 35
+            arch: x86_64
+            target: google_apis_ps16k
+            locale: he
+            page: 16384
+            abi: ''
+            emulator: ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reserve emulator space
+        run: sudo rm -rf /usr/share/dotnet
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: DocScan-0.1.9-exact-apks
+          path: release-apks
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          emulator-build: ${{ matrix.emulator }}
+          api-level: ${{ matrix.api }}
+          arch: ${{ matrix.arch }}
+          target: ${{ matrix.target }}
+          profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 300
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
+          script: bash .github/scanner-device-check.sh ${{ matrix.locale }} ${{ matrix.page }} ${{ matrix.abi }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scanner-device-${{ matrix.name }}
+          path: scanner-device-results/
+  publish:
+    needs: [build, device]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: DocScan-0.1.9-exact-apks
+          path: release-apks
+      - name: Publish only the exact APK that passed every check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd release-apks
+          sha256sum -c SHA256SUMS.txt
+          cert=$(grep -m1 'Signer #1 certificate SHA-256 digest' signature.txt | awk '{print $NF}')
+          python3 - "$cert" <<'PY'
+          import hashlib, json, os, sys
+          apk = 'DocScan-0.1.9.apk'
+          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=10, version_name='0.1.9', minimum_android_api=26,
+                         architectures=['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'], research_engine_included=False,
+                         certificate_sha256=sys.argv[1], apk_size=os.path.getsize(apk),
+                         apk_sha256=hashlib.sha256(open(apk, 'rb').read()).hexdigest(),
+                         source_commit=os.environ['GITHUB_SHA'], workflow_run=os.environ['GITHUB_RUN_ID']),
+                      open('BUILD.json', 'w'), indent=2)
+          PY
+          cp ../docs/RELEASE_0.1.9_HE.md notes.md
+          printf '\n\n[ריצת הבנייה, הבדיקות והפרסום](%s/%s/actions/runs/%s)\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> notes.md
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to replace it"; exit 1
+          fi
+          gh release create "$TAG" DocScan-0.1.9.apk SHA256SUMS.txt BUILD.json \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title 'DocScan 0.1.9 — התקנה חדשה עם כל שיפורי 0.1.8' --notes-file notes.md
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size) \(.digest)"'

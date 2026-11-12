@@ -1,6 +1,12 @@
 # DocScan חדש — בנייה עצמאית
 אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. הפרופיל הרגיל משתמש בעיבוד העצמאי. נוסף פרופיל Native מחקרי שמפעיל את רכיב הסרת הצללים MagicEnhancer מהחבילה שסופקה; אין כאן העברה מלאה של מנוע CamScanner.
 
+## גרסה 0.1.9 — התקנה חדשה עם כל שיפורי 0.1.8
+
+**[הורדת APK](https://github.com/4pdara/DocScan/releases/download/scanner-v0.1.9/DocScan-0.1.9.apk)** · [SHA256](https://github.com/4pdara/DocScan/releases/download/scanner-v0.1.9/SHA256SUMS.txt) · [סיבות, תכולה ואימות](docs/RELEASE_0.1.9_HE.md).
+
+״DocScan סורק״ (`com.docscan.rebuild.scanner`) מותקנת לצד הגרסאות הקודמות ולא כעדכון: מפתח החתימה של 0.1.7.1/0.1.8 אינו זמין, וספריות CamScanner הקנייניות אינן מופצות. כוללת את כלי הספר, הצלעות, הפיצול, יישור הקימור, ה־OCR והגיבוי של 0.1.8. נבדקה באמולטורים בלבד, כולל Android 15 עם ספריות ARM64; לא בטלפון Samsung פיזי.
+
 ## תיקון התקנה 0.1.7.1 — חבילה רחבה ל־32 ו־64 ביט
 
 **[הורדת APK אוניברסלי](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/DocScan-0.1.7-universal.apk)** · [פרטי תאימות ואימות](docs/INSTALLATION_FIX_0.1.7_HE.md).

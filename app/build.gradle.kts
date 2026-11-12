@@ -14,6 +14,9 @@ val universalPreview = providers.gradleProperty("universalPreview").orNull?.toBo
 require(!universalPreview || camScannerNative) { "Universal preview requires the optional ARM64 research input" }
 val standaloneNativePreview = providers.gradleProperty("standaloneNativePreview").orNull?.toBooleanStrict() ?: false
 require(!standaloneNativePreview || camScannerNative) { "Standalone Native preview requires camScannerNativeDir" }
+// Public phone release: original code and licensed components only, under its own package and signing identity.
+val phoneRelease = providers.gradleProperty("phoneRelease").orNull?.toBooleanStrict() ?: false
+require(!phoneRelease || !camScannerNative) { "The public phone release never bundles the optional research engine" }
 if (camScannerNative) {
     val expected = mapOf(
         "libopencv.so" to "9df94cd8f94f0f6818ce700104b6337259c7c95eb95cd98552d27105d5d8320a",
@@ -37,6 +40,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = when {
+            phoneRelease -> "com.docscan.rebuild.scanner"
             standaloneNativePreview -> "com.docscan.rebuild.csnative.preview"
             camScannerNative -> "com.docscan.rebuild.csnative"
             else -> "com.docscan.rebuild"
@@ -44,14 +48,20 @@ android {
         buildConfigField("boolean", "CAMSCANNER_NATIVE", camScannerNative.toString())
         buildConfigField("boolean", "UNIVERSAL_PREVIEW", universalPreview.toString())
         manifestPlaceholders["docscanAppLabel"] = when {
+            phoneRelease -> "@string/release_app_name"
             standaloneNativePreview -> "@string/native_preview_app_name"
             camScannerNative -> "@string/native_app_name"
             else -> "@string/app_name"
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = if (universalPreview) "0.1.8-universal-preview" else if (camScannerNative) "0.1.8-native-preview" else "0.1.8-preview"
+        versionCode = 10
+        versionName = when {
+            phoneRelease -> "0.1.9"
+            universalPreview -> "0.1.9-universal-preview"
+            camScannerNative -> "0.1.9-native-preview"
+            else -> "0.1.9-preview"
+        }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
@@ -62,7 +72,8 @@ android {
     if (camScannerNative) sourceSets.getByName("main").jniLibs.srcDir(requireNotNull(camScannerNativeDir))
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        if (universalPreview) jniLibs.useLegacyPackaging = true
+        // Compressed libraries extracted at install time, the packaging the owner's phone accepted in 0.1.7.1.
+        if (universalPreview || phoneRelease) jniLibs.useLegacyPackaging = true
     }
     testOptions { animationsDisabled = true }
     lint { abortOnError = true }
