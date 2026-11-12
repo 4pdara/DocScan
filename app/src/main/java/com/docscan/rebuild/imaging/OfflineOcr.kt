@@ -50,7 +50,7 @@ class OfflineOcr(private val store: ScanStore) {
             lateinit var engine: TessBaseAPI
             engine = TessBaseAPI { values ->
                 if (request.isCancelled || !jobContext[kotlinx.coroutines.Job]!!.isActive) engine.stop()
-                else progress(OcrProgress(currentPage, pages.size, values.percent.coerceIn(0, 100)))
+                else progress(OcrProgress(currentPage, pages.size, values.percent.coerceIn(0, 99)))
             }
             var recognized = 0
             var retained = 0
@@ -73,8 +73,9 @@ class OfflineOcr(private val store: ScanStore) {
                                 engine.setImage(bitmap)
                                 // getUTF8Text alone cannot be interrupted in Tesseract4Android 4.9.0.
                                 // Run interruptible recognition first; UTF8 extraction then uses its result.
-                                engine.getHOCRText(index)
+                                val hocr = engine.getHOCRText(index)
                                 request.checkActive(); coroutineContext.ensureActive()
+                                check(hocr != null) { "OCR recognition failed" }
                                 val text = engine.getUTF8Text().orEmpty().trim()
                                 check(store.dao.recognized(sheet.id, text, sheet.recipe) == 1) { "Page changed during OCR" }
                                 recognized++

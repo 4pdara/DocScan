@@ -81,6 +81,13 @@ jobs:
           cache-read-only: false
       - name: Compile before booting the guest
         run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace && ./gradlew --stop
+      - name: Download the unchanged 0.1.8 baseline for parallel-install verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download native-v0.1.8-preview --pattern DocScan-0.1.8-universal.apk --pattern SHA256SUMS.txt --dir baseline
+          test -s baseline/DocScan-0.1.8-universal.apk
+          (cd baseline && sha256sum --ignore-missing -c SHA256SUMS.txt)
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
@@ -98,7 +105,7 @@ jobs:
           emulator-boot-timeout: 300
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
-          script: bash .github/device-check.sh ${{ matrix.locale }}
+          script: bash .github/device-check.sh ${{ matrix.locale }} baseline/DocScan-0.1.8-universal.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
