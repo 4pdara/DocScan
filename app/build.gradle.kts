@@ -55,16 +55,25 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
+        versionCode = 12
         versionName = when {
-            phoneRelease -> "0.2.0"
-            universalPreview -> "0.2.0-universal-preview"
-            camScannerNative -> "0.2.0-native-preview"
-            else -> "0.2.0-preview"
+            phoneRelease -> "0.2.1"
+            universalPreview -> "0.2.1-universal-preview"
+            camScannerNative -> "0.2.1-native-preview"
+            else -> "0.2.1-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
+    }
+    // Phone releases from 0.2.1 on are signed with one persistent key so each version installs over the previous one.
+    // CI supplies it; local builds keep the standard debug key.
+    System.getenv("SCANNER_KEYSTORE")?.takeIf { phoneRelease && it.isNotBlank() }?.let { keystore ->
+        signingConfigs.getByName("debug") {
+            storeFile = file(keystore); storeType = "pkcs12"
+            storePassword = requireNotNull(System.getenv("SCANNER_KEYSTORE_PASSWORD")); keyAlias = "docscan-scanner"
+            keyPassword = storePassword
+        }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

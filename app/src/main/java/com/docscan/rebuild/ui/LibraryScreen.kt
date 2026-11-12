@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,7 @@ private val HomeTile = Color(0xFFF7F7F7)
 @Composable
 fun LibraryScreen(
     store: ScanStore, entries: List<LibraryEntry>, trash: List<LibraryEntry>,
-    onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit,
+    onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit, onExtractText: () -> Unit = onScan,
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
     onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {}
 ) {
@@ -114,14 +115,14 @@ fun LibraryScreen(
                 section == "me" -> LocalProfile(onFiles = ::files, onTrash = ::trash, onBackup = onBackup, onRestoreBackup = onRestoreBackup)
                 section == "tools" -> {
                     Text(stringResource(R.string.tools_tab), Modifier.padding(20.dp), style = MaterialTheme.typography.headlineSmall)
-                    HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
+                    HomeShortcuts(onScan, onExtractText, onImport, ::files, ::trash, { selection = true; section = "files" }, withSelection = true,
                         onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
                         onPdf = { entries.firstOrNull { it.pageCount > 0 }?.let { onPdf(it.book.id) } ?: onScan() },
                         onShare = { entries.firstOrNull { it.pageCount > 0 }?.let { onShare(it.book.id) } ?: onScan() })
                 }
                 else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list"), contentPadding = PaddingValues(bottom = 96.dp)) {
                     if (section == "home" && !selection && !inTrash && search.isBlank()) item(key = "shortcuts") {
-                        HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
+                        HomeShortcuts(onScan, onExtractText, onImport, ::files, ::trash, { selection = true; section = "files" },
                             onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
                             onPdf = { entries.firstOrNull { it.pageCount > 0 }?.let { onPdf(it.book.id) } ?: onScan() },
                             onShare = { entries.firstOrNull { it.pageCount > 0 }?.let { onShare(it.book.id) } ?: onScan() })
@@ -174,7 +175,7 @@ private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Bo
                 ?: Icon(Icons.Outlined.Description, null, tint = HomeMuted)
         }
         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-            Text(entry.book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(entry.book.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(6.dp))
             Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(entry.book.created)),
                 style = MaterialTheme.typography.bodySmall, color = HomeMuted, maxLines = 1)
@@ -195,25 +196,31 @@ private fun QuickDocumentAction(label: Int, modifier: Modifier, onClick: () -> U
 }
 
 @Composable
-private fun HomeShortcuts(onScan: () -> Unit, onImport: () -> Unit, onFiles: () -> Unit, onTrash: () -> Unit,
-    onSelect: () -> Unit, onRecent: () -> Unit, onPdf: () -> Unit, onShare: () -> Unit) {
+private fun HomeShortcuts(onScan: () -> Unit, onExtractText: () -> Unit, onImport: () -> Unit, onFiles: () -> Unit, onTrash: () -> Unit,
+    onSelect: () -> Unit, withSelection: Boolean = false, onRecent: () -> Unit, onPdf: () -> Unit, onShare: () -> Unit) {
+    // Document selection is always in the top bar; the home grid gives its place to text extraction.
     val tools = listOf(
-        Triple(R.string.smart_scan, Icons.Outlined.DocumentScanner, onScan), Triple(R.string.pdf_tools, Icons.Outlined.PictureAsPdf, onPdf),
-        Triple(R.string.import_images, Icons.Outlined.Image, onImport), Triple(R.string.files_tab, Icons.Outlined.FolderOpen, onFiles),
+        Triple(R.string.smart_scan, Icons.Outlined.DocumentScanner, onScan), Triple(R.string.extract_text, Icons.Outlined.TextFields, onExtractText),
+        Triple(R.string.pdf_tools, Icons.Outlined.PictureAsPdf, onPdf), Triple(R.string.import_images, Icons.Outlined.Image, onImport),
         Triple(R.string.recent_document, Icons.Outlined.EditNote, onRecent), Triple(R.string.share, Icons.Outlined.Share, onShare),
-        Triple(R.string.select_documents, Icons.Outlined.Checklist, onSelect), Triple(R.string.trash, Icons.Outlined.RestoreFromTrash, onTrash))
+        Triple(R.string.files_tab, Icons.Outlined.FolderOpen, onFiles), Triple(R.string.trash, Icons.Outlined.RestoreFromTrash, onTrash)) +
+        (if (withSelection) listOf(Triple(R.string.select_documents, Icons.Outlined.Checklist, onSelect)) else emptyList())
     Column(Modifier.fillMaxWidth().background(Color(0xFFFCFCFC)).padding(horizontal = 10.dp, vertical = 10.dp).testTag("home-shortcuts")) {
         tools.chunked(4).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { (label, icon, action) ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = action).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = action).padding(vertical = 8.dp)
+                        .testTag(if (label == R.string.extract_text) "shortcut-extract-text" else "shortcut-$label"), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.size(48.dp).border(1.dp, Color(0xFFEEEEEE), CircleShape).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
                             Icon(icon, null, Modifier.size(26.dp), tint = when (label) { R.string.pdf_tools -> Color(0xFFFF715D); R.string.import_images, R.string.files_tab -> Color(0xFF4480E8); else -> HomeGreen })
                         }
                         Spacer(Modifier.height(7.dp))
-                        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp))
                     }
                 }
+                // Keep a short last row aligned to the grid instead of stretching its tiles.
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

@@ -61,7 +61,7 @@
     <string name="show_result">הצגת תוצאה</string>
     <string name="camera_starting">פותח מצלמה…</string>
     <string name="title_scan">סריקה %1$s</string>
-    <plurals name="pages"><item quantity="one">%1$d עמוד</item><item quantity="two">%1$d עמודים</item><item quantity="many">%1$d עמודים</item><item quantity="other">%1$d עמודים</item></plurals>
+    <plurals name="pages"><item quantity="one">עמוד אחד</item><item quantity="two">%1$d עמודים</item><item quantity="many">%1$d עמודים</item><item quantity="other">%1$d עמודים</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d עמוד נשמר</item><item quantity="two">%1$d עמודים נשמרו</item><item quantity="many">%1$d עמודים נשמרו</item><item quantity="other">%1$d עמודים נשמרו</item></plurals>
     <string name="native_app_name">DocScan ניסוי Native</string>
     <string name="native_preview_app_name">DocScan Native 0.1.7</string>
@@ -155,6 +155,11 @@
     <string name="backup_hint">גיבוי מלא כולל מקורות, עריכות, סדר עמודים, סל מחזור וטקסט מזוהה. שחזור מוסיף מסמכים בלי להחליף קיימים. שמור את הגיבוי מחוץ לאפליקציה.</string>
     <string name="backup_saved">גיבוי הספרייה נשמר</string>
     <string name="backup_restored">הגיבוי שוחזר והמסמכים הקיימים נשמרו</string>
+    <string name="extract_text">חילוץ טקסט</string>
+    <string name="recognize_again">זיהוי מחדש</string>
+    <string name="unsaved_title">המסמך לא נשמר</string>
+    <string name="unsaved_message">יציאה בלי שמירה תמחק את הסריקה ואת העמודים שצולמו. לצאת?</string>
+    <string name="leave_without_saving">יציאה בלי שמירה</string>
 </resources>
 
 

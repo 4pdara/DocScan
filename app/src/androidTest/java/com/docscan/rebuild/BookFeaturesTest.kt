@@ -158,7 +158,7 @@ class BookFeaturesTest {
         var db=Room.databaseBuilder(context,ScanDatabase::class.java,name).build();var store=ScanStore(context,db);val book=store.create("OCR")
         val files=mutableListOf<File>()
         try {
-            for((lang,text,expected) in listOf(Triple("eng","BOOK SCANNING\nDOCUMENT 123456\nCLEAR PRINTED TEXT","DOCUMENT"),Triple("heb","שלום עולם\nספר חדש\nשלום עולם","שלום"))) {
+            for((lang,text,expected) in listOf(Triple("eng","BOOK SCANNING\nDOCUMENT 123456\nCLEAR PRINTED TEXT","DOCUMENT 123456"),Triple("heb","שלום עולם\nספר חדש\nשלום עולם","שלום עולם"))) {
                 val file=fixture("ocr-$lang",1800,1000){canvas ->
                     val paint=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=100f;typeface=Typeface.create("sans-serif",Typeface.NORMAL)}
                     val layout=StaticLayout.Builder.obtain(text,0,text.length,paint,1500).setAlignment(Layout.Alignment.ALIGN_NORMAL).setTextDirection(if(lang=="heb")TextDirectionHeuristics.RTL else TextDirectionHeuristics.LTR).build()

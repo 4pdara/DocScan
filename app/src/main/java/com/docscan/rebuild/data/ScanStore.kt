@@ -46,6 +46,10 @@ interface ScanQueries {
     @Query("UPDATE notebooks SET title=:title WHERE id=:id") suspend fun rename(id: String, title: String)
     @Query("UPDATE sheets SET position=:position WHERE id=:id") suspend fun position(id: String, position: Int)
     @Query("UPDATE notebooks SET trashedAt=:at WHERE id IN (:ids)") suspend fun trash(ids: List<String>, at: Long?)
+    @Query("DELETE FROM sheets WHERE notebookId=:id") suspend fun deletePages(id: String)
+    @Query("DELETE FROM notebooks WHERE id=:id") suspend fun deleteBook(id: String)
+    @Query("SELECT COUNT(*) FROM sheets WHERE source=:source") suspend fun sourceUses(source: String): Int
+    @Query("SELECT id FROM notebooks WHERE trashedAt IS NULL AND created < :before AND id NOT IN (SELECT notebookId FROM sheets)") suspend fun emptyBooks(before: Long): List<String>
 }
 @Database(entities = [Notebook::class, Sheet::class], version = 3, exportSchema = true)
 abstract class ScanDatabase : RoomDatabase() {
@@ -140,6 +144,25 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             val second = current.copy(id=UUID.randomUUID().toString(),position=current.position+1,recipe=RecipeCodec.encode(base.copy(frame=crops[1])),ocrText=null,ocrRecipe=null)
             dao.insert(second)
             requireNotNull(dao.page(current.id))
+        } }
+    }
+
+    /**
+     * Permanently removes a scan the user left without saving: its pages, and each original no other page shares.
+     * Only used for unsaved scan sessions and empty documents; saved documents go to the recoverable trash.
+     */
+    suspend fun discard(bookId: String) = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val pages = dao.snapshot(bookId)
+            database.withTransaction { dao.deletePages(bookId); dao.deleteBook(bookId) }
+            pages.map { it.source }.distinct().filter { dao.sourceUses(it) == 0 }.forEach { File(masters, it).delete() }
+        }
+    }
+
+    /** Documents left empty by an interrupted scan, older than [olderThanMs] and not currently open. */
+    suspend fun removeEmpty(keep: Set<String>, olderThanMs: Long = 10 * 60 * 1000L) = withContext(Dispatchers.IO) {
+        lock.withLock { database.withTransaction {
+            dao.emptyBooks(System.currentTimeMillis() - olderThanMs).filter { it !in keep }.forEach { dao.deleteBook(it) }
         } }
     }
 

@@ -59,7 +59,10 @@ object ImagePipeline {
                 val p = recipe.frame.points.map { Point((it.x * (source.cols() - 1)).toDouble(), (it.y * (source.rows() - 1)).toDouble()) }
                 val dimensions = CropGeometry.dimensions(recipe.frame, source.cols(), source.rows(), recipe.outputAspect, focalToDiagonal)
                 val width = dimensions.width; val height = dimensions.height
-                val from = MatOfPoint2f(*p.toTypedArray()); val to = MatOfPoint2f(Point(0.0, 0.0), Point((width - 1).toDouble(), 0.0), Point((width - 1).toDouble(), (height - 1).toDouble()), Point(0.0, (height - 1).toDouble()))
+                val from = MatOfPoint2f(*p.toTypedArray()); // A detected edge lies on the page border; the outermost pixels then carry the table, shadow or page edge as a
+                // dark line. Sample a quarter percent inside the crop (same output size) so the border stays clean.
+                val inset = if (recipe.frame == Frame.FULL) 0.0 else max(1.0, min(width, height) * .0025)
+                val to = MatOfPoint2f(Point(-inset, -inset), Point(width - 1 + inset, -inset), Point(width - 1 + inset, height - 1 + inset), Point(-inset, height - 1 + inset))
                 val homography = Imgproc.getPerspectiveTransform(from, to)
                 try { Imgproc.warpPerspective(source, current, homography, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
                 finally { from.release(); to.release(); homography.release() }

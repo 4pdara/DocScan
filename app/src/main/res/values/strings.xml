@@ -155,6 +155,11 @@
     <string name="backup_hint">A full backup includes originals, edits, page order, trash and recognized text. Restore adds documents without replacing existing ones. Save the backup outside the app.</string>
     <string name="backup_saved">Library backup saved</string>
     <string name="backup_restored">Backup restored; existing documents preserved</string>
+    <string name="extract_text">Extract text</string>
+    <string name="recognize_again">Recognize again</string>
+    <string name="unsaved_title">Document not saved</string>
+    <string name="unsaved_message">Leaving without saving deletes this scan and the pages you captured. Leave?</string>
+    <string name="leave_without_saving">Leave without saving</string>
 </resources>
 
 

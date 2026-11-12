@@ -35,9 +35,9 @@ class OfflineOcr(private val store: ScanStore) {
             try {
                 check(engine.init(root.path,languages,TessBaseAPI.OEM_LSTM_ONLY)) { "OCR initialization failed" }
                 engine.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
-                engine.setVariable("preserve_interword_spaces","1")
+                // preserve_interword_spaces drops the space before many Hebrew words (measured on a printed title page).
                 engine.setImage(bitmap)
-                val text=engine.getUTF8Text().orEmpty().trim()
+                val text=tidy(engine.getUTF8Text().orEmpty())
                 coroutineContext.ensureActive()
                 check(store.dao.recognized(sheet.id,text,sheet.recipe)==1) { "Page changed during OCR" }
                 text
@@ -45,6 +45,10 @@ class OfflineOcr(private val store: ScanStore) {
         }
     }
     companion object {
+        /** One printed line per text line: no direction marks, padding or empty lines; Hebrew gershayim restored. */
+        fun tidy(raw:String):String=raw.replace("\u200e","").replace("\u200f","").lines()
+            .map { it.replace(Regex("[ \\t]+")," ").trim() }.filter { it.isNotEmpty() }.joinToString("\n")
+            .replace(Regex("(?<=\\p{InHebrew})''(?=\\p{InHebrew})"),"\"")
         private val lock=Mutex()
         private val models=mapOf("heb" to "11f9e43ab227f786352a50f75c94c2e9906f1baba86d93276da19da7ce0904db","eng" to "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2")
     }

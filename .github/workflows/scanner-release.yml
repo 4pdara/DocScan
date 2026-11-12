@@ -1,8 +1,8 @@
-name: Build, verify and publish DocScan 0.2.0
+name: Build, verify and publish DocScan 0.2.1
 on:
   push:
     branches: [feature/original-filters]
-    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_0.2.0_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
+    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_0.2.1_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,11 +10,16 @@ concurrency:
   group: scanner-release-${{ github.ref }}
   cancel-in-progress: true
 env:
-  TAG: scanner-v0.2.0
+  TAG: scanner-v0.2.1
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    # Write access only to read or create the draft release that holds the persistent signing key.
+    permissions:
+      contents: write
+    env:
+      SCANNER_KEYSTORE_PASSWORD: docscan-scanner-phone
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,19 +34,41 @@ jobs:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
+      - name: Persistent phone signing key, kept in a draft release that only repository writers can see
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          key="$RUNNER_TEMP/scanner-key/scanner-signing.p12"; mkdir -p "$(dirname "$key")"
+          release=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq '[.[] | select(.draft and .name == "DocScan scanner signing key")][0].id // empty')
+          if [ -n "$release" ]; then
+            asset=$(gh api "repos/$GH_REPO/releases/$release/assets" --jq '[.[] | select(.name == "scanner-signing.p12")][0].id')
+            gh api -H 'Accept: application/octet-stream' "repos/$GH_REPO/releases/assets/$asset" > "$key"
+            echo "Using the existing phone signing key"
+          else
+            keytool -genkeypair -keystore "$key" -storetype PKCS12 -storepass "$SCANNER_KEYSTORE_PASSWORD" -keypass "$SCANNER_KEYSTORE_PASSWORD" \
+              -alias docscan-scanner -keyalg RSA -keysize 4096 -validity 36500 -dname 'CN=DocScan Scanner, O=DocScan'
+            gh release create scanner-signing-key "$key" --draft --title 'DocScan scanner signing key' \
+              --notes 'Signing key for DocScan Scanner phone releases. Never publish this draft; deleting it means the next version cannot update the installed app.'
+            echo "Created the phone signing key"
+          fi
+          keytool -list -keystore "$key" -storepass "$SCANNER_KEYSTORE_PASSWORD" -alias docscan-scanner > /dev/null
+          echo "SCANNER_KEYSTORE=$key" >> "$GITHUB_ENV"
       - name: Clean build, unit tests, lint, app and instrumentation APKs
         run: ./gradlew -PphoneRelease=true clean testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
       - name: Check the exact APK before any device sees it
         run: |
           tools="$ANDROID_HOME/build-tools/35.0.0"
           mkdir -p release-apks/tests
-          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-0.2.0.apk
-          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-0.2.0-tests.apk
-          apk=release-apks/DocScan-0.2.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-0.2.1.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-0.2.1-tests.apk
+          apk=release-apks/DocScan-0.2.1.apk
           "$tools/apksigner" verify --verbose --print-certs "$apk" | tee release-apks/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' release-apks/signature.txt
+          grep -q 'Signer #1 certificate DN: CN=DocScan Scanner, O=DocScan' release-apks/signature.txt
+          "$tools/apksigner" verify --print-certs release-apks/tests/DocScan-0.2.1-tests.apk | grep -q 'CN=DocScan Scanner, O=DocScan'
           "$tools/aapt" dump badging "$apk" | tee release-apks/badging.txt
-          grep -q "package: name='com.docscan.rebuild.scanner' versionCode='11' versionName='0.2.0'" release-apks/badging.txt
+          grep -q "package: name='com.docscan.rebuild.scanner' versionCode='12' versionName='0.2.1'" release-apks/badging.txt
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do grep '^native-code:' release-apks/badging.txt | grep -q "'$abi'"; done
           "$tools/zipalign" -c -v 4 "$apk" > /dev/null
           python3 - "$apk" <<'PY'
@@ -58,10 +85,10 @@ jobs:
                   raise SystemExit('Native libraries must be compressed for install-time extraction')
               print(len(libs), 'native libraries, none from the research engine')
           PY
-          ( cd release-apks && sha256sum DocScan-0.2.0.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
+          ( cd release-apks && sha256sum DocScan-0.2.1.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
       - uses: actions/upload-artifact@v4
         with:
-          name: DocScan-0.2.0-exact-apks
+          name: DocScan-0.2.1-exact-apks
           path: release-apks/
           retention-days: 30
       - uses: actions/upload-artifact@v4
@@ -145,7 +172,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@v4
         with:
-          name: DocScan-0.2.0-exact-apks
+          name: DocScan-0.2.1-exact-apks
           path: release-apks
       - name: Enable KVM
         run: |
@@ -181,7 +208,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: DocScan-0.2.0-exact-apks
+          name: DocScan-0.2.1-exact-apks
           path: release-apks
       - name: Publish only the exact APK that passed every check
         env:
@@ -193,20 +220,20 @@ jobs:
           cert=$(grep -m1 'Signer #1 certificate SHA-256 digest' signature.txt | awk '{print $NF}')
           python3 - "$cert" <<'PY'
           import hashlib, json, os, sys
-          apk = 'DocScan-0.2.0.apk'
-          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=11, version_name='0.2.0', minimum_android_api=26,
+          apk = 'DocScan-0.2.1.apk'
+          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=12, version_name='0.2.1', minimum_android_api=26,
                          architectures=['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'], research_engine_included=False,
                          certificate_sha256=sys.argv[1], apk_size=os.path.getsize(apk),
                          apk_sha256=hashlib.sha256(open(apk, 'rb').read()).hexdigest(),
                          source_commit=os.environ['GITHUB_SHA'], workflow_run=os.environ['GITHUB_RUN_ID']),
                       open('BUILD.json', 'w'), indent=2)
           PY
-          cp ../docs/RELEASE_0.2.0_HE.md notes.md
+          cp ../docs/RELEASE_0.2.1_HE.md notes.md
           printf '\n\n[ריצת הבנייה, הבדיקות והפרסום](%s/%s/actions/runs/%s)\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> notes.md
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to replace it"; exit 1
           fi
-          gh release create "$TAG" DocScan-0.2.0.apk SHA256SUMS.txt BUILD.json \
+          gh release create "$TAG" DocScan-0.2.1.apk SHA256SUMS.txt BUILD.json \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title 'DocScan 0.2.0 — מסננים מקוריים וכל שיפורי 0.1.8' --notes-file notes.md
+            --title 'DocScan 0.2.1 — זיהוי טקסט מתוקן, טיוטות ללא מסמכים ריקים ומפתח חתימה קבוע' --notes-file notes.md
           gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size) \(.digest)"'

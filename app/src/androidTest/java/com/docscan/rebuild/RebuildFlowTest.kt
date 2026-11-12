@@ -109,6 +109,38 @@ class RebuildFlowTest {
         compose.onNodeWithTag("document-pages").assertIsDisplayed()
     }
 
+    @Test fun leavingANewScanWithoutCapturingCreatesNoDocument() {
+        val store = (compose.activity.application as ScanApplication).store
+        val existing = runBlocking { store.dao.allBooks().map { it.id }.toSet() }
+        compose.onNodeWithTag("new-scan").performClick()
+        val shutter = hasContentDescription(compose.activity.getString(R.string.capture)) and isEnabled()
+        compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("The scan exists only as a draft while the camera is open", 1, runBlocking { store.dao.allBooks().count { it.id !in existing } })
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.back)).performClick()
+        compose.waitUntil(15000) { compose.onAllNodesWithTag("home-shortcuts").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10000) { runBlocking { store.dao.allBooks().none { it.id !in existing } } }
+    }
+
+    @Test fun discardedScanRemovesItsPagesAndUnsharedOriginalsOnly(): Unit = runBlocking {
+        val store = (compose.activity.application as ScanApplication).store
+        val kept = store.create("Kept ${System.nanoTime()}"); val draft = store.create("Draft ${System.nanoTime()}")
+        val keptPage = store.captured(kept.id, fixture("kept.jpg")); val draftPage = store.captured(draft.id, fixture("draft.jpg"))
+        val second = store.split(draftPage, draftPage.edit(), .5f, true)
+        assertTrue(store.source(draftPage).isFile && store.source(second).isFile)
+        store.discard(draft.id)
+        assertNull(store.dao.book(draft.id)); assertTrue(store.dao.snapshot(draft.id).isEmpty())
+        assertFalse("Unsaved original is deleted", store.source(draftPage).exists())
+        assertNotNull(store.dao.book(kept.id)); assertTrue("Saved documents keep their originals", store.source(keptPage).isFile)
+        // Interrupted scans leave empty documents; only old ones not in use are removed.
+        val empty = store.create("Empty ${System.nanoTime()}")
+        store.removeEmpty(emptySet()); assertNotNull("A just-created scan is still in progress", store.dao.book(empty.id))
+        store.removeEmpty(setOf(empty.id), olderThanMs = -1); assertNotNull(store.dao.book(empty.id))
+        store.removeEmpty(emptySet(), olderThanMs = -1); assertNull(store.dao.book(empty.id)); assertNotNull(store.dao.book(kept.id))
+        // Recognized Hebrew keeps each printed line, without direction marks, padding or empty lines.
+        assertEquals("סדר הקבלה\nתשנ\"ה", com.docscan.rebuild.imaging.OfflineOcr.tidy("\u200f סדר  הקבלה \n\n תשנ''ה\u200e\n"))
+        store.trash(setOf(kept.id))
+    }
+
     @Test fun singleCaptureOpensEditorWithDurableOriginal() {
         val store = (compose.activity.application as ScanApplication).store
         compose.onNodeWithTag("new-scan").performClick()
