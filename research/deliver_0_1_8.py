@@ -92,12 +92,22 @@ def publish(plan, output):
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     notes = output / 'RELEASE_NOTES.md'
     notes.write_text(Path('docs/PREVIEW_0.1.8_HE.md').read_text() + '\n\n[בדיקות התקנת הקובץ החתום](https://github.com/' + REPO + '/actions/runs/' + os.environ['GITHUB_RUN_ID'] + ')\n')
-    releases = gh_json(f'repos/{REPO}/releases?per_page=100')
-    existing_release = next((item for item in releases if item['tag_name'] == TAG), None)
+    def find_release():
+        # Draft releases have no tag yet, so releases/tags/{TAG} returns 404 for them; look them up by listing.
+        releases = gh_json(f'repos/{REPO}/releases?per_page=100')
+        return next((item for item in releases if item['tag_name'] == TAG), None)
+    existing_release = find_release()
     if existing_release is None:
         subprocess.run(['gh', 'release', 'create', TAG, '--repo', REPO, '--target', commit, '--draft', '--prerelease', '--latest=false',
             '--title', 'DocScan 0.1.8 — כריכות וכלי ספר', '--notes-file', str(notes)], check=True)
-    release = gh_json(f'repos/{REPO}/releases/tags/{TAG}')
+        existing_release = find_release()
+    elif existing_release['draft'] and existing_release['target_commitish'] != commit:
+        subprocess.run(['gh', 'api', '-X', 'PATCH', f"repos/{REPO}/releases/{existing_release['id']}", '-f', f'target_commitish={commit}'],
+            check=True, capture_output=True)
+    if existing_release is None:
+        raise ValueError('Release was not created')
+    release_id = existing_release['id']
+    release = gh_json(f'repos/{REPO}/releases/{release_id}')
     if not release['prerelease']:
         raise ValueError('Refusing to replace a final release')
     apk = output / 'app' / APP_NAME
@@ -108,7 +118,7 @@ def publish(plan, output):
             raise ValueError('Different asset already exists: ' + path.name)
         if existing is None:
             subprocess.run(['gh', 'release', 'upload', TAG, str(path), '--repo', REPO], check=True)
-    published = gh_json(f'repos/{REPO}/releases/tags/{TAG}')
+    published = gh_json(f'repos/{REPO}/releases/{release_id}')
     for path in files:
         asset = next(item for item in published['assets'] if item['name'] == path.name)
         if asset.get('digest') != 'sha256:' + sha(path) or asset['size'] != path.stat().st_size:
