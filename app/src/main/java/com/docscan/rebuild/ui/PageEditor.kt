@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.IntOffset
@@ -294,7 +295,7 @@ private fun CropHandles(aspect: Float, frame: Frame, onChange: (Frame) -> Unit) 
             val half=with(density){24.dp.toPx()}
             val label=stringResource(if(i<4)R.string.crop_corner else R.string.crop_edge,i%4+1)
             val left=stringResource(R.string.move_left);val right=stringResource(R.string.move_right);val up=stringResource(R.string.move_up);val down=stringResource(R.string.move_down)
-            Box(Modifier.absoluteOffset { IntOffset((point.x-half).toInt(),(point.y-half).toInt()) }.size(48.dp).testTag("crop-handle-$i").semantics {
+            Box(Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset { IntOffset((point.x-half).toInt(),(point.y-half).toInt()) }.size(48.dp).testTag("crop-handle-$i").semantics {
                 contentDescription=label
                 customActions=listOf(CustomAccessibilityAction(left){change(latest.dragHandle(i,-.01f,0f,aspect));true},CustomAccessibilityAction(right){change(latest.dragHandle(i,.01f,0f,aspect));true},CustomAccessibilityAction(up){change(latest.dragHandle(i,0f,-.01f,aspect));true},CustomAccessibilityAction(down){change(latest.dragHandle(i,0f,.01f,aspect));true})
             })

@@ -162,8 +162,8 @@ class BookFeaturesTest {
                 compose.onNodeWithText(label).performClick()
             }
             compose.onNode(document).performClick();openEditor()
-            compose.onNodeWithContentDescription(compose.activity.getString(R.string.crop)).performClick()
-            for(i in 0..7)compose.onNodeWithTag("crop-handle-$i").assertExists()
+            compose.onNodeWithText(compose.activity.getString(R.string.crop)).performClick()
+            for(i in 0..7)compose.onNodeWithTag("crop-handle-$i").assertIsDisplayed()
             compose.waitForIdle()
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { screenshot ->
                 try { val directory=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()};File(directory,"side-crop-handles.png").outputStream().use {screenshot.compress(Bitmap.CompressFormat.PNG,100,it)} } finally{screenshot.recycle()}
