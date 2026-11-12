@@ -2,6 +2,9 @@ package com.docscan.rebuild.imaging
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import java.io.File
 import com.docscan.rebuild.BuildConfig
 import com.docscan.rebuild.model.Treatment
 import com.intsig.nativelib.MagicEnhancer
@@ -12,6 +15,11 @@ import org.opencv.imgproc.Imgproc
 
 /** Experimental Bitmap boundary; no Mat or allocation crosses between OpenCV providers. */
 internal object NativeCamScannerEnhancer {
+    private lateinit var workingDirectory: File
+    fun configureCache(cache: File) {
+        workingDirectory = File(cache, "native-pro").apply { mkdirs() }
+        workingDirectory.listFiles()?.filter { it.extension == "png" }?.forEach { it.delete() }
+    }
     private val loaded by lazy {
         listOf("opencv", "ncnn", "MNN", "CVNN", "magicenhancer").forEach(System::loadLibrary)
         check(MagicEnhancer.GetVersion() == "v0.0.9-4ea7ef5e") { "Unexpected CamScanner research engine version" }
@@ -48,11 +56,24 @@ internal object NativeCamScannerEnhancer {
     }
 
     private fun silverBullet(bitmap: Bitmap) {
-        // The second flag enables silver_bullet_dewarp_process, which may enlarge
-        // its Mat. This Bitmap JNI entry point blindly copies that output into the
-        // original allocation, causing SIGSEGV. Run the same native enhancement
-        // with dewarp disabled; preserve the user's crop and full pixel dimensions.
-        checkStatus(MagicEnhancer.ImageSilverBulletBitmap(bitmap, 1, 0, 1))
+        // The Bitmap JNI method copies an unchecked output allocation into its
+        // input buffer. Use the file boundary instead: lossless private working
+        // PNGs let us validate dimensions before touching the caller's bitmap.
+        // Dewarp stays disabled: it must never change the user's saved crop.
+        val input = File.createTempFile("input-", ".png", workingDirectory)
+        val output = File.createTempFile("output-", ".png", workingDirectory)
+        try {
+            input.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            checkStatus(MagicEnhancer.ImageSilverBulletFile(input.path, output.path, 1, 0, 1))
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(output.path, bounds)
+            check(bounds.outWidth == bitmap.width && bounds.outHeight == bitmap.height) {
+                "Native Pro changed dimensions: ${bitmap.width}x${bitmap.height} -> ${bounds.outWidth}x${bounds.outHeight}"
+            }
+            val processed = checkNotNull(BitmapFactory.decodeFile(output.path)) { "Native Pro produced no image" }
+            try { Canvas(bitmap).drawBitmap(processed, 0f, 0f, null) }
+            finally { processed.recycle() }
+        } finally { input.delete(); output.delete() }
     }
 
     private fun board(bitmap: Bitmap, paper: Boolean) {
