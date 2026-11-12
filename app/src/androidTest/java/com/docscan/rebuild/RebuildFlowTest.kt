@@ -209,6 +209,7 @@ class RebuildFlowTest {
 
     @Test fun nativeProPreservesPageDimensionsAndOriginalPixels() {
         Assume.assumeTrue("Requires the ARM64 Native profile", BuildConfig.CAMSCANNER_NATIVE)
+        val failures = mutableListOf<String>()
         for ((width, height) in listOf(1970 to 1440, 1440 to 1970, 321 to 479)) {
             val input = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
@@ -221,12 +222,19 @@ class RebuildFlowTest {
                     assertEquals(255, Color.alpha(output.getPixel(width - 1, height - 1)))
                     val paper = output.getPixel(width / 2, height / 4)
                     val ink = output.getPixel(width / 2, (height * .42f).toInt())
-                    assertTrue("Pro lost the original stroke", Color.red(paper) - Color.red(ink) > 80)
+                    val directory = File(compose.activity.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+                    File(directory, "pro-source-$width-$height.png").outputStream().use { input.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    File(directory, "pro-result-$width-$height.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    val darkRows = (0 until height).filter { Color.red(output.getPixel(width / 2, it)) < 80 }
+                    val detail = "$width x $height paper=${Color.red(paper)} ink=${Color.red(ink)} darkRows=${darkRows.take(8)}..${darkRows.takeLast(8)}"
+                    android.util.Log.i("DocScanProRegression", detail)
+                    if (Color.red(paper) - Color.red(ink) <= 80) failures.add(detail)
                 } finally { output.recycle() }
                 val after = IntArray(width * height).also { input.getPixels(it, 0, width, 0, 0, width, height) }
                 assertArrayEquals(before, after)
             } finally { input.recycle() }
         }
+        assertTrue("Pro lost the original stroke: ${failures.joinToString()}", failures.isEmpty())
     }
 
     @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
@@ -644,7 +652,9 @@ class RebuildFlowTest {
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(compose.activity.getString(R.string.edit)).performClick()
         compose.onNodeWithTag("filter-strip").assertIsDisplayed()
-        compose.waitUntil(20000) { compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(60000) {
+            compose.onAllNodes(hasTestTag("rendered-page-image") and hasAnyAncestor(hasTestTag("page-preview"))).fetchSemanticsNodes().isNotEmpty()
+        }
         screenshot("editor")
         compose.onNodeWithTag("editor-export").performClick()
         compose.onNodeWithText(compose.activity.getString(R.string.save_gallery)).assertIsDisplayed()

@@ -2,7 +2,7 @@
 set -euo pipefail
 locale="${1:-en}"
 apk_root="${2:-native-apks}"
-application_id="${3:-com.docscan.rebuild.csnative.preview}"
+application_id="${3:-com.docscan.rebuild.csnative}"
 mkdir -p native-device-results
 collect_results() {
   test_status=$?
@@ -10,7 +10,7 @@ collect_results() {
   adb logcat -d > native-device-results/logcat.txt || true
   if ! adb pull "/sdcard/Android/data/$application_id/files/screenshots" native-device-results/screenshots; then
     mkdir -p native-device-results/screenshots
-    if adb exec-out run-as "$application_id" tar -C "/sdcard/Android/data/$application_id/files/screenshots" -cf - . > native-device-results/screenshots.tar; then
+    if adb exec-out run-as "$application_id" tar -C "/sdcard/Android/data/$application_id/files/screenshots" -cf - . > native-device-results/screenshots.tar && tar -tf native-device-results/screenshots.tar >/dev/null 2>&1; then
       tar -xf native-device-results/screenshots.tar -C native-device-results/screenshots
     elif [[ $test_status -eq 0 ]]; then test_status=1; fi
   fi

@@ -43,7 +43,7 @@ jobs:
                   filename='lib'+name+'.so';(root/filename).write_bytes(z.read('lib/arm64-v8a/'+filename))
           PY
       - name: Validate and compile the Native application
-        run: ./gradlew -PcamScannerNativeDir=/tmp/native-build -PstandaloneNativePreview=true testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+        run: ./gradlew -PcamScannerNativeDir=/tmp/native-build testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: Native-0.1.7-build-input
