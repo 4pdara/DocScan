@@ -9,8 +9,14 @@ collect_results() {
   trap - EXIT
   adb logcat -d > native-device-results/logcat.txt || true
   if ! adb pull "/sdcard/Android/data/$application_id/files/screenshots" native-device-results/screenshots; then
+    # API 30 scoped storage can deny the shell even for our own test captures.
+    # These google_apis test guests support adb root, as in the Native matrix.
+    adb root || true
+    adb wait-for-device
     mkdir -p native-device-results/screenshots
-    if adb exec-out run-as "$application_id" tar -C "/sdcard/Android/data/$application_id/files/screenshots" -cf - . > native-device-results/screenshots.tar && tar -tf native-device-results/screenshots.tar >/dev/null 2>&1; then
+    if adb pull "/sdcard/Android/data/$application_id/files/screenshots/." native-device-results/screenshots; then
+      :
+    elif adb exec-out run-as "$application_id" tar -C "/sdcard/Android/data/$application_id/files/screenshots" -cf - . > native-device-results/screenshots.tar && tar -tf native-device-results/screenshots.tar >/dev/null 2>&1; then
       tar -xf native-device-results/screenshots.tar -C native-device-results/screenshots
     elif [[ $test_status -eq 0 ]]; then test_status=1; fi
   fi
