@@ -123,6 +123,7 @@
     <string name="local_profile_hint">Documents and edits are saved on this device. Originals are kept separately at their captured resolution.</string>
     <string name="previous_page">Previous page</string>
     <string name="next_page">Next page</string>
+    <string name="local_processing_active">Local image processing is active on this device</string>
 </resources>
 
 

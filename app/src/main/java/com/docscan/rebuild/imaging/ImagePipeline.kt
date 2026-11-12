@@ -15,6 +15,7 @@ import kotlin.math.*
 
 /** All edits are derived from the immutable master; only previews are sampled. */
 object ImagePipeline {
+    val referenceEngineAvailable: Boolean get() = NativeCamScannerEnhancer.available
     private val available by lazy { OpenCVLoader.initLocal() }
     fun ensureAvailable() { check(available) { "OpenCV initialization failed" } }
 
@@ -51,6 +52,7 @@ object ImagePipeline {
 
     fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null): Bitmap {
         ensureAvailable(); require(recipe.frame.valid())
+        check(!recipe.treatment.requiresReferenceEngine || referenceEngineAvailable) { "Reference engine is not bundled for this device" }
         val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
             Utils.bitmapToMat(bitmap, source)
@@ -93,7 +95,7 @@ object ImagePipeline {
                 Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW,
                 Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.NATIVE_BOARD,
                 Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD -> {
-                    if (BuildConfig.CAMSCANNER_NATIVE || recipe.treatment.requiresReferenceEngine) {
+                    if (referenceEngineAvailable) {
                         val work = Bitmap.createBitmap(current.cols(), current.rows(), Bitmap.Config.ARGB_8888)
                         try {
                             Utils.matToBitmap(current, work)

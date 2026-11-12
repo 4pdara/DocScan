@@ -56,6 +56,30 @@ class RebuildFlowTest {
         finally { image.recycle() }
     }
 
+    @Test fun localProcessingWorksWhenTheOptionalArm64EngineIsUnavailable() {
+        ImagePipeline.ensureAvailable()
+        if (BuildConfig.UNIVERSAL_PREVIEW && Build.SUPPORTED_ABIS.first().startsWith("x86")) {
+            assertFalse("Universal x86 installation must use its local processor", ImagePipeline.referenceEngineAvailable)
+        }
+        val input = Bitmap.createBitmap(321, 479, Bitmap.Config.ARGB_8888)
+        Canvas(input).apply {
+            drawColor(Color.rgb(155, 165, 145))
+            drawRect(40f, 100f, 280f, 106f, Paint().apply { color = Color.BLACK })
+        }
+        val before = IntArray(321 * 479).also { input.getPixels(it, 0, 321, 0, 0, 321, 479) }
+        try {
+            for (treatment in Treatment.entries.filter { !it.requiresReferenceEngine }) {
+                val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
+                try {
+                    assertEquals(321, output.width); assertEquals(479, output.height)
+                    assertEquals(255, Color.alpha(output.getPixel(160, 103)))
+                } finally { output.recycle() }
+            }
+            val after = IntArray(before.size).also { input.getPixels(it, 0, 321, 0, 0, 321, 479) }
+            assertArrayEquals(before, after)
+        } finally { input.recycle() }
+    }
+
     @Test fun cameraCapturesDurablePageAndDoneOpensReviewEditor() {
         val store = (compose.activity.application as ScanApplication).store
         val existing = runBlocking { store.dao.library().first().map { it.book.id }.toSet() }
@@ -126,7 +150,7 @@ class RebuildFlowTest {
             assertEquals(.1f, detected.points[0].x, .035f); assertEquals(.092f, detected.points[0].y, .035f)
             val original = ImagePipeline.render(file, EditRecipe())
             assertEquals(1800, original.width); assertEquals(2400, original.height); original.recycle()
-            for (treatment in Treatment.entries.filter { BuildConfig.CAMSCANNER_NATIVE || !it.requiresReferenceEngine }) {
+            for (treatment in Treatment.entries.filter { ImagePipeline.referenceEngineAvailable || !it.requiresReferenceEngine }) {
                 android.util.Log.i("DocScanFullResolution", "Rendering ${treatment.name} after crop and rotation")
                 val result = ImagePipeline.render(file, EditRecipe(frame = detected, turns = 1, treatment = treatment, brightness = -12f, contrast = .8f))
                 assertTrue(result.width > 1800); assertTrue(result.height > 1300)
@@ -160,7 +184,7 @@ class RebuildFlowTest {
             for (treatment in Treatment.entries.filter { it.requiresReferenceEngine }) {
                 val recipe = EditRecipe(treatment = treatment, brightness = 6f, outputAspect = .75f)
                 assertEquals(recipe, RecipeCodec.decode(RecipeCodec.encode(recipe)))
-                if (!BuildConfig.CAMSCANNER_NATIVE) {
+                if (!ImagePipeline.referenceEngineAvailable) {
                     try { ImagePipeline.transform(input, recipe).recycle(); fail("Reference filter must not fall back") }
                     catch (expected: IllegalStateException) { assertTrue(expected.message.orEmpty().contains("not bundled")) }
                 }
@@ -208,7 +232,7 @@ class RebuildFlowTest {
     }
 
     @Test fun nativeProPreservesPageDimensionsAndOriginalPixels() {
-        Assume.assumeTrue("Requires the ARM64 Native profile", BuildConfig.CAMSCANNER_NATIVE)
+        Assume.assumeTrue("Requires the ARM64 Native profile", ImagePipeline.referenceEngineAvailable)
         val failures = mutableListOf<String>()
         for ((width, height) in listOf(1970 to 1440, 1440 to 1970, 321 to 479)) {
             val input = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -238,7 +262,7 @@ class RebuildFlowTest {
     }
 
     @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
-        Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
+        Assume.assumeTrue("Requires the private ARM64 reference profile", ImagePipeline.referenceEngineAvailable)
         ImagePipeline.ensureAvailable()
         val delay = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
         if (delay > 0) android.os.SystemClock.sleep(delay)
@@ -268,7 +292,7 @@ class RebuildFlowTest {
 
     /** Research-only entry point: each invocation can run one filter in a fresh Android process. */
     @Test fun referenceNativeIsolatedMatrix() {
-        Assume.assumeTrue("Requires the private ARM64 reference profile", BuildConfig.CAMSCANNER_NATIVE)
+        Assume.assumeTrue("Requires the private ARM64 reference profile", ImagePipeline.referenceEngineAvailable)
         val args = androidx.test.platform.app.InstrumentationRegistry.getArguments()
         val caseId = args.getString("researchCaseId", "manual")
         require(caseId.matches(Regex("[A-Za-z0-9_-]{1,100}")))
@@ -576,7 +600,7 @@ class RebuildFlowTest {
     }
 
     @Test fun nativeReviewKeepsAllFourteenFiltersAndExportsAfterReopen() {
-        Assume.assumeTrue("Requires the ARM64 Native profile", BuildConfig.CAMSCANNER_NATIVE)
+        Assume.assumeTrue("Requires the ARM64 Native profile", ImagePipeline.referenceEngineAvailable)
         val treatments = Treatment.entries.toList()
         assertEquals(14, treatments.size)
         val store = (compose.activity.application as ScanApplication).store
@@ -660,8 +684,9 @@ class RebuildFlowTest {
         compose.onNodeWithText(compose.activity.getString(R.string.save_gallery)).assertIsDisplayed()
         compose.onNodeWithText(compose.activity.getString(R.string.save_jpeg)).assertIsDisplayed()
         compose.onNodeWithText(compose.activity.getString(R.string.source_export)).assertIsDisplayed()
-        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-        compose.waitUntil(10000) { compose.onAllNodesWithTag("editor-export-sheet").fetchSemanticsNodes().isEmpty() }
+        compose.waitForIdle()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitUntil(20000) { compose.onAllNodesWithTag("editor-export-sheet").fetchSemanticsNodes().isEmpty() }
         selectFilter(Treatment.GRAY)
         val root = compose.onNodeWithTag("page-editor").fetchSemanticsNode().boundsInRoot
         val save = compose.onNodeWithTag("save-edit").fetchSemanticsNode().boundsInRoot

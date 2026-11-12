@@ -9,6 +9,8 @@ plugins {
 
 val camScannerNativeDir = providers.gradleProperty("camScannerNativeDir").orNull
 val camScannerNative = camScannerNativeDir != null
+val universalPreview = providers.gradleProperty("universalPreview").orNull?.toBooleanStrict() ?: false
+require(!universalPreview || camScannerNative) { "Universal preview requires the optional ARM64 research input" }
 val standaloneNativePreview = providers.gradleProperty("standaloneNativePreview").orNull?.toBooleanStrict() ?: false
 require(!standaloneNativePreview || camScannerNative) { "Standalone Native preview requires camScannerNativeDir" }
 if (camScannerNative) {
@@ -39,6 +41,7 @@ android {
             else -> "com.docscan.rebuild"
         }
         buildConfigField("boolean", "CAMSCANNER_NATIVE", camScannerNative.toString())
+        buildConfigField("boolean", "UNIVERSAL_PREVIEW", universalPreview.toString())
         manifestPlaceholders["docscanAppLabel"] = when {
             standaloneNativePreview -> "@string/native_preview_app_name"
             camScannerNative -> "@string/native_app_name"
@@ -46,17 +49,20 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = if (camScannerNative) "0.1.7-native-preview" else "0.1.7-preview"
+        versionCode = if (universalPreview) 8 else 7
+        versionName = if (universalPreview) "0.1.7.1-universal-preview" else if (camScannerNative) "0.1.7-native-preview" else "0.1.7-preview"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
-        ndk { abiFilters += if (camScannerNative) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     if (camScannerNative) sourceSets.getByName("main").jniLibs.srcDir(requireNotNull(camScannerNativeDir))
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        if (universalPreview) jniLibs.useLegacyPackaging = true
+    }
     testOptions { animationsDisabled = true }
     lint { abortOnError = true }
 }

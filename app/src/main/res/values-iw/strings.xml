@@ -123,6 +123,7 @@
     <string name="local_profile_hint">המסמכים והעריכות נשמרים במכשיר הזה. המקורות נשמרים בנפרד ברזולוציה שבה נקלטו.</string>
     <string name="previous_page">העמוד הקודם</string>
     <string name="next_page">העמוד הבא</string>
+    <string name="local_processing_active">עיבוד מקומי פעיל במכשיר זה</string>
 </resources>
 
 

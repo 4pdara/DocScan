@@ -29,10 +29,16 @@ internal object NativeCamScannerEnhancer {
         System.loadLibrary("imageprocessor")
         true
     }
+    val available: Boolean by lazy {
+        if (!BuildConfig.CAMSCANNER_NATIVE) false
+        else try { loaded && imageProcessorLoaded }
+        catch (_: LinkageError) { false }
+        catch (_: IllegalStateException) { false }
+    }
 
     @Synchronized
     fun applyInPlace(bitmap: Bitmap, treatment: Treatment = Treatment.PAPER) {
-        check(BuildConfig.CAMSCANNER_NATIVE) { "CamScanner research engine is not bundled" }
+        check(available) { "CamScanner research engine is not bundled for this device" }
         require(bitmap.isMutable && bitmap.config == Bitmap.Config.ARGB_8888) { "A mutable software ARGB bitmap is required" }
         check(loaded)
         when (treatment) {

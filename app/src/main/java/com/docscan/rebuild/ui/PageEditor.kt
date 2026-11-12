@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.model.*
+import com.docscan.rebuild.imaging.ImagePipeline
 import kotlin.math.min
 
 fun fitImageRect(size: Size, aspect: Float): Rect {
@@ -47,7 +48,7 @@ fun fitImageRect(size: Size, aspect: Float): Rect {
 }
 
 private fun Treatment.label(): Int = when (this) {
-    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (BuildConfig.CAMSCANNER_NATIVE) R.string.native_paper else R.string.paper
+    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (ImagePipeline.referenceEngineAvailable) R.string.native_paper else R.string.paper
     Treatment.NATIVE_MAGIC_COLOR -> R.string.native_magic_color
     Treatment.NATIVE_NO_SHADOW -> R.string.native_no_shadow
     Treatment.NATIVE_INVERT -> R.string.native_invert
@@ -82,7 +83,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         text = { OutlinedTextField(draftTitle, { draftTitle = it.take(100) }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
         confirmButton = { TextButton(onClick = { onRename?.invoke(draftTitle.trim()); rename = false }, enabled = draftTitle.isNotBlank()) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
-    val treatments = if (BuildConfig.CAMSCANNER_NATIVE) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD) else Treatment.entries.filter { !it.requiresReferenceEngine }
+    val nativeAvailable = ImagePipeline.referenceEngineAvailable
+    val treatments = if (nativeAvailable) listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD) else Treatment.entries.filter { !it.requiresReferenceEngine }
     if (export) ModalBottomSheet(onDismissRequest = { export = false }, modifier = Modifier.testTag("editor-export-sheet")) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.export_scan), style = MaterialTheme.typography.titleLarge)
@@ -112,6 +114,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         bottomBar = {
             Surface(shadowElevation = 6.dp, shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)) {
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
+                    if (BuildConfig.UNIVERSAL_PREVIEW && !nativeAvailable) Text(stringResource(R.string.local_processing_active),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("local-processing-mode"), style = MaterialTheme.typography.labelSmall)
                     when (tool) {
                         "filters" -> LazyRow(Modifier.fillMaxWidth().testTag("filter-strip"), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(treatments, key = { it.name }) { treatment ->
