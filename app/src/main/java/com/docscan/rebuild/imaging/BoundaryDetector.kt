@@ -153,7 +153,7 @@ object BoundaryDetector {
                     // A side on the frame border is inferred, so it needs less support (a cover whose patterned rim
                     // touches the frame edge), but the document's real sides must then be clearly visible: a quad that
                     // reaches the border across the facing page of an open book has a weak top or bottom side.
-                    if (sides.any { (support, border) -> support < (if (border > .6) .2 else if (onBorder > 0) .7 else .3) }) return@forEach
+                    if (sides.any { (support, border) -> val least = if (border > .6) .2 else if (onBorder > 0) .7 else .3; support < least }) return@forEach
                     valid += Scored(frame, sqrt(frame.area().toDouble()) * .65 + sup.average() * .35, sup)
                 }
             } finally { patch.release() }
