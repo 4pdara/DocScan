@@ -138,7 +138,10 @@ class RebuildFlowTest {
         store.removeEmpty(emptySet(), olderThanMs = -1); assertNull(store.dao.book(empty.id)); assertNotNull(store.dao.book(kept.id))
         // Recognized Hebrew keeps each printed line, without direction marks, padding or empty lines.
         assertEquals("סדר הקבלה\nתשנ\"ה", com.docscan.rebuild.imaging.OfflineOcr.tidy("\u200f סדר  הקבלה \n\n תשנ''ה\u200e\n"))
-        store.trash(setOf(kept.id))
+        // Permanent deletion works only from the trash.
+        store.deleteForever(setOf(kept.id)); assertNotNull("A saved document outside the trash is never deleted", store.dao.book(kept.id))
+        store.trash(setOf(kept.id)); store.deleteForever(setOf(kept.id))
+        assertNull(store.dao.book(kept.id)); assertFalse(store.source(keptPage).exists())
     }
 
     @Test fun singleCaptureOpensEditorWithDurableOriginal() {

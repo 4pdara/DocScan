@@ -183,13 +183,29 @@ object BoundaryDetector {
                     val polygon = MatOfPoint(*frame.points.map { Point(it.x * (sw - 1.0), it.y * (sh - 1.0)) }.toTypedArray())
                     try { Imgproc.fillPoly(target, listOf(polygon), Scalar(1.0)) } finally { polygon.release() }
                 }
+                fun gap(x: FloatArray, y: FloatArray) = sqrt((0..2).sumOf { c -> ((x[c] - y[c]) * (x[c] - y[c])).toDouble() })
+                // Print-free colour at the middle of a quad: the material the quad is mostly made of.
+                fun centreColour(frame: Frame): FloatArray {
+                    val from = MatOfPoint2f(*frame.points.map { Point(it.x * (w - 1.0), it.y * (h - 1.0)) }.toTypedArray())
+                    val to = MatOfPoint2f(Point(0.0, 0.0), Point(31.0, 0.0), Point(31.0, 31.0), Point(0.0, 31.0))
+                    val transform = Imgproc.getPerspectiveTransform(from, to); val centre = Mat()
+                    try {
+                        Imgproc.warpPerspective(plainMat, centre, transform, Size(32.0, 32.0))
+                        val values = FloatArray(32 * 32 * 3).also { centre.get(0, 0, it) }
+                        return FloatArray(3) { c -> (8 until 24).flatMap { y -> (8 until 24).map { x -> values[(y * 32 + x) * 3 + c] } }.sorted()[128] }
+                    } finally { from.release(); to.release(); transform.release(); centre.release() }
+                }
                 fun restsOnSurface(outer: Frame, inner: Frame): Boolean {
                     mask(outer, outerMask); mask(inner, innerMask); Imgproc.dilate(innerMask, innerMask, grow)
                     val o = ByteArray(sw * sh).also { outerMask.get(0, 0, it) }; val i = ByteArray(sw * sh).also { innerMask.get(0, 0, it) }
                     val ring = (0 until sw * sh).filter { o[it].toInt() != 0 && i[it].toInt() == 0 }
                     if (ring.size < 20) return false
                     val colour = FloatArray(3) { c -> ring.map { plainSmall[it * 3 + c] }.sorted()[ring.size / 2] }
-                    return surface.any { centre -> sqrt((0..2).sumOf { c -> ((colour[c] - centre[c]) * (colour[c] - centre[c])).toDouble() }) <= 35 }
+                    // The band around the object is the surface seen at the frame border (desk, tray, table)...
+                    if (surface.none { gap(colour, it) <= 35 }) return false
+                    // ...and not the winner's own material: a cover touching the frame border puts its colour among
+                    // the border colours, but a panel on that cover is surrounded by the cover itself.
+                    return gap(colour, centreColour(outer)) >= 25
                 }
                 repeat(3) {
                     val outer = MatOfPoint2f(*best.frame.points.map { Point(it.x.toDouble(), it.y.toDouble()) }.toTypedArray())
@@ -198,11 +214,12 @@ object BoundaryDetector {
                             candidate !== best && candidate.frame.area() in best.frame.area() * .2f..best.frame.area() * .9f &&
                                 candidate.support.min() >= .6 && candidate.support.average() >= .8 &&
                                 candidate.frame.points.all { Imgproc.pointPolygonTest(outer, Point(it.x.toDouble(), it.y.toDouble()), true) >= -.01 } &&
-                                // The surface surrounds the object: at least three of its sides lie clearly inside the winner.
+                                // The surface shows on at least one side: a page whose bottom band of table was taken
+                                // into a larger quad (owner's 0.2.1 photo of an open book on a wooden table).
                                 candidate.frame.points.indices.count { i ->
                                     val a = candidate.frame.points[i]; val b = candidate.frame.points[(i + 1) % 4]
                                     Imgproc.pointPolygonTest(outer, Point((a.x + b.x) / 2.0, (a.y + b.y) / 2.0), true) >= .02
-                                } >= 3 &&
+                                } >= 1 &&
                                 restsOnSurface(best.frame, candidate.frame) && distinctObject(candidate.frame)
                         }
                         best = nested.maxByOrNull { it.score } ?: return best.frame

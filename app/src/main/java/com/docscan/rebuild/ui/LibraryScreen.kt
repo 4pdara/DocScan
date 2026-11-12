@@ -41,13 +41,15 @@ fun LibraryScreen(
     store: ScanStore, entries: List<LibraryEntry>, trash: List<LibraryEntry>,
     onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit, onExtractText: () -> Unit = onScan,
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
-    onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {}
+    onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {},
+    onDeleteForever: (Set<String>) -> Unit = {}
 ) {
     var search by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("home") }
     var inTrash by rememberSaveable { mutableStateOf(false) }
     var selection by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val visible = (if (inTrash) trash else entries).filter { it.book.title.contains(search, true) }
     fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id; selection = true }
     fun clear() { selection = false; selected = emptyList() }
@@ -58,6 +60,12 @@ fun LibraryScreen(
         when { selection -> clear(); inTrash -> inTrash = false; else -> section = "home" }
     }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
+        title = { Text(pluralStringResource(R.plurals.delete_forever_title, selected.size, selected.size)) },
+        text = { Text(stringResource(R.string.delete_forever_message)) },
+        confirmButton = { TextButton({ confirmDelete = false; onDeleteForever(selected.toSet()); clear() }, modifier = Modifier.testTag("confirm-delete-forever")) {
+            Text(stringResource(R.string.delete_forever), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }) { Text(stringResource(R.string.cancel)) } })
     Scaffold(
         containerColor = Color.White,
         snackbarHost = { SnackbarHost(snack) },
@@ -86,6 +94,9 @@ fun LibraryScreen(
                     IconButton(onClick = { onTrash(selected.toSet(), inTrash); clear() }, enabled = selected.isNotEmpty()) {
                         Icon(if (inTrash) Icons.Outlined.RestoreFromTrash else Icons.Outlined.DeleteOutline,
                             stringResource(if (inTrash) R.string.restore else R.string.move_to_trash))
+                    }
+                    if (inTrash) IconButton(onClick = { confirmDelete = true }, enabled = selected.isNotEmpty(), modifier = Modifier.testTag("delete-forever")) {
+                        Icon(Icons.Outlined.DeleteForever, stringResource(R.string.delete_forever), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }

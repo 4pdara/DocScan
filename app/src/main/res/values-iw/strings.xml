@@ -91,7 +91,7 @@
     <string name="restore">שחזור</string>
     <string name="restored">המסמכים שוחזרו</string>
     <string name="empty_trash">סל המחזור ריק</string>
-    <string name="trash_hint">בחרו מסמכים לשחזור. המקורות והעריכות נשמרים בסל, ללא מחיקה אוטומטית.</string>
+    <string name="trash_hint">בחרו מסמכים לשחזור או למחיקה לצמיתות. המקורות והעריכות נשמרים בסל עד שתמחקו אותם; אין מחיקה אוטומטית.</string>
     <string name="native_magic_color">Magic Color</string>
     <string name="native_no_shadow">ללא צללים</string>
     <string name="native_invert">היפוך צבעים</string>
@@ -160,6 +160,10 @@
     <string name="unsaved_title">המסמך לא נשמר</string>
     <string name="unsaved_message">יציאה בלי שמירה תמחק את הסריקה ואת העמודים שצולמו. לצאת?</string>
     <string name="leave_without_saving">יציאה בלי שמירה</string>
+    <string name="delete_forever">מחיקה לצמיתות</string>
+    <plurals name="delete_forever_title"><item quantity="one">למחוק מסמך אחד לצמיתות?</item><item quantity="two">למחוק %1$d מסמכים לצמיתות?</item><item quantity="many">למחוק %1$d מסמכים לצמיתות?</item><item quantity="other">למחוק %1$d מסמכים לצמיתות?</item></plurals>
+    <string name="delete_forever_message">המסמכים, העמודים שלהם וצילומי המקור יימחקו מהמכשיר. אי אפשר לבטל את זה. גיבוי ספרייה שנשמר קודם עדיין מכיל אותם.</string>
+    <string name="deleted_forever">נמחק לצמיתות</string>
 </resources>
 
 

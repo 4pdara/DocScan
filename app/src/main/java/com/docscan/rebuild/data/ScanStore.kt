@@ -159,6 +159,11 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
         }
     }
 
+    /** Permanent deletion, only from the trash: the documents, their pages and every original no other page shares. */
+    suspend fun deleteForever(ids: Set<String>) = withContext(Dispatchers.IO) {
+        for (id in ids) if (dao.book(id)?.trashedAt != null) discard(id)
+    }
+
     /** Documents left empty by an interrupted scan, older than [olderThanMs] and not currently open. */
     suspend fun removeEmpty(keep: Set<String>, olderThanMs: Long = 10 * 60 * 1000L) = withContext(Dispatchers.IO) {
         lock.withLock { database.withTransaction {

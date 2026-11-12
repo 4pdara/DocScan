@@ -91,7 +91,7 @@
     <string name="restore">Restore</string>
     <string name="restored">Documents restored</string>
     <string name="empty_trash">Trash is empty</string>
-    <string name="trash_hint">Select documents to restore. Originals and edits stay in trash; no automatic deletion.</string>
+    <string name="trash_hint">Select documents to restore or delete permanently. Originals and edits stay in trash until you delete them; nothing is deleted automatically.</string>
     <string name="native_magic_color">Magic Color</string>
     <string name="native_no_shadow">No Shadow</string>
     <string name="native_invert">Invert</string>
@@ -160,6 +160,10 @@
     <string name="unsaved_title">Document not saved</string>
     <string name="unsaved_message">Leaving without saving deletes this scan and the pages you captured. Leave?</string>
     <string name="leave_without_saving">Leave without saving</string>
+    <string name="delete_forever">Delete permanently</string>
+    <plurals name="delete_forever_title"><item quantity="one">Delete %1$d document permanently?</item><item quantity="other">Delete %1$d documents permanently?</item></plurals>
+    <string name="delete_forever_message">The documents, their pages and original photos are removed from the device. This cannot be undone; a library backup made earlier still contains them.</string>
+    <string name="deleted_forever">Deleted permanently</string>
 </resources>
 
 
