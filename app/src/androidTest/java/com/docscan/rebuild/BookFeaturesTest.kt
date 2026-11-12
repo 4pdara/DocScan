@@ -87,6 +87,13 @@ class BookFeaturesTest {
                 try {LibraryBackup(store).restore(ByteArrayInputStream(out.toByteArray()));fail("Invalid archive accepted")}catch(_:Exception){}
                 assertEquals(1,store.dao.allBooks().size);assertEquals(hash(input),hash(store.source(page)))
             }
+            val original=ByteArrayOutputStream();LibraryBackup(store).export(original)
+            val modified=ByteArrayOutputStream()
+            ZipOutputStream(modified).use {output -> ZipInputStream(ByteArrayInputStream(original.toByteArray())).use {zip ->
+                while(true){val entry=zip.nextEntry?:break;val bytes=zip.readBytes();if(entry.name.startsWith("sources/"))bytes[bytes.lastIndex]=(bytes.last().toInt() xor 1).toByte();output.putNextEntry(ZipEntry(entry.name));output.write(bytes);output.closeEntry()}
+            } }
+            try {LibraryBackup(store).restore(ByteArrayInputStream(modified.toByteArray()));fail("Changed original accepted")}catch(_:Exception){}
+            assertEquals(1,store.dao.allBooks().size);assertEquals(hash(input),hash(store.source(page)))
         } finally {input.delete();store.source(page).delete();db.close()}
     }
     @Test fun dewarpStraightensCurvedLinesWithoutResizingOrChangingSource() {
@@ -107,7 +114,8 @@ class BookFeaturesTest {
         }finally{bitmap.recycle();result.recycle()}
     }
     @Test fun offlineHebrewAndEnglishRecognitionSurvivesReopenAndEditInvalidatesIt():Unit=runBlocking {
-        val db=Room.inMemoryDatabaseBuilder(context,ScanDatabase::class.java).build();val store=ScanStore(context,db);val book=store.create("OCR")
+        val name="ocr-persistence-${System.nanoTime()}.db"
+        var db=Room.databaseBuilder(context,ScanDatabase::class.java,name).build();var store=ScanStore(context,db);val book=store.create("OCR")
         val files=mutableListOf<File>()
         try {
             for((lang,text,expected) in listOf(Triple("eng","BOOK SCANNING\nDOCUMENT 123456\nCLEAR PRINTED TEXT","DOCUMENT"),Triple("heb","שלום עולם\nספר חדש\nשלום עולם","שלום"))) {
@@ -117,25 +125,47 @@ class BookFeaturesTest {
                     canvas.save();canvas.translate(150f,200f);layout.draw(canvas);canvas.restore()
                 };files.add(file);val sheet=store.captured(book.id,file);val result=OfflineOcr(store).recognize(sheet,lang)
                 assertTrue("OCR $lang: $result",result.contains(expected));assertEquals(result,store.dao.page(sheet.id)!!.ocrText);assertEquals(hash(file),hash(store.source(sheet)))
+                db.close();db=Room.databaseBuilder(context,ScanDatabase::class.java,name).build();store=ScanStore(context,db)
+                assertEquals(result,store.dao.page(sheet.id)!!.ocrText)
                 store.save(sheet,sheet.edit().copy(brightness=2f));assertNull(store.dao.page(sheet.id)!!.ocrText)
             }
-        }finally{files.forEach {it.delete()};store.dao.allPages().forEach {store.source(it).delete()};db.close()}
+        }finally{files.forEach {it.delete()};store.dao.allPages().forEach {store.source(it).delete()};db.close();context.deleteDatabase(name)}
     }
     @Test fun cropHasEightHandlesAndDraggingASideMovesItsTwoCorners() {
         val store=(compose.activity.application as ScanApplication).store;val title="Side handles ${System.nanoTime()}";val input=fixture("handles")
         val page=runBlocking {val b=store.create(title);val p=store.captured(b.id,input);store.save(p,EditRecipe(frame=Frame(listOf(Vertex(.15f,.15f),Vertex(.85f,.15f),Vertex(.85f,.85f),Vertex(.15f,.85f)))));p}
         try {
             compose.onNodeWithTag("home-search").performTextInput(title)
-            compose.waitUntil(15000){compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty()}
-            compose.onNodeWithText(title).performClick();compose.onNodeWithTag("page-image-${page.id}").performClick()
+            val document=hasText(title) and !hasSetTextAction()
+            compose.waitUntil(15000){compose.onAllNodes(document).fetchSemanticsNodes().isNotEmpty()}
+            compose.onNode(document).performClick();compose.onNodeWithTag("page-image-${page.id}").performClick()
             compose.onNodeWithContentDescription(compose.activity.getString(R.string.crop)).performClick()
             for(i in 0..7)compose.onNodeWithTag("crop-handle-$i").assertExists()
+            compose.waitForIdle()
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { screenshot ->
+                try { val directory=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()};File(directory,"side-crop-handles.png").outputStream().use {screenshot.compress(Bitmap.CompressFormat.PNG,100,it)} } finally{screenshot.recycle()}
+            }
             compose.onNodeWithTag("crop-handle-4").performTouchInput {swipe(center,center+Offset(0f,55f),500)}
             compose.onNodeWithTag("save-edit").performClick()
             compose.waitUntil(15000){runBlocking{store.dao.page(page.id)!!.edit().frame.points[0].y>.16f}}
             val points=runBlocking{store.dao.page(page.id)!!.edit().frame.points}
             assertEquals(points[0].y,points[1].y,.001f);assertEquals(.85f,points[2].y,.001f);assertEquals(.85f,points[3].y,.001f)
             assertEquals(hash(input),hash(store.source(page)))
+            compose.onNodeWithTag("page-image-${page.id}").performClick()
+            compose.onNodeWithTag("page-tools").performClick()
+            compose.onNodeWithText(compose.activity.getString(R.string.book_curve)).performClick()
+            compose.onNodeWithTag("curve-top").assertIsDisplayed()
+            compose.onNodeWithTag("curve-bottom").assertIsDisplayed()
+            compose.onNodeWithText(compose.activity.getString(R.string.reset_curve)).performClick()
+            compose.onNodeWithTag("page-tools").performClick()
+            compose.onNodeWithText(compose.activity.getString(R.string.split_book)).performClick()
+            compose.onNodeWithTag("split-preview").assertIsDisplayed()
+            compose.onNodeWithText(compose.activity.getString(R.string.split_apply)).performClick()
+            compose.waitUntil(15000){runBlocking{store.dao.snapshot(page.notebookId).size==2}}
+            compose.waitUntil(15000){compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty()}
+            val split=runBlocking{store.dao.snapshot(page.notebookId)}
+            assertTrue(split[0].edit().frame.points[0].x>.4f)
+            assertEquals(hash(input),hash(store.source(split[1])))
         }finally{input.delete()}
     }
 }

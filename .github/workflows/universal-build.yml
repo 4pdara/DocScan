@@ -73,3 +73,4 @@ jobs:
           path: |
             app/build/reports/
             app/build/test-results/
+            app/schemas/

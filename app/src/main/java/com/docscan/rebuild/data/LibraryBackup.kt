@@ -3,6 +3,7 @@ package com.docscan.rebuild.data
 import android.graphics.BitmapFactory
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -22,6 +23,9 @@ class LibraryBackup(private val store: ScanStore) {
     }
     suspend fun export(output: OutputStream) = withContext(Dispatchers.IO) {
         val (books,pages)=store.database.withTransaction { store.dao.allBooks() to store.dao.allPages() }
+        require(books.size<=10000 && pages.size<=20000) { "Library exceeds backup entry limit" }
+        val sources=pages.distinctBy { it.source }.map { store.source(it) }
+        require(sources.all { it.length()<=100L*1024*1024 } && sources.sumOf { it.length() }<=8L*1024*1024*1024) { "Library exceeds backup size limit" }
         val manifest=JSONObject().put("format","docscan-backup").put("version",1)
             .put("books",JSONArray(books.map { b -> JSONObject().put("id",b.id).put("title",b.title).put("created",b.created).put("trashedAt",b.trashedAt?:JSONObject.NULL) }))
             .put("pages",JSONArray(pages.map { p ->
@@ -31,8 +35,10 @@ class LibraryBackup(private val store: ScanStore) {
                     .put("ocrText",p.ocrText?:JSONObject.NULL).put("ocrRecipe",p.ocrRecipe?:JSONObject.NULL)
                     .put("size",file.length()).put("sha256",digest(file))
             }))
+        val metadata=manifest.toString().toByteArray(Charsets.UTF_8)
+        require(metadata.size<=16*1024*1024) { "Backup manifest is too large" }
         ZipOutputStream(BufferedOutputStream(output)).use { zip ->
-            zip.putNextEntry(ZipEntry("manifest.json"));zip.write(manifest.toString().toByteArray(Charsets.UTF_8));zip.closeEntry()
+            zip.putNextEntry(ZipEntry("manifest.json"));zip.write(metadata);zip.closeEntry()
             pages.distinctBy { it.source }.forEach { page ->
                 coroutineContext.ensureActive();zip.putNextEntry(ZipEntry("sources/"+page.source))
                 store.source(page).inputStream().use { it.copyTo(zip) };zip.closeEntry()
@@ -77,7 +83,8 @@ class LibraryBackup(private val store: ScanStore) {
                 require(p.optString("ocrText").length<=2_000_000)
             }
             require(entries==sources.keys.map { "sources/$it" }.toSet()+"manifest.json")
-            store.lock.withLock {
+            coroutineContext.ensureActive()
+            withContext(NonCancellable) { store.lock.withLock {
                 val destination=File(store.context.filesDir,"masters").apply { mkdirs() }
                 val names=sources.keys.associateWith { "${UUID.randomUUID()}.source" }
                 names.forEach { (old,new) -> val target=File(destination,new);check(!target.exists());check(File(stage,old).renameTo(target));copied.add(target) }
@@ -93,7 +100,7 @@ class LibraryBackup(private val store: ScanStore) {
                     }
                 }
                 committed=true
-            }
+            } }
             books.length()
         } finally { if(!committed)copied.forEach { it.delete() };stage.deleteRecursively() }
     }
