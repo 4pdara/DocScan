@@ -9,6 +9,8 @@ import re
 import subprocess
 import tempfile
 import time
+import urllib.parse
+import urllib.request
 import zipfile
 from publish_native_release import gh_json, restore
 
@@ -78,6 +80,17 @@ def prepare(plan, output, tools):
     (output / 'INSTALLATION_HE.txt').write_text('DocScan 0.1.8: חבילת התקנה מתוקנת ל־Android 8 ומעלה, 32 ו־64 ביט.\nעדכון באותו מזהה חבילה ובאותה חתימה, ללא הסרת ההתקנה הקיימת.\nבמכשיר ללא מנוע ARM64 זמין פועל העיבוד המקומי; אין הבטחה שאותם מסנני Native זמינים בכל מעבד.\n', encoding='utf-8')
 
 
+def upload_asset(release, path):
+    url = release['upload_url'].split('{')[0] + '?name=' + urllib.parse.quote(path.name)
+    request = urllib.request.Request(url, data=path.read_bytes(), method='POST', headers={
+        'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/octet-stream', 'X-GitHub-Api-Version': '2022-11-28'})
+    with urllib.request.urlopen(request, timeout=900) as response:
+        if response.status != 201:
+            raise ValueError('Upload failed: ' + path.name)
+    print('Uploaded ' + path.name, flush=True)
+
+
 def publish(plan, output):
     deadline = time.monotonic() + 15 * 60
     while True:
@@ -117,14 +130,16 @@ def publish(plan, output):
         if existing and existing.get('digest') != 'sha256:' + sha(path):
             raise ValueError('Different asset already exists: ' + path.name)
         if existing is None:
-            subprocess.run(['gh', 'release', 'upload', TAG, str(path), '--repo', REPO], check=True)
+            upload_asset(release, path)
     published = gh_json(f'repos/{REPO}/releases/{release_id}')
     for path in files:
         asset = next(item for item in published['assets'] if item['name'] == path.name)
         if asset.get('digest') != 'sha256:' + sha(path) or asset['size'] != path.stat().st_size:
             raise ValueError('Uploaded asset differs: ' + path.name)
-    subprocess.run(['gh', 'release', 'edit', TAG, '--repo', REPO, '--draft=false', '--prerelease', '--latest=false',
-        '--title', 'DocScan 0.1.8 — כריכות וכלי ספר', '--notes-file', str(notes)], check=True)
+    # Address the draft by id: tag-based gh commands cannot see a draft whose tag does not exist yet.
+    subprocess.run(['gh', 'api', '-X', 'PATCH', f'repos/{REPO}/releases/{release_id}', '--input', '-'], check=True, capture_output=True,
+        input=json.dumps(dict(draft=False, prerelease=True, make_latest='false', target_commitish=commit,
+            name='DocScan 0.1.8 — כריכות וכלי ספר', body=notes.read_text())), text=True)
     ref = gh_json(f'repos/{REPO}/git/ref/tags/{TAG}')
     if ref['object']['type'] != 'commit' or ref['object']['sha'] != commit:
         raise ValueError('Published release tag differs')
