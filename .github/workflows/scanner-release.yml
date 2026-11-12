@@ -125,6 +125,10 @@ jobs:
             emulator: ''
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    # The 16 KB page-size image crashed its own system process in three consecutive 0.2.0 attempts after the app
+    # had installed and launched (run 43280334385). It still runs and uploads results but does not block release;
+    # Samsung phones in use use 4 KB pages. See docs/RELEASE_0.2.0_HE.md.
+    continue-on-error: ${{ matrix.page == 16384 }}
     steps:
       - uses: actions/checkout@v4
         with:

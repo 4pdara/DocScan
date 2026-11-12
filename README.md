@@ -5,7 +5,7 @@
 
 **[הורדת APK](https://github.com/4pdara/DocScan/releases/download/scanner-v0.2.0/DocScan-0.2.0.apk)** · [SHA256](https://github.com/4pdara/DocScan/releases/download/scanner-v0.2.0/SHA256SUMS.txt) · [מסננים, תכולה ואימות](docs/RELEASE_0.2.0_HE.md).
 
-״DocScan סורק״ (`com.docscan.rebuild.scanner`), ענף `feature/original-filters`. כל 14 המסננים פועלים בכל מכשיר. את שמונת המסננים שהשתמשו בקובצי CamScanner החליף יישום מקורי ב־OpenCV: ניקוי נייר, Magic Color, ללא צללים, Pro, היפוך ושלושת מצבי הלוח. כוללת את כלי הספר, הצלעות, הפיצול, יישור הקימור, ה־OCR והגיבוי של 0.1.8. מותקנת לצד הגרסאות הקודמות ולא כעדכון. נבדקה באמולטורים ובדפים סינתטיים בלבד; לא בטלפון Samsung פיזי ולא מול פלט של CamScanner.
+״DocScan סורק״ (`com.docscan.rebuild.scanner`), ענף `feature/original-filters`. זיהוי גבולות משופר לכריכות, לצילום מהצד ולדפים מעוקלים: IoU ממוצע 0.91 לעומת 0.13 בצילומי הבעלים ובצילומי CamScanner ([מדידה](docs/DETECTION_0.2.0_HE.md)). כל 14 המסננים פועלים בכל מכשיר. את שמונת המסננים שהשתמשו בקובצי CamScanner החליף יישום מקורי ב־OpenCV: ניקוי נייר, Magic Color, ללא צללים, Pro, היפוך ושלושת מצבי הלוח. כוללת את כלי הספר, הצלעות, הפיצול, יישור הקימור, ה־OCR והגיבוי של 0.1.8. מותקנת לצד הגרסאות הקודמות ולא כעדכון. נבדקה באמולטורים, בדפים סינתטיים ובצילומי מסך; לא בטלפון Samsung פיזי, ואיכות המסננים לא הושוותה לפלט של CamScanner.
 
 ## תיקון התקנה 0.1.7.1 — חבילה רחבה ל־32 ו־64 ביט
 
