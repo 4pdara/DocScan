@@ -156,7 +156,12 @@ class BookFeaturesTest {
             compose.onNodeWithTag("home-search").performTextInput(title)
             val document=hasText(title) and !hasSetTextAction()
             compose.waitUntil(15000){compose.onAllNodes(document).fetchSemanticsNodes().isNotEmpty()}
-            compose.onNode(document).performClick();compose.onNodeWithTag("page-image-${page.id}").performClick()
+            fun openEditor() {
+                val label=compose.activity.getString(R.string.edit)
+                compose.waitUntil(15000){compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()}
+                compose.onNodeWithText(label).performClick()
+            }
+            compose.onNode(document).performClick();openEditor()
             compose.onNodeWithContentDescription(compose.activity.getString(R.string.crop)).performClick()
             for(i in 0..7)compose.onNodeWithTag("crop-handle-$i").assertExists()
             compose.waitForIdle()
@@ -169,7 +174,7 @@ class BookFeaturesTest {
             val points=runBlocking{store.dao.page(page.id)!!.edit().frame.points}
             assertEquals(points[0].y,points[1].y,.001f);assertEquals(.85f,points[2].y,.001f);assertEquals(.85f,points[3].y,.001f)
             assertEquals(hash(input),hash(store.source(page)))
-            compose.onNodeWithTag("page-image-${page.id}").performClick()
+            openEditor()
             compose.onNodeWithTag("page-tools").performClick()
             compose.onNodeWithText(compose.activity.getString(R.string.book_curve)).performClick()
             compose.onNodeWithTag("curve-top").assertIsDisplayed()
