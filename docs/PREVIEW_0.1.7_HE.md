@@ -1,6 +1,8 @@
 # DocScan Native 0.1.7 — יכולות 0.1.5 בעיצוב 0.1.6
 
-**[הורדת APK](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/DocScan-Native-0.1.7-preview.apk)** · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/SHA256SUMS.txt).
+עדכון התקנה: [0.1.7.1 — חבילה אוניברסלית](INSTALLATION_FIX_0.1.7_HE.md) מחליפה את קובץ ARM64 בלבד. פירוט הבנייה המקורית להלן נשמר כהיסטוריית 0.1.7.
+
+**[הורדת APK](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/DocScan-0.1.7-universal.apk)** · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/SHA256SUMS.txt).
 
 גרסת ניסוי בענף `rebuild/camscanner-reference`. גרסה 0.1.7 משלבת את מנוע העיבוד והיכולות של Native 0.1.5 עם הבית, המצלמה והעורך של 0.1.6, כולל תיקון מספור העמודים בעברית.
 

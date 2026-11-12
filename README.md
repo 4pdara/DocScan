@@ -1,9 +1,15 @@
 # DocScan חדש — בנייה עצמאית
 אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. הפרופיל הרגיל משתמש בעיבוד העצמאי. נוסף פרופיל Native מחקרי שמפעיל את רכיב הסרת הצללים MagicEnhancer מהחבילה שסופקה; אין כאן העברה מלאה של מנוע CamScanner.
 
+## תיקון התקנה 0.1.7.1 — חבילה רחבה ל־32 ו־64 ביט
+
+**[הורדת APK אוניברסלי](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/DocScan-0.1.7-universal.apk)** · [פרטי תאימות ואימות](docs/INSTALLATION_FIX_0.1.7_HE.md).
+
+Android 8 ומעלה, ARM ו־Intel, ‏32 ו־64 ביט. אותה חתימה ומזהה חבילה; מתקינים כעדכון בלי להסיר את האפליקציה. במכשיר שבו רכיבי ARM64 זמינים פועלים כל מסנני Native; בשאר המכשירים פועל העיבוד המקומי עם אפשרויות תקינות בלבד. קובץ המסירה החתום נבדק בהתקנה נקייה ובעדכון לפני הפרסום. החבילה מחליפה את הורדת ARM64 בלבד שב־0.1.7; אין שינוי בעיצוב 0.1.6 או במקורות השמורים.
+
 ## גרסת ניסוי Native 0.1.7 — יכולות 0.1.5 בעיצוב 0.1.6
 
-[Release 0.1.7](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.7-preview) · [הורדת APK](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/DocScan-Native-0.1.7-preview.apk) · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/SHA256SUMS.txt) · [פירוט ובדיקות](docs/PREVIEW_0.1.7_HE.md).
+[Release 0.1.7](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.7-preview) · [הורדת APK](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/DocScan-0.1.7-universal.apk) · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.7-preview/SHA256SUMS.txt) · [פירוט ובדיקות](docs/PREVIEW_0.1.7_HE.md).
 
 כל 14 אפשרויות העיבוד של Native 0.1.5, עם הבית, המצלמה והעורך של 0.1.6 ותיקון המספור בעברית. מסלול Pro הועבר מעיבוד Bitmap בלתי מוגן לקובצי PNG זמניים עם בדיקת מידות, ונוספה הגנה על תוכן כהה שהניקוי עלול להבהיר. המסננים נשארים בפס הקבוע בעורך.
 

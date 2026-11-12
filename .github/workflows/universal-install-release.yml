@@ -1,0 +1,149 @@
+name: Verify and publish exact universal APK
+on:
+  push:
+    branches: [rebuild/camscanner-reference]
+    paths: [.github/universal-signatures-0.1.7.json]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: universal-installation-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Restore and validate the exact signed app and test APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 research/universal_delivery.py --output verified-apks --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Universal-0.1.7.1-exact-signed-apks
+          path: verified-apks/
+          retention-days: 14
+  device:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 26
+            arch: x86
+            target: google_apis
+            locale: en
+            suite: smoke
+            page: 4096
+            legacy: reject-arm64
+            emulator: '10696886'
+          - api: 30
+            arch: x86_64
+            target: google_apis
+            locale: en
+            suite: full
+            page: 4096
+            legacy: upgrade
+            emulator: ''
+          - api: 36
+            arch: x86_64
+            target: google_apis
+            locale: he
+            suite: full
+            page: 4096
+            legacy: none
+            emulator: ''
+          - api: 35
+            arch: x86_64
+            target: google_apis_ps16k
+            locale: he
+            suite: smoke
+            page: 16384
+            legacy: none
+            emulator: ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reserve emulator space
+        run: sudo rm -rf /usr/share/dotnet
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: Universal-0.1.7.1-exact-signed-apks
+          path: verified-apks
+      - name: Download the exact previous public APK for installation checks
+        if: matrix.legacy != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download native-v0.1.7-preview --pattern DocScan-Native-0.1.7-preview.apk --dir legacy-apk
+          echo '2e8010e18c395d00f7a5c2250667eb02c0a397b9cc65d58977c32e27e91348f0  legacy-apk/DocScan-Native-0.1.7-preview.apk' | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          emulator-build: ${{ matrix.emulator }}
+          api-level: ${{ matrix.api }}
+          arch: ${{ matrix.arch }}
+          target: ${{ matrix.target }}
+          profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 300
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          script: bash .github/universal-device-check.sh ${{ matrix.locale }} ${{ matrix.suite }} ${{ matrix.page }} ${{ matrix.legacy }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: universal-install-${{ matrix.api }}-${{ matrix.arch }}-${{ matrix.page }}
+          path: universal-device-results/
+  publish:
+    needs: [prepare, device]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Publish only the exact APK that passed installation and update checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 research/universal_delivery.py --output verified-apks --build-tools "$ANDROID_HOME/build-tools/35.0.0" --publish
