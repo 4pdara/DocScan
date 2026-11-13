@@ -64,6 +64,7 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             try { action(); if (success != null) notices.send(success) }
             catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
+            catch (e: UserMessage) { notices.send(e.text) }
             catch (e: LinkageError) { android.util.Log.e("DocScanRebuild", "Native feature unavailable", e); notices.send(R.string.processing_error) }
             catch (e: Exception) { android.util.Log.e("DocScanRebuild", "Operation failed", e); notices.send(R.string.error_generic) }
             finally { busy = false }

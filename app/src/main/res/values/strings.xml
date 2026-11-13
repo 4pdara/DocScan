@@ -274,6 +274,7 @@
     <string name="signature_place_hint">Drag the signature or tap where it should go. The original page does not change.</string>
     <string name="signature_remove_page">Remove signatures from this page</string>
     <string name="signature_apply">Add to page</string>
+    <string name="pdf_import_protected">This PDF is password protected. To import it, first save a copy without a password.</string>
 </resources>
 
 

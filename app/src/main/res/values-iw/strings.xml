@@ -274,6 +274,7 @@
     <string name="signature_place_hint">גררו את החתימה או הקישו במקום הרצוי. העמוד המקורי לא משתנה.</string>
     <string name="signature_remove_page">הסרת החתימות מהעמוד</string>
     <string name="signature_apply">הוספה לעמוד</string>
+    <string name="pdf_import_protected">ה־PDF מוגן בסיסמה. כדי לייבא אותו, שמרו קודם עותק בלי סיסמה.</string>
 </resources>
 
 

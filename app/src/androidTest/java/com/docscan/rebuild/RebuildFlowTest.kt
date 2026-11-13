@@ -248,8 +248,12 @@ class RebuildFlowTest {
         try {
             val head = locked.readBytes().toString(Charsets.ISO_8859_1)
             assertTrue(head.startsWith("%PDF-1.7") && head.contains("/V 5 /R 6") && head.contains("/AESV3") && head.contains("/Encrypt 3 0 R"))
-            val opened = runCatching { ParcelFileDescriptor.open(locked, ParcelFileDescriptor.MODE_READ_ONLY).use { PdfRenderer(it).use { r -> r.pageCount } } }
-            assertTrue("A password PDF must not open without the password: $opened", opened.isFailure)
+            // Not opened with PdfRenderer: after a failed password check it fails every later PDF in the process.
+            // The structure is checked instead, and import refuses the file before the renderer sees it.
+            assertFalse("Page images are encrypted", head.contains("stream\n\u00ff\u00d8\u00ff"))
+            assertTrue(store.encryptedPdf(Uri.fromFile(locked)))
+            val refused = runCatching { store.importPdf(cards.id, Uri.fromFile(locked)) }
+            assertEquals(R.string.pdf_import_protected, (refused.exceptionOrNull() as? UserMessage)?.text)
         } finally { locked.delete() }
         store.trash(setOf(cards.id)); store.deleteForever(setOf(cards.id))
     }

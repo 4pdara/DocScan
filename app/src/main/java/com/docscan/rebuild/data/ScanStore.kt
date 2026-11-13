@@ -95,6 +95,9 @@ object SignatureCodec {
     }.getOrNull()
 }
 
+/** A failure the user can act on: shown as its own message instead of the generic error. */
+class UserMessage(val text: Int) : Exception()
+
 object RecipeCodec {
     fun encode(r: EditRecipe): String = JSONObject().put("turns", r.turns).put("filter", r.treatment.name)
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
@@ -149,6 +152,9 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
      * pixels) and kept as a JPEG original. The PDF itself is not modified or stored.
      */
     suspend fun importPdf(id: String, uri: Uri): List<Sheet> = withContext(Dispatchers.IO) {
+        // A password PDF is refused before Android's PdfRenderer sees it: after one failed password check, that
+        // renderer fails every later PDF in the same process (seen on Android 8 to 15 in the device tests).
+        if (encryptedPdf(uri)) throw UserMessage(com.docscan.rebuild.R.string.pdf_import_protected)
         val descriptor = requireNotNull(context.contentResolver.openFileDescriptor(uri, "r")) { "Cannot open PDF" }
         descriptor.use { fd ->
             android.graphics.pdf.PdfRenderer(fd).use { renderer ->
@@ -167,6 +173,15 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             }
         }
     }
+    /** Whether the PDF's trailer (in its last megabyte, uncompressed in every PDF) names an encryption dictionary. */
+    fun encryptedPdf(uri: Uri): Boolean = runCatching {
+        requireNotNull(context.contentResolver.openFileDescriptor(uri, "r")).use { fd ->
+            java.io.FileInputStream(fd.fileDescriptor).use { input ->
+                val length = fd.statSize; if (length > 1_048_576) input.channel.position(length - 1_048_576)
+                input.readBytes().toString(Charsets.ISO_8859_1).contains("/Encrypt")
+            }
+        }
+    }.getOrDefault(false)
     suspend fun captured(id: String, file: File): Sheet = withContext(Dispatchers.IO) { file.inputStream().use { store(id, it) } }
     /** Commit bytes atomically before inserting metadata. No recompression, resizing or EXIF rewriting. */
     private suspend fun store(bookId: String, input: InputStream): Sheet = lock.withLock {
