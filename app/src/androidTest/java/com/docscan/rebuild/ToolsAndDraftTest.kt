@@ -97,8 +97,10 @@ class ToolsAndDraftTest {
         val store=(compose.activity.application as ScanApplication).store
         val draft=runBlocking {val b=store.create("Split draft ${System.nanoTime()}",draft=true);val f=fixture();try{store.captured(b.id,f)}finally{f.delete()};b}
         val original=runBlocking{store.dao.snapshot(draft.id).single()}
+        try {
         compose.waitUntil(10000){compose.onAllNodesWithText(draft.title).fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithText(draft.title).performClick()
+        compose.onNodeWithTag("draft-recovery").assertIsDisplayed()
+        compose.onNodeWithText(draft.title).assertIsDisplayed().performClick()
         compose.waitUntil(15000){compose.onAllNodesWithTag("page-tools").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("page-tools").performClick();compose.onNodeWithText(context.getString(R.string.split_book)).performClick()
         compose.onNodeWithText(context.getString(R.string.split_apply)).performClick()
@@ -108,6 +110,7 @@ class ToolsAndDraftTest {
         compose.waitUntil(10000){compose.onAllNodes(hasTestTag("save-edit") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
         androidx.test.espresso.Espresso.pressBack();compose.onNodeWithTag("discard-scan-confirm").performClick()
         compose.waitUntil(10000){runBlocking{store.dao.book(draft.id)==null} && !store.source(original).exists()}
+        } finally { runCatching { screenshot("draft-split-final");compose.onRoot().printToLog("DraftSplit") } }
     }
 
     @Test fun permanentDeletionRequiresExplicitConfirmation(){

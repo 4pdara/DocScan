@@ -133,16 +133,22 @@ fun LibraryScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).testTag("library")) {
+            // Recovery must be outside the scrolling item list: inserting before its anchored
+            // first item can otherwise leave an asynchronously loaded draft above the viewport.
+            if(section=="home" && !inTrash && drafts.isNotEmpty())Column(Modifier.fillMaxWidth().background(HomeTile).padding(horizontal=16.dp,vertical=8.dp).testTag("draft-recovery")) {
+                Text(stringResource(R.string.resume_drafts),style=MaterialTheme.typography.titleMedium)
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max=128.dp)) {
+                    itemsIndexed(drafts,key={_,entry->entry.book.id}) {_,entry->
+                        TextButton(onClick={onResumeDraft(entry.book.id)},modifier=Modifier.fillMaxWidth().testTag("resume-draft")) {
+                            Text(entry.book.title,maxLines=1,overflow=TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
             when {
                 section == "me" -> LocalProfile(onFiles = ::files, onTrash = ::trash, onBackup = onBackup, onRestoreBackup = onRestoreBackup)
                 section == "tools" -> ToolsScreen(store,entries,onToolScan,onImport,onToolOcr,onOpen,snack)
                 else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list"), contentPadding = PaddingValues(bottom = 96.dp)) {
-                    if(section=="home" && drafts.isNotEmpty())item(key="drafts") {
-                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                            Text(stringResource(R.string.resume_drafts),style=MaterialTheme.typography.titleMedium)
-                            drafts.forEach { entry -> TextButton(onClick={onResumeDraft(entry.book.id)},modifier=Modifier.testTag("resume-draft")){Text(entry.book.title,maxLines=1,overflow=TextOverflow.Ellipsis)} }
-                        }
-                    }
                     if (section == "home" && !selection && !inTrash && search.isBlank()) item(key = "shortcuts") {
                         HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
                             onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
