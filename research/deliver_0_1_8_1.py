@@ -133,7 +133,12 @@ def publish(plan, output):
     if existing_release is None:
         subprocess.run(['gh', 'release', 'create', TAG, '--repo', REPO, '--target', commit, '--draft', '--prerelease', '--latest=false',
             '--title', 'DOCSCAN V0.1.8.1 — Native וכלי טקסט', '--notes-file', str(notes)], check=True)
-        existing_release = find_release()
+        # Release creation can be visible by ID before it appears in the collection.
+        for attempt in range(10):
+            existing_release = find_release()
+            if existing_release is not None:
+                break
+            time.sleep(2)
     elif existing_release['draft'] and existing_release['target_commitish'] != commit:
         subprocess.run(['gh', 'api', '-X', 'PATCH', f"repos/{REPO}/releases/{existing_release['id']}", '-f', f'target_commitish={commit}'],
             check=True, capture_output=True)

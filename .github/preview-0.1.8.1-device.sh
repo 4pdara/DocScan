@@ -10,9 +10,9 @@ root='verified-apks'
 mkdir -p preview-device-results
 collect() {
   status=$?; trap - EXIT
-  adb logcat -d > preview-device-results/logcat.txt || true
-  adb root || true; adb wait-for-device
-  adb pull "/sdcard/Android/data/$app/files/screenshots" preview-device-results/screenshots || true
+  timeout 15s adb logcat -d > preview-device-results/logcat.txt || true
+  timeout 15s adb root || true; timeout 20s adb wait-for-device || true
+  timeout 30s adb pull "/sdcard/Android/data/$app/files/screenshots" preview-device-results/screenshots || true
   exit "$status"
 }
 trap collect EXIT
@@ -48,7 +48,7 @@ if [[ "$suite" == 'smoke' ]]; then
   done
   args=(-e class "$classes")
 fi
-adb shell am instrument -w -r -e locale "$locale" "${args[@]}" "$app.test/com.docscan.rebuild.LocaleTestRunner" | tee preview-device-results/instrumentation.txt
+timeout 15m adb shell am instrument -w -r -e locale "$locale" "${args[@]}" "$app.test/com.docscan.rebuild.LocaleTestRunner" | tee preview-device-results/instrumentation.txt
 python3 - "$suite" <<'PY'
 from pathlib import Path
 import re,sys
