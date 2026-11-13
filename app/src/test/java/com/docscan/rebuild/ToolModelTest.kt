@@ -14,6 +14,10 @@ class ToolModelTest {
         assertFalse(PageDecorations(erasures=listOf(EraseRegion(.6f,0f,.3f,1f))).valid())
         assertFalse(PageDecorations(signature=listOf(InkStroke(listOf(Vertex(Float.NaN,.1f))))).valid())
     }
+    @Test fun identityPhotoCropKeepsItsRatioAfterRotation(){
+        for(turns in 0..3){val r=EditRecipe(turns=turns).centerCrop(35f/45f,1600,1200)
+            assertTrue(r.frame.valid());assertEquals(35f/45f,CropGeometry.dimensions(r.frame,1600,1200,r.outputAspect).rotated(turns).aspect,.003f)}
+    }
     @Test fun officeEscapingAndCellNamesNeverBecomeFormulas(){
         assertEquals("A",OfficeExport.column(0));assertEquals("Z",OfficeExport.column(25));assertEquals("AA",OfficeExport.column(26));assertEquals("XFD",OfficeExport.column(16383))
         assertEquals("&lt;script&gt;&amp;&quot;=SUM(A1)\t",OfficeExport.xml("<script>&\"=SUM(A1)\t\u0000"))

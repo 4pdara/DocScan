@@ -142,7 +142,7 @@ private fun ToolWorkspace(tool:ScanTool,store:ScanStore,books:List<LibraryEntry>
             ScanTool.PDF_IMAGES->work {deliver(PdfTools(store).images(id))}
             ScanTool.LONG_IMAGE->work {deliver(PdfTools(store).longImage(id))}
             ScanTool.ID_CARD->work{deliver(PdfTools(store).identity(id))}
-            ScanTool.ID_PHOTO->{change(p.edit().centerCrop(35f/45f,p.width,p.height))}
+            ScanTool.ID_PHOTO->work {change(p.edit().centerCrop(35f/45f,p.width,p.height))}
             ScanTool.SLIDES->{change(recipe.copy(outputAspect=16f/9f))}
             ScanTool.WHITEBOARD->{change(recipe.copy(treatment=Treatment.PAPER))}
             ScanTool.TIMESTAMP->{change(recipe.copy(decorations=recipe.decorations.copy(timestamp=if(field.isBlank())DateFormat.getDateTimeInstance().format(Date()) else field.take(100))))}

@@ -106,6 +106,7 @@ class ToolsAndDraftTest {
         compose.waitUntil(10000){runBlocking{store.dao.book(book.id)==null}}
     }
     private fun screenshot(name:String) {
+        compose.waitForIdle()
         val image=requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         val folder=File(compose.activity.getExternalFilesDir(null),"screenshots").apply{mkdirs()}
         try{File(folder,"$name.png").outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)}}finally{image.recycle()}
@@ -116,8 +117,8 @@ class ToolsAndDraftTest {
         assertTrue(search.height<root.height*.08f)
         screenshot("tools-compact-home")
         compose.onNodeWithTag("home-tab-tools").performClick()
-        screenshot("tools-categories-top")
         compose.onNodeWithTag("categorized-tools").assertIsDisplayed()
+        screenshot("tools-categories-top")
         ToolGroup.entries.forEach{group->compose.onNodeWithTag("categorized-tools").performScrollToNode(hasText(context.getString(group.title)));compose.onNodeWithText(context.getString(group.title)).assertIsDisplayed()}
         screenshot("tools-categories-bottom")
         compose.onNodeWithTag("categorized-tools").performScrollToNode(hasTestTag("tool-SIGNATURE"));compose.onNodeWithTag("tool-SIGNATURE").performClick();compose.onNodeWithTag("tool-workspace").assertIsDisplayed()

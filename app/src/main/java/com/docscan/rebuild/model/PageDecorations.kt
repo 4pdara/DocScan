@@ -32,9 +32,10 @@ object PageSelection {
 /** Center crop inside the detected quadrilateral, without stretching a portrait to the target ratio. */
 fun EditRecipe.centerCrop(aspect:Float,width:Int,height:Int):EditRecipe {
     require(aspect>0 && aspect.isFinite())
+    val target=if(turns.mod(2)==1)1f/aspect else aspect
     val current=CropGeometry.dimensions(frame,width,height,outputAspect).aspect
-    val sx=if(current>aspect)aspect/current else 1f
-    val sy=if(current<aspect)current/aspect else 1f
+    val sx=if(current>target)target/current else 1f
+    val sy=if(current<target)current/target else 1f
     val left=(1f-sx)/2;val top=(1f-sy)/2
     fun at(u:Float,v:Float):Vertex {
         val p=frame.points
@@ -42,5 +43,5 @@ fun EditRecipe.centerCrop(aspect:Float,width:Int,height:Int):EditRecipe {
             (1-u)*(1-v)*p[0].y+u*(1-v)*p[1].y+u*v*p[2].y+(1-u)*v*p[3].y)
     }
     val cropped=Frame(listOf(at(left,top),at(1-left,top),at(1-left,1-top),at(left,1-top)))
-    require(cropped.valid());return copy(frame=cropped,outputAspect=aspect)
+    require(cropped.valid());return copy(frame=cropped,outputAspect=target)
 }

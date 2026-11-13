@@ -82,7 +82,7 @@ class RebuildFlowTest {
 
     @Test fun cameraCapturesDurablePageAndDoneOpensReviewEditor() {
         val store = (compose.activity.application as ScanApplication).store
-        val existing = runBlocking { store.dao.library().first().map { it.book.id }.toSet() }
+        val existing = runBlocking { store.dao.allBooks().map { it.id }.toSet() }
         compose.onNodeWithTag("new-scan").performClick()
         val shutter = hasContentDescription(compose.activity.getString(R.string.capture)) and isEnabled()
         compose.waitUntil(30000) { compose.onAllNodes(shutter).fetchSemanticsNodes().isNotEmpty() }
@@ -92,10 +92,11 @@ class RebuildFlowTest {
         compose.onNode(shutter).performClick()
         var captured: Sheet? = null
         compose.waitUntil(60000) {
-            captured = runBlocking { store.dao.library().first().firstOrNull { it.book.id !in existing }?.let { store.dao.snapshot(it.book.id).firstOrNull() } }
+            captured = runBlocking { store.dao.drafts().first().firstOrNull { it.book.id !in existing }?.let { store.dao.snapshot(it.book.id).firstOrNull() } }
             captured != null
         }
         val page = requireNotNull(captured)
+        assertTrue(runBlocking { store.dao.library().first().none { it.book.id==page.notebookId } })
         assertTrue(store.source(page).length() > 0); assertTrue(minOf(page.width, page.height) >= 480 && maxOf(page.width, page.height) >= 640)
         compose.waitUntil(30000) { compose.onAllNodes(hasText(compose.activity.getString(R.string.done)) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
@@ -106,9 +107,10 @@ class RebuildFlowTest {
         compose.onNodeWithTag("save-edit").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("document-pages").assertIsDisplayed()
+        assertFalse(runBlocking { store.dao.book(page.notebookId)!!.draft })
     }
 
-    @Test fun singleCaptureOpensEditorWithDurableOriginal() {
+    @Test fun singleCaptureOpensEditorAndConfirmedDiscardRemovesOnlyItsDraft() {
         val store = (compose.activity.application as ScanApplication).store
         compose.onNodeWithTag("new-scan").performClick()
         val shutter = hasContentDescription(compose.activity.getString(R.string.capture)) and isEnabled()
@@ -120,14 +122,21 @@ class RebuildFlowTest {
         compose.waitUntil(60000) { compose.onAllNodesWithTag("save-edit").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("filter-strip").assertIsDisplayed()
         compose.onNodeWithTag("editor-toolbar").assertIsDisplayed()
-        val books = runBlocking { store.dao.library().first() }
-        assertTrue(books.any { item -> runBlocking { store.dao.snapshot(item.book.id).any { store.source(it).length() > 0 } } })
+        val draft=runBlocking {store.dao.drafts().first().first()}
+        val captured=runBlocking {store.dao.snapshot(draft.book.id).single()}
+        assertTrue(store.source(captured).length()>0)
         screenshot("single-capture-editor")
+        androidx.test.espresso.Espresso.pressBack()
+        compose.onNodeWithText(compose.activity.getString(R.string.discard_scan_title)).assertIsDisplayed()
+        compose.onNodeWithTag("discard-scan-confirm").performClick()
+        compose.waitUntil(10000){runBlocking {store.dao.book(draft.book.id)==null}}
+        assertFalse(store.source(captured).exists())
     }
 
     @Test fun sourceRecipeAndOrderSurviveDatabaseReopen(): Unit = runBlocking {
         @Suppress("DEPRECATION") val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
-        assertFalse(packageInfo.requestedPermissions.orEmpty().contains(android.Manifest.permission.INTERNET))
+        assertTrue(packageInfo.requestedPermissions.orEmpty().contains(android.Manifest.permission.INTERNET))
+        assertFalse("AI has no default provider or background request",com.docscan.rebuild.tools.AiService(context).configured)
         assertEquals(0, context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)
         val name = "test-${System.nanoTime()}.db"
         var db = Room.databaseBuilder(context, ScanDatabase::class.java, name).build()
