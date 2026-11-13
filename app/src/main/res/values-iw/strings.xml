@@ -283,6 +283,18 @@
     <string name="excel_saved">קובץ Excel נשמר</string>
     <string name="powerpoint_saved">קובץ PowerPoint נשמר</string>
     <string name="sheet_page">עמוד %1$d</string>
+    <string name="update_title">עדכון האפליקציה</string>
+    <string name="update_hint">גרסה מותקנת: %1$s. הבדיקה פונה ל־GitHub רק כשלוחצים, בלי פרטים אישיים. עדכון מותקן רק אם הקובץ זהה לחתימת הבדיקה (SHA-256) של הגרסה, וחתום באותו מפתח.</string>
+    <string name="update_check">בדיקת עדכונים</string>
+    <string name="update_checking">בודק…</string>
+    <string name="update_current">זו הגרסה העדכנית</string>
+    <string name="update_available">גרסה %1$s זמינה (%2$s MB)</string>
+    <string name="update_install">הורדה והתקנה של %1$s</string>
+    <string name="update_downloading">מוריד ובודק את הקובץ…</string>
+    <string name="update_installing">Android מבקש אישור להתקנה…</string>
+    <string name="update_failed">העדכון לא הושלם: %1$s</string>
+    <string name="update_permission_hint">כדי לעדכן מתוך האפליקציה, Android צריך אישור חד־פעמי להתקנת אפליקציות ממנה.</string>
+    <string name="update_allow">מתן אישור</string>
 </resources>
 
 

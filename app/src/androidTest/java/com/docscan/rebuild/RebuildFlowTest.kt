@@ -346,6 +346,28 @@ class RebuildFlowTest {
         } finally { excel.delete(); slides.delete(); store.trash(setOf(book.id)); store.deleteForever(setOf(book.id)) }
     }
 
+    @Test fun updaterOffersOnlyANewerVerifiedScannerRelease() {
+        // The shape GitHub returns: a draft, another app's tag, older and newer scanner builds (published as pre-releases).
+        fun release(tag: String, draft: Boolean, apk: String?) = org.json.JSONObject().put("tag_name", tag).put("draft", draft).put("prerelease", true).put("body", "notes $tag")
+            .put("assets", org.json.JSONArray().apply {
+                if (apk != null) put(org.json.JSONObject().put("name", apk).put("size", 1000).put("browser_download_url", "https://example.com/$apk"))
+                put(org.json.JSONObject().put("name", "SHA256SUMS.txt").put("size", 80).put("browser_download_url", "https://example.com/$tag/SHA256SUMS.txt"))
+            })
+        val json = org.json.JSONArray().put(release("scanner-v0.9.0", true, "DocScan-0.9.0.apk")).put(release("native-v0.1.8.1-preview", false, "DocScan-0.1.8.1-universal.apk"))
+            .put(release("scanner-v0.10.0", false, "DocScan-0.10.0.apk")).put(release("scanner-v0.4.0", false, "DocScan-0.4.0.apk")).put(release("scanner-v0.8.0", false, null)).toString()
+        val found = requireNotNull(com.docscan.rebuild.update.AppUpdater.latest(json, "0.5.0"))
+        assertEquals("0.10.0", found.version); assertEquals("https://example.com/DocScan-0.10.0.apk", found.apkUrl)
+        assertNull(com.docscan.rebuild.update.AppUpdater.latest(json, "0.10.0"))
+        assertTrue(com.docscan.rebuild.update.AppUpdater.newer("1.0.0", "0.9.9-preview")); assertFalse(com.docscan.rebuild.update.AppUpdater.newer("0.5.0", "0.5.0"))
+        val sums = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  DocScan-0.10.0.apk\n"
+        assertEquals("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", com.docscan.rebuild.update.AppUpdater.checksum(sums, "DocScan-0.10.0.apk"))
+        assertNull(com.docscan.rebuild.update.AppUpdater.checksum(sums, "DocScan-0.9.0.apk"))
+        // The installed APK is signed like itself; a file that is not an APK is not installable.
+        assertTrue(com.docscan.rebuild.update.AppUpdater.sameSigner(context, File(context.applicationInfo.sourceDir)))
+        val junk = File(context.cacheDir, "not-an-apk.apk").apply { writeText("x") }
+        try { assertFalse(com.docscan.rebuild.update.AppUpdater.sameSigner(context, junk)) } finally { junk.delete() }
+    }
+
     @Test fun discardedScanRemovesItsPagesAndUnsharedOriginalsOnly(): Unit = runBlocking {
         val store = (compose.activity.application as ScanApplication).store
         val kept = store.create("Kept ${System.nanoTime()}"); val draft = store.create("Draft ${System.nanoTime()}")

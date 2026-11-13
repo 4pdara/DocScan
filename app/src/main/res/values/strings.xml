@@ -283,6 +283,18 @@
     <string name="excel_saved">Excel file saved</string>
     <string name="powerpoint_saved">PowerPoint file saved</string>
     <string name="sheet_page">Page %1$d</string>
+    <string name="update_title">App update</string>
+    <string name="update_hint">Installed version: %1$s. The check contacts GitHub only when pressed, with no personal details. An update is installed only if the file matches the release checksum (SHA-256) and is signed with the same key.</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_current">This is the latest version</string>
+    <string name="update_available">Version %1$s is available (%2$s MB)</string>
+    <string name="update_install">Download and install %1$s</string>
+    <string name="update_downloading">Downloading and checking the file…</string>
+    <string name="update_installing">Android asks to confirm the installation…</string>
+    <string name="update_failed">The update did not finish: %1$s</string>
+    <string name="update_permission_hint">To update from inside the app, Android needs a one-time permission to install apps from it.</string>
+    <string name="update_allow">Allow</string>
 </resources>
 
 

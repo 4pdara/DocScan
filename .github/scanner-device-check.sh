@@ -27,14 +27,14 @@ printf '%s\n' "$actual_page" > "$out/page-size.txt"
 [[ "$actual_page" == "$expected_page" ]]
 install_args=(-r)
 if [[ -n "$forced_abi" ]]; then install_args+=(--abi "$forced_abi"); fi
-adb install "${install_args[@]}" "$root/DocScan-0.5.0.apk" | tee "$out/app-install.txt"
+adb install "${install_args[@]}" "$root/DocScan-1.0.0.apk" | tee "$out/app-install.txt"
 grep -q '^Success' "$out/app-install.txt"
 adb shell dumpsys package "$app" > "$out/package.txt"
-grep -q "versionName=0.5.0" "$out/package.txt"
+grep -q "versionName=1.0.0" "$out/package.txt"
 if [[ -n "$forced_abi" ]]; then grep -q "primaryCpuAbi=$forced_abi" "$out/package.txt"; fi
 adb shell am start -W -n "$app/com.docscan.rebuild.MainActivity" | tee "$out/launch.txt"
 grep -q 'Status: ok' "$out/launch.txt"
-adb install -r -t "$root/tests/DocScan-0.5.0-tests.apk"
+adb install -r -t "$root/tests/DocScan-1.0.0-tests.apk"
 args=()
 if [[ "$suite" == 'smoke' ]]; then
   # The 19-test set the 0.1.8 release pipeline used, plus the original-filter and detection measurements, on Android 8 and 16 KB images (storage, processing, editing,
@@ -52,6 +52,7 @@ if [[ "$suite" == 'smoke' ]]; then
   classes+=",com.docscan.rebuild.RebuildFlowTest#documentToolsWritePdfSizesExtractsLongImageWordAndImportedPdf"
   classes+=",com.docscan.rebuild.RebuildFlowTest#qrIdCardSignatureAndPasswordPdf"
   classes+=",com.docscan.rebuild.RebuildFlowTest#curvedPageColourMarksExcelAndPowerPoint"
+  classes+=",com.docscan.rebuild.RebuildFlowTest#updaterOffersOnlyANewerVerifiedScannerRelease"
   args=(-e class "$classes")
 fi
 adb shell am instrument -w -r -e locale "$locale" "${args[@]}" "$app.test/com.docscan.rebuild.LocaleTestRunner" | tee "$out/instrumentation.txt"
@@ -59,7 +60,7 @@ python3 - "$out/instrumentation.txt" "$suite" <<'PY'
 from pathlib import Path
 import re, sys
 text = Path(sys.argv[1]).read_text()
-expected = 25 if sys.argv[2] == 'smoke' else 38
+expected = 26 if sys.argv[2] == 'smoke' else 39
 if not re.search(r'^OK \((\d+) tests\)', text, re.M) or re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|INSTRUMENTATION_ABORTED', text):
     raise SystemExit('Exact APK instrumentation suite did not pass')
 count = int(re.search(r'^OK \((\d+) tests\)', text, re.M).group(1))

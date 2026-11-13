@@ -247,6 +247,8 @@ private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () 
         TextButton(onBackup,modifier=Modifier.testTag("backup-library")) { Icon(Icons.Outlined.Archive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.backup_library)) }
         TextButton(onRestoreBackup,modifier=Modifier.testTag("restore-library")) { Icon(Icons.Outlined.Unarchive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.restore_backup)) }
         HorizontalDivider(Modifier.padding(vertical=12.dp))
+        UpdateCard()
+        HorizontalDivider(Modifier.padding(vertical=12.dp))
         MarkSettingsCard()
     }
 }
