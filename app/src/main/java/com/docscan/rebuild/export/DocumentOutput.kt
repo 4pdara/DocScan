@@ -140,6 +140,44 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
         } catch (failure: Throwable) { target.delete(); throw failure }
     }
 
+    /** Each page as a picture on its own portrait A4 slide (.pptx); pages are at most 2000 pixels on the long side. */
+    suspend fun powerPoint(bookId: String): File = withContext(Dispatchers.IO) {
+        val pages = store.dao.snapshot(bookId); require(pages.isNotEmpty())
+        val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pptx")
+        val scope = coroutineContext
+        try {
+            FileOutputStream(target).use { out ->
+                OfficeFiles.pptx(object : OfficeFiles.Slides {
+                    override fun count() = pages.size
+                    override fun slide(index: Int): OfficeFiles.Slide {
+                        scope.ensureActive()
+                        val bitmap = pdfBitmap(pages[index], PdfSize.BALANCED)
+                        try {
+                            val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)) }.toByteArray()
+                            return OfficeFiles.Slide(jpeg, bitmap.width, bitmap.height)
+                        } finally { bitmap.recycle() }
+                    }
+                }, out)
+                out.fd.sync()
+            }
+            target
+        } catch (failure: Throwable) { target.delete(); throw failure }
+    }
+
+    /** One worksheet per page from the recognized words, laid out in rows and columns; Hebrew sheets read right to left. */
+    fun excel(pageWords: List<List<OcrWord>>, sheetName: (Int) -> String): File {
+        val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.xlsx")
+        val all = pageWords.flatten()
+        val hebrew = all.count { w -> w.text.any { it in '\u0590'..'\u05FF' } } * 2 >= all.size && all.isNotEmpty()
+        try {
+            FileOutputStream(target).use { out ->
+                OfficeFiles.xlsx(pageWords.indices.map(sheetName), pageWords.map { TableLayout.rows(it, hebrew) }, hebrew, out)
+                out.fd.sync()
+            }
+            return target
+        } catch (failure: Throwable) { target.delete(); throw failure }
+    }
+
     suspend fun pdf(bookId: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null): File = withContext(Dispatchers.IO) {
         val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
         val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pdf")

@@ -275,6 +275,14 @@
     <string name="signature_remove_page">Remove signatures from this page</string>
     <string name="signature_apply">Add to page</string>
     <string name="pdf_import_protected">This PDF is password protected. To import it, first save a copy without a password.</string>
+    <string name="auto_flatten">Straighten automatically from the text lines</string>
+    <string name="auto_flatten_none">Not enough text lines to straighten the page</string>
+    <string name="erase_color_marks">Erase colour marks (pen, highlighter)</string>
+    <string name="to_excel">To Excel</string>
+    <string name="to_powerpoint">To PowerPoint</string>
+    <string name="excel_saved">Excel file saved</string>
+    <string name="powerpoint_saved">PowerPoint file saved</string>
+    <string name="sheet_page">Page %1$d</string>
 </resources>
 
 

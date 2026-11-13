@@ -41,6 +41,7 @@ import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
+import com.docscan.rebuild.imaging.PageFlattener
 import com.docscan.rebuild.imaging.OfflineOcr
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.*
@@ -79,8 +80,12 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
                 // The page keeps the outline the user saw in the camera when the shot was taken. Detection on the full
                 // photo only refines it when both agree; otherwise it could crop a different shape than was shown.
                 val frame = Frame.choose(detected, seen?.takeIf { detectBounds })
+                // A detected page whose text lines bend (a book page curving to the spine) is straightened automatically;
+                // a flat page or one without enough text keeps no correction. The editor can turn it off.
+                val cropped = if (frame != null) page.edit().copy(frame = frame) else page.edit()
+                val flatten = if (frame == null) null else withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), cropped) }.getOrNull() }
                 // Marks chosen in Settings (off by default) go on new pages only.
-                val recipe = MarkSettings(store.context).applyTo(if (frame != null) page.edit().copy(frame = frame) else page.edit())
+                val recipe = MarkSettings(store.context).applyTo(if (flatten != null) cropped.copy(flatten = flatten.toList()) else cropped)
                 if (recipe != page.edit()) store.save(page, recipe)
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
@@ -176,6 +181,22 @@ fun ScanApp(store: ScanStore) {
     }
     fun fileName(title: String, extension: String) = "${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.$extension"
     fun copyTo(uri: android.net.Uri, file: File) = requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { out -> file.inputStream().use { it.copyTo(out) } }
+    val excelSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { uri ->
+        val id = bookId
+        if (uri != null && id != null) vm.perform(R.string.excel_saved) {
+            // Tables need word positions, so every page is recognized now, on the device.
+            val words = store.dao.snapshot(id).map { page -> OfflineOcr(store).words(page, ocrLanguage) }
+            val file = withContext(Dispatchers.IO) { DocumentOutput(context, store).excel(words) { context.getString(R.string.sheet_page, it + 1) } }
+            try { withContext(Dispatchers.IO) { copyTo(uri, file) } } finally { file.delete() }
+        }
+    }
+    val powerPointSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.presentationml.presentation")) { uri ->
+        val id = bookId
+        if (uri != null && id != null) vm.perform(R.string.powerpoint_saved) {
+            val file = DocumentOutput(context, store).powerPoint(id)
+            try { withContext(Dispatchers.IO) { copyTo(uri, file) } } finally { file.delete() }
+        }
+    }
     val wordSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) { uri ->
         val id = bookId
         if (uri != null && id != null) vm.perform(R.string.word_saved) {
@@ -289,6 +310,8 @@ fun ScanApp(store: ScanStore) {
                             when (tool) {
                                 "print" -> printDocument(id)
                                 "word" -> wordSaver.launch(fileName(title, "docx"))
+                                "excel" -> excelSaver.launch(fileName(title, "xlsx"))
+                                "powerpoint" -> powerPointSaver.launch(fileName(title, "pptx"))
                                 "long" -> longImageSaver.launch(fileName(title, "jpg"))
                                 "images" -> requestGallery()
                                 "timestamp" -> { route = "document"; val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val marks = MarkSettings(context); markPages { it.copy(stamp = now, stampPlace = marks.stampPlace, noteColor = if (it.footer != null) it.noteColor else marks.noteColor) } }
@@ -342,7 +365,11 @@ fun ScanApp(store: ScanStore) {
                 })
             }
             "editor", "review" -> pages.firstOrNull { it.id == pageId }?.let { page ->
-                PageEditor(store, page, vm.busy, snack = snack, onBack = { if (draft != null) leaveDraft() else route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe); draft = null; route = "document" } },
+                PageEditor(store, page, vm.busy, snack = snack, onBack = { if (draft != null) leaveDraft() else route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) {
+                    // Straightening is measured on the crop; a new crop measures it again.
+                    val fresh = if (recipe.flatten.isNotEmpty() && recipe.frame != page.edit().frame)
+                        recipe.copy(flatten = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), recipe) }.getOrNull() }?.toList().orEmpty()) else recipe
+                    store.save(page, fresh); draft = null; route = "document" } },
                     onExportImage = { recipe -> imagePage = page.id; imageRecipe = RecipeCodec.encode(recipe); imageSaver.launch("scan-${page.position + 1}.jpg") },
                     onGallery = { recipe -> requestGallery(page, recipe) },
                     onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") },
@@ -359,7 +386,8 @@ fun ScanApp(store: ScanStore) {
                     } })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
-                onPrint = { bookId?.let(::printDocument) }, onWord = { wordSaver.launch(fileName(currentTitle, "docx")) }, onLongImage = { longImageSaver.launch(fileName(currentTitle, "jpg")) },
+                onPrint = { bookId?.let(::printDocument) }, onWord = { wordSaver.launch(fileName(currentTitle, "docx")) },
+                onExcel = { excelSaver.launch(fileName(currentTitle, "xlsx")) }, onPowerPoint = { powerPointSaver.launch(fileName(currentTitle, "pptx")) }, onLongImage = { longImageSaver.launch(fileName(currentTitle, "jpg")) },
                 onWatermark = { text, place, style -> markPages { it.copy(watermark = text, watermarkPlace = place, watermarkStyle = style) } },
                 onFooter = { text, place, colour -> markPages { it.copy(footer = text, footerPlace = place, noteColor = colour) } },
                 onStamp = { add -> val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val marks = MarkSettings(context)

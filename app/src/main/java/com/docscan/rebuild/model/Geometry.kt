@@ -94,7 +94,7 @@ enum class Treatment(val referenceEngineVariant: Boolean = false) {
 data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve(),
     val watermark: String? = null, val stamp: String? = null, val watermarkPlace: MarkPlace = MarkPlace.DIAGONAL, val stampPlace: StampPlace = StampPlace.BOTTOM_RIGHT,
     val watermarkStyle: MarkStyle = MarkStyle(), val footer: String? = null, val footerPlace: StampPlace = StampPlace.BOTTOM_CENTER, val noteColor: MarkColor = MarkColor.RED,
-    val signatures: List<SignatureMark> = emptyList())
+    val signatures: List<SignatureMark> = emptyList(), val flatten: List<Float> = emptyList(), val eraseColor: Boolean = false)
 
 /**
  * A drawn signature: strokes as points within its own box (0..1 on both axes; the box is [aspect] times as wide as

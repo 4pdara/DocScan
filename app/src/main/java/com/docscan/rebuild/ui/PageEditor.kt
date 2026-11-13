@@ -45,6 +45,11 @@ import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.model.*
 import com.docscan.rebuild.imaging.ImagePipeline
+import com.docscan.rebuild.imaging.PageFlattener
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.LocalContext
 import kotlin.math.min
 
 fun fitImageRect(size: Size, aspect: Float): Rect {
@@ -86,6 +91,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     val latestNavigate by rememberUpdatedState(onNavigate)
     var zoom by remember(page.id) { mutableFloatStateOf(1f) }; var pan by remember(page.id) { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
+    val scope = rememberCoroutineScope(); val context = LocalContext.current
+    var flattening by remember(page.id) { mutableStateOf(false) }
     BackHandler(!busy) { if (saveOnBack) onSave(edit) else onBack() }
     if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) },
         text = { OutlinedTextField(draftTitle, { draftTitle = it.take(100) }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
@@ -121,6 +128,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                     DropdownMenuItem(text = { Text(stringResource(R.string.split_book)) }, enabled = onSplit != null, onClick = { more=false; tool="split"; original=false;zoom=1f;pan=Offset.Zero })
                     DropdownMenuItem(text = { Text(stringResource(R.string.book_curve)) }, onClick = { more=false; tool="curve"; original=false;zoom=1f;pan=Offset.Zero })
                     DropdownMenuItem(text = { Text(stringResource(R.string.ocr)) }, enabled = onOcr != null, onClick = { more=false;onOcr?.invoke(edit) })
+                    // Removes pen and highlighter colour (blue, red, green, yellow); black print stays.
+                    DropdownMenuItem(text = { Text(stringResource(R.string.erase_color_marks)) }, onClick = { more=false; change(edit.copy(eraseColor = !edit.eraseColor)) },
+                        leadingIcon = { Checkbox(edit.eraseColor, null) }, modifier = Modifier.testTag("erase-color"))
                 }
             }
             IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) {
@@ -144,6 +154,21 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             }
                         }
                         "curve" -> Column(Modifier.padding(horizontal=16.dp)) {
+                            // Automatic straightening from the text lines (on by default for pages whose edges were detected).
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.auto_flatten), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                if (flattening) CircularProgressIndicator(Modifier.size(20.dp).padding(end = 6.dp), strokeWidth = 2.dp)
+                                Switch(edit.flatten.isNotEmpty(), { on ->
+                                    if (!on) change(edit.copy(flatten = emptyList())) else {
+                                        flattening = true
+                                        scope.launch {
+                                            val coef = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), currentEdit) }.getOrNull() }
+                                            flattening = false
+                                            if (coef != null) change(currentEdit.copy(flatten = coef.toList())) else snack.showSnackbar(context.getString(R.string.auto_flatten_none))
+                                        }
+                                    }
+                                }, enabled = !flattening && !busy, modifier = Modifier.testTag("auto-flatten"))
+                            }
                             Text(stringResource(R.string.curve_hint),style=MaterialTheme.typography.bodySmall)
                             Text(stringResource(R.string.curve_top),style=MaterialTheme.typography.labelSmall)
                             Slider(edit.curvature.top,{change(edit.copy(curvature=edit.curvature.copy(top=it)))},valueRange=-.2f.. .2f,modifier=Modifier.testTag("curve-top"))

@@ -14,7 +14,24 @@ import java.security.MessageDigest
 
 /** Hebrew/English recognition stays on the device. Models are bundled; no network permission is needed. */
 class OfflineOcr(private val store: ScanStore) {
-    suspend fun recognize(sheet: Sheet, languages: String = "heb+eng"): String = withContext(Dispatchers.Default) {
+    suspend fun recognize(sheet: Sheet, languages: String = "heb+eng"): String = read(sheet, languages) { engine, text -> text }
+
+    /** Text and the box of every word, for tables (the Excel export). The page's text is stored as by [recognize]. */
+    suspend fun words(sheet: Sheet, languages: String = "heb+eng"): List<com.docscan.rebuild.export.OcrWord> = read(sheet, languages) { engine, _ ->
+        val words = ArrayList<com.docscan.rebuild.export.OcrWord>()
+        val iterator = engine.resultIterator ?: return@read words
+        try {
+            iterator.begin()
+            do {
+                val text = iterator.getUTF8Text(TessBaseAPI.PageIteratorLevel.RIL_WORD)?.replace("\u200e", "")?.replace("\u200f", "")?.trim()
+                val box = iterator.getBoundingRect(TessBaseAPI.PageIteratorLevel.RIL_WORD)
+                if (!text.isNullOrEmpty() && box != null) words += com.docscan.rebuild.export.OcrWord(text, box.left, box.top, box.right, box.bottom)
+            } while (iterator.next(TessBaseAPI.PageIteratorLevel.RIL_WORD))
+        } finally { iterator.delete() }
+        words
+    }
+
+    private suspend fun <T> read(sheet: Sheet, languages: String, result: (TessBaseAPI, String) -> T): T = withContext(Dispatchers.Default) {
         require(languages in listOf("heb+eng","heb","eng"))
         lock.withLock {
             val root=File(store.context.filesDir,"ocr");val data=File(root,"tessdata").apply { check(isDirectory || mkdirs()) }
@@ -40,7 +57,7 @@ class OfflineOcr(private val store: ScanStore) {
                 val text=tidy(engine.getUTF8Text().orEmpty())
                 coroutineContext.ensureActive()
                 check(store.dao.recognized(sheet.id,text,sheet.recipe)==1) { "Page changed during OCR" }
-                text
+                result(engine, text)
             } finally { engine.recycle();bitmap.recycle() }
         }
     }

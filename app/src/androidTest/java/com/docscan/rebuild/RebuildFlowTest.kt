@@ -20,6 +20,7 @@ import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.PageMarks
 import com.docscan.rebuild.imaging.CodeReader
+import com.docscan.rebuild.imaging.PageFlattener
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -256,6 +257,93 @@ class RebuildFlowTest {
             assertEquals(R.string.pdf_import_protected, (refused.exceptionOrNull() as? UserMessage)?.text)
         } finally { locked.delete() }
         store.trash(setOf(cards.id)); store.deleteForever(setOf(cards.id))
+    }
+
+    @Test fun curvedPageColourMarksExcelAndPowerPoint(): Unit = runBlocking {
+        ImagePipeline.ensureAvailable()
+        // A page of text lines, flat and then bent towards the left (a book page curving into the spine).
+        val w = 1200; val h = 1600
+        val flatPage = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        Canvas(flatPage).apply {
+            drawColor(Color.WHITE)
+            val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 30f }
+            for (row in 0 until 36) drawText("שורה ${row + 1} של טקסט לבדיקת יישור הדף 0123456789 abc", 70f, 120f + row * 40f, ink)
+        }
+        fun gray(bitmap: Bitmap) = org.opencv.core.Mat().also { m -> val rgba = org.opencv.core.Mat(); org.opencv.android.Utils.bitmapToMat(bitmap, rgba); org.opencv.imgproc.Imgproc.cvtColor(rgba, m, org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY); rgba.release() }
+        /** Mean over lines of the largest distance from the line's own straight fit, in pixels. */
+        fun bend(bitmap: Bitmap): Double {
+            val g = gray(bitmap); val lines = try { PageFlattener.lines(g) } finally { g.release() }
+            return lines.map { line ->
+                val n = line.size; val mx = line.sumOf { it[0] } / n; val my = line.sumOf { it[1] } / n
+                val slope = line.sumOf { (it[0] - mx) * (it[1] - my) } / line.sumOf { (it[0] - mx) * (it[0] - mx) }.coerceAtLeast(1e-9)
+                line.map { (it[1] - my - slope * (it[0] - mx)) * h }.let { r -> r.max() - r.min() }
+            }.average()
+        }
+        val bent = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val src = org.opencv.core.Mat(); val dst = org.opencv.core.Mat(); val mapX = org.opencv.core.Mat(h, w, org.opencv.core.CvType.CV_32FC1); val mapY = org.opencv.core.Mat(h, w, org.opencv.core.CvType.CV_32FC1)
+        try {
+            org.opencv.android.Utils.bitmapToMat(flatPage, src)
+            val xs = FloatArray(w * h); val ys = FloatArray(w * h)
+            for (y in 0 until h) for (x in 0 until w) {
+                val u = x / (w - 1.0); val d = .05 * (1 - u) * (1 - u) * (1 - u) - .05 / 4
+                xs[y * w + x] = x.toFloat(); ys[y * w + x] = ((y / (h - 1.0) - d) * (h - 1)).toFloat()
+            }
+            mapX.put(0, 0, xs); mapY.put(0, 0, ys)
+            org.opencv.imgproc.Imgproc.remap(src, dst, mapX, mapY, org.opencv.imgproc.Imgproc.INTER_LINEAR, org.opencv.core.Core.BORDER_REPLICATE)
+            org.opencv.android.Utils.matToBitmap(dst, bent)
+        } finally { src.release(); dst.release(); mapX.release(); mapY.release() }
+        try {
+            val flatGray = gray(flatPage)
+            try { assertNull("A flat page needs no straightening", PageFlattener.estimate(flatGray).coefficients) } finally { flatGray.release() }
+            val bentGray = gray(bent)
+            val estimate = try { PageFlattener.estimate(bentGray) } finally { bentGray.release() }
+            val coefficients = requireNotNull(estimate.coefficients) { "Curved page: $estimate" }
+            val straightened = ImagePipeline.transform(bent, EditRecipe(flatten = coefficients.toList()))
+            try {
+                val before = bend(bent); val after = bend(straightened)
+                assertTrue("Text lines straightened: $before px -> $after px", after < before * .45 && before > 8)
+                assertEquals(EditRecipe(flatten = coefficients.toList()), RecipeCodec.decode(RecipeCodec.encode(EditRecipe(flatten = coefficients.toList()))))
+            } finally { straightened.recycle() }
+        } finally { flatPage.recycle(); bent.recycle() }
+
+        // Colour marks: blue pen and yellow highlighter go, black print (also under the highlighter) stays.
+        val marked = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
+        try {
+            val c = Canvas(marked); c.drawColor(Color.WHITE)
+            val ink = Paint().apply { color = Color.BLACK; textSize = 40f; isAntiAlias = true }
+            c.drawText("Black print stays 12345", 40f, 200f, ink)
+            c.drawRect(30f, 160f, 700f, 215f, Paint().apply { color = Color.argb(110, 255, 230, 0) })
+            c.drawText("Black print stays 12345", 40f, 200f, ink)
+            c.drawLine(40f, 400f, 760f, 420f, Paint().apply { color = Color.rgb(20, 60, 200); strokeWidth = 6f })
+            val clean = ImagePipeline.transform(marked, EditRecipe(eraseColor = true))
+            try {
+                fun coloured(b: Bitmap, top: Int, bottom: Int) = (top until bottom).sumOf { y -> (0 until b.width).count { x -> val p = b.getPixel(x, y); maxOf(Color.red(p), Color.green(p), Color.blue(p)) - minOf(Color.red(p), Color.green(p), Color.blue(p)) > 60 } }
+                fun dark(b: Bitmap) = (165 until 210).sumOf { y -> (0 until b.width).count { x -> Color.red(b.getPixel(x, y)) < 100 } }
+                assertTrue(coloured(marked, 150, 430) > 2000); assertEquals(0, coloured(clean, 150, 430))
+                assertTrue("Print under the highlighter kept: ${dark(clean)} of ${dark(marked)}", dark(clean) > dark(marked) * .85)
+            } finally { clean.recycle() }
+        } finally { marked.recycle() }
+
+        // Excel from recognized words (right to left, columns) and PowerPoint with one slide per page.
+        val store = (compose.activity.application as ScanApplication).store
+        val output = DocumentOutput(context, store)
+        val table = listOf(com.docscan.rebuild.export.OcrWord("שם", 900, 100, 960, 120), com.docscan.rebuild.export.OcrWord("מחיר", 300, 100, 360, 120),
+            com.docscan.rebuild.export.OcrWord("תפוחים", 890, 150, 960, 170), com.docscan.rebuild.export.OcrWord("12.50", 300, 150, 360, 170))
+        val excel = output.excel(listOf(table)) { "עמוד ${it + 1}" }
+        val book = store.create("Office ${System.nanoTime()}")
+        store.captured(book.id, fixture("office-1.jpg")); store.captured(book.id, fixture("office-2.jpg"))
+        val slides = output.powerPoint(book.id)
+        try {
+            java.util.zip.ZipFile(excel).use { zip ->
+                val sheet = zip.getInputStream(zip.getEntry("xl/worksheets/sheet1.xml")).readBytes().toString(Charsets.UTF_8)
+                assertTrue(sheet.contains("rightToLeft=\"1\"") && sheet.contains("<c r=\"A2\" t=\"inlineStr\"><is><t xml:space=\"preserve\">תפוחים</t>") && sheet.contains("<c r=\"B2\" t=\"inlineStr\"><is><t xml:space=\"preserve\">12.50</t>"))
+                assertTrue(zip.getInputStream(zip.getEntry("xl/workbook.xml")).readBytes().toString(Charsets.UTF_8).contains("עמוד 1"))
+            }
+            java.util.zip.ZipFile(slides).use { zip ->
+                assertNotNull(zip.getEntry("ppt/slides/slide2.xml")); assertNotNull(zip.getEntry("ppt/media/image2.jpeg")); assertNotNull(zip.getEntry("ppt/theme/theme1.xml"))
+                assertTrue(zip.getInputStream(zip.getEntry("ppt/presentation.xml")).readBytes().toString(Charsets.UTF_8).contains("<p:sldId id=\"257\""))
+            }
+        } finally { excel.delete(); slides.delete(); store.trash(setOf(book.id)); store.deleteForever(setOf(book.id)) }
     }
 
     @Test fun discardedScanRemovesItsPagesAndUnsharedOriginalsOnly(): Unit = runBlocking {

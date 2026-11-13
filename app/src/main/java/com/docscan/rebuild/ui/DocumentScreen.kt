@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
 fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: (DocumentOutput.PdfSize) -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState,
     onPrint: () -> Unit = {}, onWatermark: (String?, MarkPlace, MarkStyle) -> Unit = { _, _, _ -> }, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
     onFooter: (String?, StampPlace, MarkColor) -> Unit = { _, _, _ -> }, onProtectedPdf: (String) -> Unit = {},
-    onSign: (Sheet, SignatureMark?) -> Unit = { _, _ -> },
+    onSign: (Sheet, SignatureMark?) -> Unit = { _, _ -> }, onExcel: () -> Unit = {}, onPowerPoint: () -> Unit = {},
     onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {}) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var pdfChoice by rememberSaveable { mutableStateOf(false) }
@@ -146,6 +146,11 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 DocumentAction(R.string.print, Icons.Outlined.Print, Modifier.weight(1f).testTag("tool-print"), pages.isNotEmpty()) { actions = false; onPrint() }
                 DocumentAction(R.string.to_word, Icons.Outlined.Description, Modifier.weight(1f).testTag("tool-word"), pages.isNotEmpty()) { actions = false; onWord() }
                 DocumentAction(R.string.long_image, Icons.Outlined.ViewDay, Modifier.weight(1f).testTag("tool-long-image"), pages.isNotEmpty()) { actions = false; onLongImage() }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.to_excel, Icons.Outlined.TableChart, Modifier.weight(1f).testTag("tool-excel"), pages.isNotEmpty()) { actions = false; onExcel() }
+                DocumentAction(R.string.to_powerpoint, Icons.Outlined.Slideshow, Modifier.weight(1f).testTag("tool-powerpoint"), pages.isNotEmpty()) { actions = false; onPowerPoint() }
+                Spacer(Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.watermark, Icons.Outlined.WaterDrop, Modifier.weight(1f).testTag("tool-watermark"), pages.isNotEmpty()) { actions = false; openMarks("watermark") }

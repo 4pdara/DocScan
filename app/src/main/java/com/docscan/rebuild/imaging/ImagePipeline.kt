@@ -67,7 +67,10 @@ object ImagePipeline {
                 try { Imgproc.warpPerspective(source, current, homography, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
                 finally { from.release(); to.release(); homography.release() }
             }
+            // Automatic straightening from the page's own text lines, then the manual book curve.
+            if (recipe.flatten.isNotEmpty()) PageFlattener.apply(current, recipe.flatten)
             if (recipe.curvature.active) BookDewarp.apply(current, recipe.curvature)
+            if (recipe.eraseColor) ColorMarks.erase(current)
             when (recipe.turns.mod(4)) {
                 1 -> Core.rotate(current, current, Core.ROTATE_90_CLOCKWISE)
                 2 -> Core.rotate(current, current, Core.ROTATE_180)

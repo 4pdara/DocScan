@@ -135,8 +135,8 @@
     <string name="right_page_first">העמוד הימני ראשון (עברית)</string>
     <string name="split_apply">יצירת שני עמודים</string>
     <string name="book_split_saved">נוצרו שני עמודים והמקור נשמר</string>
-    <string name="book_curve">יישור קימורי ספר</string>
-    <string name="curve_hint">יישור ידני: כוון את הקימור העליון והתחתון עד ששורות הכתב ישרות. מומלץ לחתוך תחילה את העמוד.</string>
+    <string name="book_curve">יישור דף מעוקל</string>
+    <string name="curve_hint">היישור האוטומטי פועל לבד בדף שנסרק עם זיהוי גבולות, לפי שורות הטקסט. אפשר גם לכוון ידנית את הקימור העליון והתחתון עד ששורות הכתב ישרות.</string>
     <string name="curve_top">קימור עליון</string>
     <string name="curve_bottom">קימור תחתון</string>
     <string name="reset_curve">איפוס קימורים</string>
@@ -275,6 +275,14 @@
     <string name="signature_remove_page">הסרת החתימות מהעמוד</string>
     <string name="signature_apply">הוספה לעמוד</string>
     <string name="pdf_import_protected">ה־PDF מוגן בסיסמה. כדי לייבא אותו, שמרו קודם עותק בלי סיסמה.</string>
+    <string name="auto_flatten">יישור אוטומטי לפי שורות הטקסט</string>
+    <string name="auto_flatten_none">לא נמצאו מספיק שורות טקסט כדי ליישר את הדף</string>
+    <string name="erase_color_marks">מחיקת סימונים בצבע (עט, מרקר)</string>
+    <string name="to_excel">ל־Excel</string>
+    <string name="to_powerpoint">ל־PowerPoint</string>
+    <string name="excel_saved">קובץ Excel נשמר</string>
+    <string name="powerpoint_saved">קובץ PowerPoint נשמר</string>
+    <string name="sheet_page">עמוד %1$d</string>
 </resources>
 
 

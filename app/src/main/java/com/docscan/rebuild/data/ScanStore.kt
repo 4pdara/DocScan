@@ -114,6 +114,8 @@ object RecipeCodec {
             r.footer?.let { put("footer", it); put("footerPlace", r.footerPlace.name) }
             if (r.stamp != null || r.footer != null) put("noteColor", r.noteColor.name)
             if (r.signatures.isNotEmpty()) put("signatures", JSONArray(r.signatures.map { SignatureCodec.encode(it) }))
+            if (r.flatten.isNotEmpty()) put("flatten", JSONArray(r.flatten.map { it.toDouble() }))
+            if (r.eraseColor) put("eraseColor", true)
         }.toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
@@ -129,7 +131,9 @@ object RecipeCodec {
             runCatching { StampPlace.valueOf(o.optString("stampPlace", "BOTTOM_RIGHT")) }.getOrDefault(StampPlace.BOTTOM_RIGHT),
             MarkStyle(option(o, "markFont", MarkFont.BOLD), option(o, "markColor", MarkColor.GREY), option(o, "markStrength", MarkStrength.MEDIUM), option(o, "markSize", MarkSize.MEDIUM)),
             o.optString("footer").trim().take(80).ifBlank { null }, option(o, "footerPlace", StampPlace.BOTTOM_CENTER), option(o, "noteColor", MarkColor.RED),
-            o.optJSONArray("signatures")?.let { list -> (0 until minOf(list.length(), 20)).mapNotNull { SignatureCodec.decode(list.optJSONObject(it)) } }.orEmpty())
+            o.optJSONArray("signatures")?.let { list -> (0 until minOf(list.length(), 20)).mapNotNull { SignatureCodec.decode(list.optJSONObject(it)) } }.orEmpty(),
+            o.optJSONArray("flatten")?.let { a -> (0 until a.length()).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { f -> f.size == 9 && f.all { it.isFinite() && it in -1f..1f } }.orEmpty(),
+            o.optBoolean("eraseColor", false))
     }.getOrDefault(EditRecipe())
     private inline fun <reified T : Enum<T>> option(o: JSONObject, key: String, default: T): T =
         o.optString(key).takeIf { it.isNotEmpty() }?.let { name -> enumValues<T>().firstOrNull { it.name == name } } ?: default
@@ -207,6 +211,7 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
     }
     suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
         require(edit.frame.valid() && edit.curvature.valid() && edit.signatures.all { it.valid() })
+        require(edit.flatten.isEmpty() || edit.flatten.size == 9 && edit.flatten.all { it.isFinite() && it in -1f..1f })
         require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
         dao.recipe(page.id, RecipeCodec.encode(edit))
     }
