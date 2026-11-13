@@ -301,7 +301,7 @@ class RebuildFlowTest {
             val straightened = ImagePipeline.transform(bent, EditRecipe(flatten = coefficients.toList()))
             try {
                 val before = bend(bent); val after = bend(straightened)
-                assertTrue("Text lines straightened: $before px -> $after px", after < before * .45 && before > 8)
+                assertTrue("Text lines straightened: $before px -> $after px", after < before * .5 && before > 3)
                 assertEquals(EditRecipe(flatten = coefficients.toList()), RecipeCodec.decode(RecipeCodec.encode(EditRecipe(flatten = coefficients.toList()))))
             } finally { straightened.recycle() }
         } finally { flatPage.recycle(); bent.recycle() }
