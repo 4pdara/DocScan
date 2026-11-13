@@ -93,7 +93,17 @@ enum class Treatment(val referenceEngineVariant: Boolean = false) {
  */
 data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve(),
     val watermark: String? = null, val stamp: String? = null, val watermarkPlace: MarkPlace = MarkPlace.DIAGONAL, val stampPlace: StampPlace = StampPlace.BOTTOM_RIGHT,
-    val watermarkStyle: MarkStyle = MarkStyle(), val footer: String? = null, val footerPlace: StampPlace = StampPlace.BOTTOM_CENTER, val noteColor: MarkColor = MarkColor.RED)
+    val watermarkStyle: MarkStyle = MarkStyle(), val footer: String? = null, val footerPlace: StampPlace = StampPlace.BOTTOM_CENTER, val noteColor: MarkColor = MarkColor.RED,
+    val signatures: List<SignatureMark> = emptyList())
+
+/**
+ * A drawn signature: strokes as points within its own box (0..1 on both axes; the box is [aspect] times as wide as
+ * tall), placed with its top-left corner at ([x], [y]) of the page and [width] of the page width wide.
+ */
+data class SignatureMark(val strokes: List<List<Vertex>>, val aspect: Float, val x: Float = .55f, val y: Float = .8f, val width: Float = .35f, val color: MarkColor = MarkColor.BLACK) {
+    fun valid() = strokes.isNotEmpty() && strokes.all { it.isNotEmpty() } && aspect.isFinite() && aspect in .2f..20f &&
+        x.isFinite() && y.isFinite() && width.isFinite() && width in .03f..1f && x in -.5f..1f && y in -.5f..1f
+}
 
 /** Where a watermark is drawn: corner to corner, across the middle, along the top or bottom, or up the side. */
 enum class MarkPlace { DIAGONAL, CENTER, TOP, BOTTOM, SIDE }

@@ -6,11 +6,13 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import com.docscan.rebuild.model.EditRecipe
 import com.docscan.rebuild.model.MarkColor
 import com.docscan.rebuild.model.MarkFont
 import com.docscan.rebuild.model.MarkPlace
+import com.docscan.rebuild.model.SignatureMark
 import com.docscan.rebuild.model.StampPlace
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.atan2
@@ -52,8 +54,9 @@ object PageMarks {
     }
 
     fun draw(bitmap: Bitmap, recipe: EditRecipe) {
-        if (recipe.watermark == null && recipe.stamp == null && recipe.footer == null) return
+        if (recipe.watermark == null && recipe.stamp == null && recipe.footer == null && recipe.signatures.isEmpty()) return
         val canvas = Canvas(bitmap); val w = bitmap.width.toFloat(); val h = bitmap.height.toFloat(); val short = min(w, h)
+        recipe.signatures.forEach { signature(canvas, w, h, it) }
         recipe.watermark?.let { text ->
             val style = recipe.watermarkStyle
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -97,6 +100,31 @@ object PageMarks {
             val halo = Paint(ink).apply { color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = ink.textSize * .25f }
             val y = if (bottom) h - margin - (lines.size - 1 - index) * gap else margin + size + index * gap
             canvas.drawText(text, x, y, halo); canvas.drawText(text, x, y, ink)
+        }
+    }
+
+    /** A signature as ink: smooth strokes whose width follows the signature's size, like a pen. */
+    fun signature(canvas: Canvas, w: Float, h: Float, mark: SignatureMark) {
+        val boxW = mark.width * w; val boxH = boxW / mark.aspect
+        val left = mark.x * w; val top = mark.y * h
+        val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(Color.red(mark.color.rgb), Color.green(mark.color.rgb), Color.blue(mark.color.rgb))
+            style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+            strokeWidth = maxOf(1.5f, min(boxW, boxH * 3f) * .018f)
+        }
+        mark.strokes.forEach { stroke ->
+            val points = stroke.map { left + it.x * boxW to top + it.y * boxH }
+            if (points.size == 1) { canvas.drawPoint(points[0].first, points[0].second, ink); return@forEach }
+            val path = Path().apply {
+                moveTo(points[0].first, points[0].second)
+                // Midpoint quadratic smoothing through the sampled touch points.
+                for (i in 1 until points.size - 1) {
+                    val (cx, cy) = points[i]; val (nx, ny) = points[i + 1]
+                    quadTo(cx, cy, (cx + nx) / 2, (cy + ny) / 2)
+                }
+                lineTo(points.last().first, points.last().second)
+            }
+            canvas.drawPath(path, ink)
         }
     }
 

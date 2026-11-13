@@ -131,6 +131,8 @@ fun ScanApp(store: ScanStore) {
     // A new scan stays a draft until the user saves it; leaving a draft deletes it after confirmation.
     var draft by rememberSaveable { mutableStateOf<String?>(null) }
     var ocrMode by rememberSaveable { mutableStateOf(false) }
+    // ID card tool: the camera asks for the front, then the back, and both become one A4 page.
+    var idCard by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var importBook by rememberSaveable { mutableStateOf<String?>(null) }
     // A Tools-tab action waiting for the user to pick its document, and the tool the document screen should open.
@@ -160,10 +162,13 @@ fun ScanApp(store: ScanStore) {
     }
     var pdfSize by rememberSaveable { mutableStateOf(DocumentOutput.PdfSize.ORIGINAL) }
     var pdfPages by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    // Held only in memory until the file is written; never saved.
+    var pdfPassword by remember { mutableStateOf<String?>(null) }
     val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val id = bookId; val size = pdfSize; val only = pdfPages?.toSet(); pdfSize = DocumentOutput.PdfSize.ORIGINAL; pdfPages = null
-        if (uri != null && id != null) vm.perform(R.string.pdf_saved) {
-            val file = DocumentOutput(context, store).pdf(id, size, only)
+        val id = bookId; val size = pdfSize; val only = pdfPages?.toSet(); val password = pdfPassword; pdfSize = DocumentOutput.PdfSize.ORIGINAL; pdfPages = null; pdfPassword = null
+        if (uri != null && id != null) vm.perform(if (password != null) R.string.protected_pdf_saved else R.string.pdf_saved) {
+            val output = DocumentOutput(context, store)
+            val file = if (password != null) output.protectedPdf(id, password, size, only) else output.pdf(id, size, only)
             try { withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { out -> file.inputStream().use { it.copyTo(out) } } } }
             finally { file.delete() }
         }
@@ -255,8 +260,8 @@ fun ScanApp(store: ScanStore) {
             context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
         }
     }
-    fun startScan(recognize: Boolean = false) { vm.perform { val created = store.create(defaultTitle()).id; bookId = created; draft = created; ocrMode = recognize; route = "camera" } }
-    fun discardDraft() { val id = draft ?: return; confirmDiscard = false; vm.perform { store.discard(id); draft = null; ocrMode = false; bookId = null; pageId = null; route = "library" } }
+    fun startScan(recognize: Boolean = false, card: Boolean = false) { vm.perform { val created = store.create(if (card) context.getString(R.string.id_card) else defaultTitle()).id; bookId = created; draft = created; ocrMode = recognize; idCard = card; route = "camera" } }
+    fun discardDraft() { val id = draft ?: return; confirmDiscard = false; vm.perform { store.discard(id); draft = null; ocrMode = false; idCard = false; bookId = null; pageId = null; route = "library" } }
     /** Leaving an unsaved scan: nothing captured is removed silently; captured pages need confirmation. */
     fun leaveDraft() { if (pages.isEmpty()) discardDraft() else confirmDiscard = true }
     fun recognize(id: String) { vm.perform { val page = requireNotNull(store.dao.page(id)); ocrText = OfflineOcr(store).recognize(page, ocrLanguage) } }
@@ -298,6 +303,7 @@ fun ScanApp(store: ScanStore) {
     ScannerScreenTheme(dark = route == "camera" || route == "editor" || route == "review") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
+            "qr" -> QrScreen(onBack = { route = "library" })
             "ocr" -> OcrScreen(ocrText,{ocrText=it},ocrLanguage,snack,
                 onBack={route="editor"},onSave={textSaver.launch("recognized-text.txt")},
                 onRecognize={pageId?.let(::recognize)},onLanguageRecognize={language->ocrLanguage=language;pageId?.let(::recognize)},
@@ -305,15 +311,28 @@ fun ScanApp(store: ScanStore) {
             "camera" -> bookId?.let { id ->
                 CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { vm.perform {
                     val captured = store.dao.snapshot(id)
-                    if (captured.isEmpty() && id == draft) { store.discard(id); draft = null; ocrMode = false; bookId = null; route = "library" }
-                    else { pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" }
-                } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) }, onCaptured = { file, detectBounds, batch, seen, complete ->
+                    if (captured.isEmpty() && id == draft) { store.discard(id); draft = null; ocrMode = false; idCard = false; bookId = null; route = "library" }
+                    else if (idCard && captured.size == 1) {
+                        // Finished after the front only: a one-sided card page.
+                        val card = store.idCard(id, captured[0], null); val marks = MarkSettings(context)
+                        if (marks.active) store.save(card, marks.applyTo(card.edit()))
+                        idCard = false; draft = null; route = "document"
+                    }
+                    else { idCard = false; pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" }
+                } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) },
+                prompt = if (!idCard) null else if (pages.isEmpty()) R.string.id_card_front else R.string.id_card_back,
+                onCaptured = { file, detectBounds, batch, seen, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
                     else vm.perform {
                         var ok = false; var recognizeNow: String? = null
                         try {
                             val captured = vm.receive(id, file, detectBounds, seen)
-                            if (!batch) { pageId = captured.id; if (ocrMode) { ocrMode = false; ocrText = ""; recognizeNow = captured.id; route = "ocr" } else route = "editor" }
+                            val sides = if (idCard) store.dao.snapshot(id) else emptyList()
+                            if (idCard && sides.size >= 2) {
+                                val card = store.idCard(id, sides[0], sides[1]); val marks = MarkSettings(context)
+                                if (marks.active) store.save(card, marks.applyTo(card.edit()))
+                                idCard = false; draft = null; route = "document"
+                            } else if (idCard) { /* the back is next */ } else if (!batch) { pageId = captured.id; if (ocrMode) { ocrMode = false; ocrText = ""; recognizeNow = captured.id; route = "ocr" } else route = "editor" }
                             ok = true
                         } finally { complete(ok) }
                         // Text extraction from the home screen: the cropped page is recognized as soon as it is captured.
@@ -347,11 +366,16 @@ fun ScanApp(store: ScanStore) {
                 onExtract = { ids -> pdfPages = ids.toList(); pdfSaver.launch(fileName(currentTitle, "pdf")) },
                 startTool = documentTool, onToolStarted = { documentTool = null },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) },
-                onPdf = { size -> pdfSize = size; pdfSaver.launch(fileName(currentTitle, "pdf")) }, onGallery = { requestGallery() }, onShare = { sharePdf() },
+                onPdf = { size -> pdfSize = size; pdfSaver.launch(fileName(currentTitle, "pdf")) },
+                onProtectedPdf = { password -> pdfPassword = password; pdfSaver.launch(fileName(currentTitle, "pdf")) },
+                onSign = { page, mark -> vm.perform(R.string.saved) {
+                    val current = requireNotNull(store.dao.page(page.id)); val recipe = current.edit()
+                    store.save(current, recipe.copy(signatures = if (mark == null) emptyList() else recipe.signatures + mark))
+                } }, onGallery = { requestGallery() }, onShare = { sharePdf() },
                 onMove = { page, direction -> bookId?.let { id -> vm.perform { store.move(id, page.id, direction) } } },
                 onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack)
             else -> LibraryScreen(store, books, trash, onScan = { startScan() }, onExtractText = { startScan(recognize = true) },
-                onTool = { tool -> when (tool) { "scan" -> startScan(); "ocr" -> startScan(recognize = true); "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }, onOpen = { bookId = it; route = "document" },
+                onTool = { tool -> when (tool) { "scan" -> startScan(); "ocr" -> startScan(recognize = true); "idcard" -> startScan(card = true); "qr" -> route = "qr"; "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }, onOpen = { bookId = it; route = "document" },
                 onShare = { id -> sharePdf(id) }, onPdf = { id ->
                     bookId = id
                     val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)

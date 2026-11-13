@@ -237,6 +237,43 @@
     <string name="note_color">צבע שורת הטקסט וחותמת הזמן</string>
     <string name="mark_preview">תצוגה מקדימה</string>
     <string name="timestamp_corner">מיקום חותמת הזמן</string>
+    <string name="protected_pdf">PDF עם סיסמה</string>
+    <string name="protected_pdf_hint">הקובץ יוצפן ב־AES-256, ויהיה אפשר לפתוח אותו רק עם הסיסמה. הסיסמה לא נשמרת באפליקציה: אם תשכחו אותה, אי אפשר לפתוח את הקובץ.</string>
+    <string name="protected_pdf_saved">PDF עם סיסמה נשמר</string>
+    <string name="password">סיסמה (לפחות 4 תווים)</string>
+    <string name="password_again">הסיסמה שוב</string>
+    <string name="password_mismatch">הסיסמאות לא זהות</string>
+    <string name="ok">אישור</string>
+    <string name="copy">העתקה</string>
+    <string name="delete">מחיקה</string>
+    <string name="qr_scan">סריקת QR</string>
+    <string name="qr_hint">כוונו את המצלמה לקוד QR או לברקוד</string>
+    <string name="qr_from_image">מתמונה</string>
+    <string name="qr_none">לא נמצא קוד בתמונה</string>
+    <string name="qr_found">נמצא קוד</string>
+    <string name="qr_open">פתיחה</string>
+    <string name="qr_copy_password">העתקת הסיסמה</string>
+    <string name="qr_again">סריקה נוספת</string>
+    <string name="qr_kind_link">קישור</string>
+    <string name="qr_kind_wifi">רשת Wi-Fi</string>
+    <string name="qr_kind_phone">טלפון</string>
+    <string name="qr_kind_email">דוא\"ל</string>
+    <string name="qr_kind_sms">הודעה</string>
+    <string name="qr_kind_location">מיקום</string>
+    <string name="qr_kind_contact">איש קשר</string>
+    <string name="qr_kind_product">מוצר</string>
+    <string name="qr_kind_text">טקסט</string>
+    <string name="id_card">תעודה מזהה</string>
+    <string name="id_card_front">צלמו את הצד הקדמי של התעודה</string>
+    <string name="id_card_back">עכשיו צלמו את הצד האחורי (או \"סיום\" לצד אחד)</string>
+    <string name="signature">חתימה</string>
+    <string name="signature_choose">בחרו חתימה שמורה או ציירו חדשה. החתימות נשמרות רק בטלפון הזה.</string>
+    <string name="signature_new">חתימה חדשה</string>
+    <string name="signature_draw">חתמו באצבע</string>
+    <string name="signature_clear">ניקוי</string>
+    <string name="signature_place_hint">גררו את החתימה או הקישו במקום הרצוי. העמוד המקורי לא משתנה.</string>
+    <string name="signature_remove_page">הסרת החתימות מהעמוד</string>
+    <string name="signature_apply">הוספה לעמוד</string>
 </resources>
 
 

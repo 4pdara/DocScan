@@ -257,12 +257,14 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
     data class Tool(val label: Int, val icon: ImageVector, val tint: Color, val action: () -> Unit)
     val blue = Color(0xFF4480E8); val red = Color(0xFFFF715D)
     val groups = listOf(
-        R.string.tools_scan to listOf(Tool(R.string.smart_scan, Icons.Outlined.DocumentScanner, HomeGreen) { onTool("scan") }, Tool(R.string.extract_text, Icons.Outlined.TextFields, HomeGreen) { onTool("ocr") }),
+        R.string.tools_scan to listOf(Tool(R.string.smart_scan, Icons.Outlined.DocumentScanner, HomeGreen) { onTool("scan") }, Tool(R.string.extract_text, Icons.Outlined.TextFields, HomeGreen) { onTool("ocr") },
+            Tool(R.string.id_card, Icons.Outlined.Badge, HomeGreen) { onTool("idcard") }, Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, blue) { onTool("qr") }),
         R.string.tools_import to listOf(Tool(R.string.import_images, Icons.Outlined.Image, blue) { onTool("import") }, Tool(R.string.import_pdf, Icons.Outlined.FileOpen, blue) { onTool("import") }),
         R.string.tools_convert to listOf(Tool(R.string.to_word, Icons.Outlined.Description, blue) { onTool("word") }, Tool(R.string.pdf_to_images, Icons.Outlined.PhotoLibrary, HomeGreen) { onTool("images") },
             Tool(R.string.long_image, Icons.Outlined.ViewDay, HomeGreen) { onTool("long") }),
         R.string.tools_edit to listOf(Tool(R.string.watermark, Icons.Outlined.WaterDrop, blue) { onTool("watermark") }, Tool(R.string.footer, Icons.Outlined.Title, blue) { onTool("footer") },
-            Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") }, Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") }),
+            Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") }, Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") },
+            Tool(R.string.protected_pdf, Icons.Outlined.Lock, red) { onTool("protect") }, Tool(R.string.signature, Icons.Outlined.Draw, blue) { onTool("signature") }),
         R.string.tools_utilities to listOf(Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
             Tool(R.string.select_documents, Icons.Outlined.Checklist, HomeGreen, onSelect), Tool(R.string.trash, Icons.Outlined.RestoreFromTrash, HomeGreen, onTrash),
             Tool(R.string.mark_settings, Icons.Outlined.Settings, HomeMuted) { onTool("settings") }))

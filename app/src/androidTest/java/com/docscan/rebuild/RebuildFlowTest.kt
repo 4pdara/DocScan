@@ -19,6 +19,7 @@ import com.docscan.rebuild.data.*
 import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.PageMarks
+import com.docscan.rebuild.imaging.CodeReader
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -185,6 +186,72 @@ class RebuildFlowTest {
             store.trash(setOf(imported.id)); store.deleteForever(setOf(imported.id))
         } finally { listOf(full, small, one, longImage, word).forEach { it.delete() } }
         store.trash(setOf(book.id)); store.deleteForever(setOf(book.id))
+    }
+
+    @Test fun qrIdCardSignatureAndPasswordPdf(): Unit = runBlocking {
+        // QR code and barcode: in a photo-like picture (tilted, among clutter) and from a camera frame's luma.
+        fun drawn(matrix: com.google.zxing.common.BitMatrix) = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).also { b ->
+            for (y in 0 until matrix.height) for (x in 0 until matrix.width) b.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+        }
+        val link = "https://example.com/סריקה?id=42"
+        val qr = drawn(com.google.zxing.qrcode.QRCodeWriter().encode(link, com.google.zxing.BarcodeFormat.QR_CODE, 360, 360, mapOf(com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8")))
+        val ean = drawn(com.google.zxing.oned.EAN13Writer().encode("5901234123457", com.google.zxing.BarcodeFormat.EAN_13, 420, 160))
+        val photo = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = Canvas(photo); canvas.drawColor(Color.rgb(170, 160, 140))
+            val clutter = Paint().apply { color = Color.rgb(60, 60, 70) }; repeat(30) { canvas.drawCircle(37f * it % 1400, 53f * it % 1000, 12f, clutter) }
+            canvas.save(); canvas.rotate(12f, 380f, 420f); canvas.drawRect(170f, 210f, 590f, 630f, Paint().apply { color = Color.WHITE }); canvas.drawBitmap(qr, 200f, 240f, null); canvas.restore()
+            canvas.drawBitmap(ean, 820f, 700f, null)
+            val codes = CodeReader.image(photo).associateBy { it.text }
+            assertEquals(com.google.zxing.client.result.ParsedResultType.URI, codes[link]?.kind)
+            assertEquals(com.google.zxing.BarcodeFormat.EAN_13, codes["5901234123457"]?.format)
+            val pixels = IntArray(qr.width * qr.height).also { qr.getPixels(it, 0, qr.width, 0, 0, qr.width, qr.height) }
+            val luma = ByteArray(pixels.size) { (Color.red(pixels[it]) * 299 + Color.green(pixels[it]) * 587 + Color.blue(pixels[it]) * 114).div(1000).toByte() }
+            assertEquals(link, CodeReader.frame(luma, qr.width, qr.width, qr.height)?.text)
+        } finally { photo.recycle(); qr.recycle(); ean.recycle() }
+
+        val store = (compose.activity.application as ScanApplication).store
+        // ID card: two sides become one A4 page at 300 dpi; the side photos and their originals are gone.
+        val cards = store.create("ID ${System.nanoTime()}")
+        val front = store.captured(cards.id, fixture("front.jpg")); val back = store.captured(cards.id, fixture("back.jpg"))
+        val card = store.idCard(cards.id, front, back)
+        assertEquals(listOf(card.id), store.dao.snapshot(cards.id).map { it.id })
+        assertEquals(com.docscan.rebuild.export.IdCardLayout.PAGE_WIDTH, card.width); assertEquals(com.docscan.rebuild.export.IdCardLayout.PAGE_HEIGHT, card.height)
+        assertFalse(File(context.filesDir, "masters/${front.source}").exists()); assertFalse(File(context.filesDir, "masters/${back.source}").exists())
+        val composed = ImagePipeline.render(store.source(card), card.edit(), 1000)
+        try {
+            // Card areas are the rendered photos (dark frame around a white page); the rest of the A4 page is white.
+            val px = { x: Float, y: Float -> composed.getPixel((x * composed.width).toInt(), (y * composed.height).toInt()) }
+            // Each card is 1011 px of 2480 wide, centred in its half; its left edge is the photo's dark border.
+            assertTrue(Color.red(px(.05f, .5f)) > 245 && Color.red(px(.5f, .5f)) > 245)
+            assertTrue(Color.red(px(.31f, .25f)) < 120 && Color.red(px(.31f, .75f)) < 120)
+        } finally { composed.recycle() }
+
+        // Signature: stored as strokes in the edit, drawn on every output, survives encoding.
+        val (strokes, aspect) = requireNotNull(SignatureCodec.normalize(listOf(listOf(10f to 80f, 60f to 20f, 110f to 90f, 170f to 30f), listOf(40f to 100f, 160f to 100f))))
+        val mark = SignatureMark(strokes, aspect, x = .5f, y = .7f, width = .35f, color = MarkColor.BLUE)
+        assertTrue(mark.valid())
+        store.save(card, card.edit().copy(signatures = listOf(mark)))
+        val signed = requireNotNull(store.dao.page(card.id)).edit()
+        assertEquals(listOf(mark), signed.signatures); assertEquals(signed, RecipeCodec.decode(RecipeCodec.encode(signed)))
+        val ink = ImagePipeline.render(store.source(card), signed, 1000)
+        try {
+            var blue = 0
+            for (y in (ink.height * .7f).toInt() until minOf(ink.height, (ink.height * .85f).toInt())) for (x in (ink.width * .5f).toInt() until (ink.width * .85f).toInt()) {
+                val c = ink.getPixel(x, y); if (Color.blue(c) > 150 && Color.red(c) < 90) blue++
+            }
+            assertTrue("Signature ink drawn: $blue", blue > 200)
+        } finally { ink.recycle() }
+
+        // Password PDF: AES-256, refused without the password.
+        val locked = DocumentOutput(context, store).protectedPdf(cards.id, "סיסמה1234")
+        try {
+            val head = locked.readBytes().toString(Charsets.ISO_8859_1)
+            assertTrue(head.startsWith("%PDF-1.7") && head.contains("/V 5 /R 6") && head.contains("/AESV3") && head.contains("/Encrypt 3 0 R"))
+            val opened = runCatching { ParcelFileDescriptor.open(locked, ParcelFileDescriptor.MODE_READ_ONLY).use { PdfRenderer(it).use { r -> r.pageCount } } }
+            assertTrue("A password PDF must not open without the password: $opened", opened.isFailure)
+        } finally { locked.delete() }
+        store.trash(setOf(cards.id)); store.deleteForever(setOf(cards.id))
     }
 
     @Test fun discardedScanRemovesItsPagesAndUnsharedOriginalsOnly(): Unit = runBlocking {

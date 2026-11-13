@@ -103,6 +103,43 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
      * Page geometry is in PDF points. Each raster is rendered at source resolution before drawing, then reduced
      * only when a smaller [size] was chosen. [pageIds] limits the file to those pages (page extraction), in order.
      */
+    /** The page as rendered for a PDF, scaled down to the chosen size. */
+    private fun pdfBitmap(sheet: Sheet, size: PdfSize): Bitmap = ImagePipeline.render(store.source(sheet), sheet.edit()).let { full ->
+        val edge = size.maxEdge
+        if (edge == null || maxOf(full.width, full.height) <= edge) full else {
+            val scale = edge.toDouble() / maxOf(full.width, full.height)
+            Bitmap.createScaledBitmap(full, (full.width * scale).roundToInt().coerceAtLeast(1), (full.height * scale).roundToInt().coerceAtLeast(1), true)
+                .also { if (it !== full) full.recycle() }
+        }
+    }
+
+    /**
+     * A PDF that opens only with [password] (AES-256, PDF standard security revision 6). Pages are the same as in
+     * [pdf]: 595 points wide, each page's image stored as JPEG at quality 90.
+     */
+    suspend fun protectedPdf(bookId: String, password: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null): File = withContext(Dispatchers.IO) {
+        val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
+        val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pdf")
+        val scope = coroutineContext
+        try {
+            FileOutputStream(target).use { out ->
+                ProtectedPdf.write(object : ProtectedPdf.Pages {
+                    override fun count() = pages.size
+                    override fun page(index: Int): ProtectedPdf.Page {
+                        scope.ensureActive()
+                        val bitmap = pdfBitmap(pages[index], size)
+                        try {
+                            val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)) }.toByteArray()
+                            return ProtectedPdf.Page(jpeg, bitmap.width, bitmap.height, 595.0, 595.0 * bitmap.height / bitmap.width)
+                        } finally { bitmap.recycle() }
+                    }
+                }, password, out)
+                out.fd.sync()
+            }
+            target
+        } catch (failure: Throwable) { target.delete(); throw failure }
+    }
+
     suspend fun pdf(bookId: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null): File = withContext(Dispatchers.IO) {
         val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
         val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pdf")
@@ -110,14 +147,7 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
         try {
             pages.forEachIndexed { index, sheet ->
                 coroutineContext.ensureActive()
-                val bitmap = ImagePipeline.render(store.source(sheet), sheet.edit()).let { full ->
-                    val edge = size.maxEdge
-                    if (edge == null || maxOf(full.width, full.height) <= edge) full else {
-                        val scale = edge.toDouble() / maxOf(full.width, full.height)
-                        Bitmap.createScaledBitmap(full, (full.width * scale).roundToInt().coerceAtLeast(1), (full.height * scale).roundToInt().coerceAtLeast(1), true)
-                            .also { if (it !== full) full.recycle() }
-                    }
-                }
+                val bitmap = pdfBitmap(sheet, size)
                 try {
                     val width = 595; val height = (width * bitmap.height.toDouble() / bitmap.width).roundToInt().coerceAtLeast(1)
                     val page = document.startPage(PdfDocument.PageInfo.Builder(width, height, index + 1).create())

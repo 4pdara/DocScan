@@ -22,6 +22,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
@@ -35,10 +38,15 @@ import kotlinx.coroutines.withContext
 @Composable
 fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: (DocumentOutput.PdfSize) -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState,
     onPrint: () -> Unit = {}, onWatermark: (String?, MarkPlace, MarkStyle) -> Unit = { _, _, _ -> }, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
-    onFooter: (String?, StampPlace, MarkColor) -> Unit = { _, _, _ -> },
+    onFooter: (String?, StampPlace, MarkColor) -> Unit = { _, _, _ -> }, onProtectedPdf: (String) -> Unit = {},
+    onSign: (Sheet, SignatureMark?) -> Unit = { _, _ -> },
     onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {}) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var pdfChoice by rememberSaveable { mutableStateOf(false) }
+    var protecting by remember { mutableStateOf(false) }
+    // Signature: choosing (or drawing) one, then placing it on a page.
+    var choosingSignature by remember { mutableStateOf(false) }
+    var placing by remember { mutableStateOf<SignatureMark?>(null) }
     // "watermark" or "footer" while its dialog is open; the draft holds the marks shown in the live preview.
     var marking by rememberSaveable { mutableStateOf<String?>(null) }
     var draft by remember { mutableStateOf(EditRecipe()) }
@@ -52,6 +60,8 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             "watermark", "footer" -> openMarks(if (startTool == "footer") "footer" else "watermark")
             "extract" -> { extracting = true; chosen = emptyList() }
             "compress" -> pdfChoice = true
+            "protect" -> protecting = true
+            "signature" -> choosingSignature = true
         }
         if (startTool != null) onToolStarted()
     }
@@ -60,7 +70,16 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             listOf(DocumentOutput.PdfSize.ORIGINAL to R.string.pdf_size_original, DocumentOutput.PdfSize.BALANCED to R.string.pdf_size_balanced, DocumentOutput.PdfSize.SMALL to R.string.pdf_size_small).forEach { (size, label) ->
                 TextButton({ pdfChoice = false; onPdf(size) }, Modifier.fillMaxWidth().testTag("pdf-size-${size.name.lowercase()}")) { Text(stringResource(label), Modifier.fillMaxWidth()) }
             }
+            HorizontalDivider()
+            TextButton({ pdfChoice = false; protecting = true }, Modifier.fillMaxWidth().testTag("pdf-protected")) {
+                Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.protected_pdf), Modifier.fillMaxWidth())
+            }
         } }, confirmButton = {}, dismissButton = { TextButton({ pdfChoice = false }) { Text(stringResource(R.string.cancel)) } })
+    if (choosingSignature) SignatureChooser(onChosen = { choosingSignature = false; placing = it }, onDismiss = { choosingSignature = false })
+    placing?.let { signature ->
+        SignaturePlacer(store, pages, signature, onApply = { page, mark -> placing = null; onSign(page, mark) }, onRemoveAll = { page -> placing = null; onSign(page, null) }, onDismiss = { placing = null })
+    }
+    if (protecting) PasswordDialog(onDismiss = { protecting = false }) { password -> protecting = false; onProtectedPdf(password) }
     // The first page without any marks, drawn once; the preview draws the draft's marks on a copy of it.
     val first = pages.firstOrNull()
     val unmarked by produceState<Bitmap?>(null, first?.id, first?.edit(), marking != null) {
@@ -135,7 +154,8 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.extract_pages, Icons.Outlined.ContentCut, Modifier.weight(1f).testTag("tool-extract"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
-                Spacer(Modifier.weight(1f)); Spacer(Modifier.weight(1f))
+                DocumentAction(R.string.signature, Icons.Outlined.Draw, Modifier.weight(1f).testTag("tool-signature"), pages.isNotEmpty()) { actions = false; choosingSignature = true }
+                DocumentAction(R.string.protected_pdf, Icons.Outlined.Lock, Modifier.weight(1f).testTag("tool-protect"), pages.isNotEmpty()) { actions = false; protecting = true }
             }
             TextButton(onClick = { actions = false }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
         }
@@ -196,4 +216,25 @@ private fun DocumentAction(label: Int, icon: ImageVector, modifier: Modifier, en
             Icon(icon, null, Modifier.size(26.dp)); Text(stringResource(label), style = MaterialTheme.typography.labelMedium, maxLines = 2)
         }
     }
+}
+
+/** Asks for the PDF password twice. It is used once, for the file being saved, and never stored. */
+@Composable
+private fun PasswordDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var first by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+    val valid = first.length >= 4 && first == second
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.protected_pdf)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.protected_pdf_hint), style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(first, { first = it.take(64) }, singleLine = true, label = { Text(stringResource(R.string.password)) },
+                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth().testTag("pdf-password"))
+            OutlinedTextField(second, { second = it.take(64) }, singleLine = true, label = { Text(stringResource(R.string.password_again)) },
+                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = second.isNotEmpty() && second != first, modifier = Modifier.fillMaxWidth().testTag("pdf-password-again"))
+            if (second.isNotEmpty() && second != first) Text(stringResource(R.string.password_mismatch), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton({ onConfirm(first) }, enabled = valid, modifier = Modifier.testTag("pdf-password-save")) { Text(stringResource(R.string.export_pdf)) } },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } })
 }

@@ -55,12 +55,12 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
+        versionCode = 17
         versionName = when {
-            phoneRelease -> "0.3.1"
-            universalPreview -> "0.3.1-universal-preview"
-            camScannerNative -> "0.3.1-native-preview"
-            else -> "0.3.1-preview"
+            phoneRelease -> "0.4.0"
+            universalPreview -> "0.4.0-universal-preview"
+            camScannerNative -> "0.4.0-native-preview"
+            else -> "0.4.0-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
@@ -106,6 +106,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.5.1")
     implementation("org.opencv:opencv:4.12.0")
     implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
+    // QR codes and barcodes (Apache-2.0, pure Java).
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

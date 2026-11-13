@@ -48,6 +48,7 @@ interface ScanQueries {
     @Query("UPDATE sheets SET position=:position WHERE id=:id") suspend fun position(id: String, position: Int)
     @Query("UPDATE notebooks SET trashedAt=:at WHERE id IN (:ids)") suspend fun trash(ids: List<String>, at: Long?)
     @Query("DELETE FROM sheets WHERE notebookId=:id") suspend fun deletePages(id: String)
+    @Query("DELETE FROM sheets WHERE id=:id") suspend fun deletePage(id: String)
     @Query("DELETE FROM notebooks WHERE id=:id") suspend fun deleteBook(id: String)
     @Query("SELECT COUNT(*) FROM sheets WHERE source=:source") suspend fun sourceUses(source: String): Int
     @Query("SELECT id FROM notebooks WHERE trashedAt IS NULL AND created < :before AND id NOT IN (SELECT notebookId FROM sheets)") suspend fun emptyBooks(before: Long): List<String>
@@ -68,6 +69,32 @@ abstract class ScanDatabase : RoomDatabase() {
     }
 }
 
+/** Signature strokes as compact JSON: each stroke a flat [x, y, x, y, ...] array rounded to 1/1000 of the box. */
+object SignatureCodec {
+    private fun r(v: Float) = Math.round(v.coerceIn(0f, 1f) * 1000) / 1000.0
+    fun encode(s: SignatureMark): JSONObject = JSONObject().put("aspect", s.aspect.toDouble()).put("x", s.x.toDouble()).put("y", s.y.toDouble())
+        .put("width", s.width.toDouble()).put("color", s.color.name)
+        .put("strokes", JSONArray(s.strokes.map { stroke -> JSONArray(stroke.flatMap { listOf(r(it.x), r(it.y)) }) }))
+    /** Strokes from the pad, in pixels, as points of their own bounding box (with a small margin), rounded as stored. */
+    fun normalize(strokes: List<List<Pair<Float, Float>>>): Pair<List<List<Vertex>>, Float>? {
+        val all = strokes.flatten(); if (all.isEmpty()) return null
+        val minX = all.minOf { it.first }; val maxX = all.maxOf { it.first }; val minY = all.minOf { it.second }; val maxY = all.maxOf { it.second }
+        val pad = maxOf(maxX - minX, maxY - minY) * .04f + 2f
+        val w = maxX - minX + 2 * pad; val h = maxY - minY + 2 * pad
+        val aspect = (w / h).coerceIn(.2f, 20f)
+        return strokes.filter { it.isNotEmpty() }.map { stroke -> stroke.map { (x, y) -> Vertex(r((x - minX + pad) / w).toFloat(), r((y - minY + pad) / h).toFloat()) } } to aspect
+    }
+    fun decode(o: JSONObject?): SignatureMark? = runCatching {
+        o ?: return null
+        val list = o.getJSONArray("strokes")
+        val strokes = (0 until minOf(list.length(), 400)).map { i ->
+            val a = list.getJSONArray(i); (0 until minOf(a.length() / 2, 2000)).map { Vertex(a.getDouble(it * 2).toFloat(), a.getDouble(it * 2 + 1).toFloat()) }
+        }
+        val color = o.optString("color").let { name -> MarkColor.values().firstOrNull { it.name == name } } ?: MarkColor.BLACK
+        SignatureMark(strokes, o.getDouble("aspect").toFloat(), o.getDouble("x").toFloat(), o.getDouble("y").toFloat(), o.getDouble("width").toFloat(), color).takeIf { it.valid() }
+    }.getOrNull()
+}
+
 object RecipeCodec {
     fun encode(r: EditRecipe): String = JSONObject().put("turns", r.turns).put("filter", r.treatment.name)
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
@@ -83,6 +110,7 @@ object RecipeCodec {
             r.stamp?.let { put("stamp", it); put("stampPlace", r.stampPlace.name) }
             r.footer?.let { put("footer", it); put("footerPlace", r.footerPlace.name) }
             if (r.stamp != null || r.footer != null) put("noteColor", r.noteColor.name)
+            if (r.signatures.isNotEmpty()) put("signatures", JSONArray(r.signatures.map { SignatureCodec.encode(it) }))
         }.toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
@@ -97,7 +125,8 @@ object RecipeCodec {
             runCatching { MarkPlace.valueOf(o.optString("watermarkPlace", "DIAGONAL")) }.getOrDefault(MarkPlace.DIAGONAL),
             runCatching { StampPlace.valueOf(o.optString("stampPlace", "BOTTOM_RIGHT")) }.getOrDefault(StampPlace.BOTTOM_RIGHT),
             MarkStyle(option(o, "markFont", MarkFont.BOLD), option(o, "markColor", MarkColor.GREY), option(o, "markStrength", MarkStrength.MEDIUM), option(o, "markSize", MarkSize.MEDIUM)),
-            o.optString("footer").trim().take(80).ifBlank { null }, option(o, "footerPlace", StampPlace.BOTTOM_CENTER), option(o, "noteColor", MarkColor.RED))
+            o.optString("footer").trim().take(80).ifBlank { null }, option(o, "footerPlace", StampPlace.BOTTOM_CENTER), option(o, "noteColor", MarkColor.RED),
+            o.optJSONArray("signatures")?.let { list -> (0 until minOf(list.length(), 20)).mapNotNull { SignatureCodec.decode(list.optJSONObject(it)) } }.orEmpty())
     }.getOrDefault(EditRecipe())
     private inline fun <reified T : Enum<T>> option(o: JSONObject, key: String, default: T): T =
         o.optString(key).takeIf { it.isNotEmpty() }?.let { name -> enumValues<T>().firstOrNull { it.name == name } } ?: default
@@ -162,7 +191,7 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
         } finally { temporary.delete() }
     }
     suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
-        require(edit.frame.valid() && edit.curvature.valid())
+        require(edit.frame.valid() && edit.curvature.valid() && edit.signatures.all { it.valid() })
         require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
         dao.recipe(page.id, RecipeCodec.encode(edit))
     }
@@ -186,6 +215,33 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             dao.insert(second)
             requireNotNull(dao.page(current.id))
         } }
+    }
+
+    /**
+     * The ID card tool: both photographed sides become one A4 page at the card's real size. The new page takes
+     * the place of the two side photos, which are removed with their originals (they were taken for this page
+     * only, in an unsaved scan).
+     */
+    suspend fun idCard(bookId: String, front: Sheet, back: Sheet?): Sheet = withContext(Dispatchers.IO) {
+        val sides = listOfNotNull(front, back)
+        // Marks (watermark, footer, time) belong on the finished page, not on each card.
+        val rendered = sides.map { com.docscan.rebuild.imaging.ImagePipeline.render(source(it), it.edit().copy(watermark = null, stamp = null, footer = null)) }
+        val file = File(incoming, "idcard-${UUID.randomUUID()}.jpg")
+        try {
+            val page = com.docscan.rebuild.export.IdCardLayout.compose(rendered[0], rendered.getOrNull(1))
+            try { FileOutputStream(file).use { out -> check(page.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)); out.fd.sync() } } finally { page.recycle() }
+        } finally { rendered.forEach { it.recycle() } }
+        try {
+            val card = captured(bookId, file)
+            lock.withLock {
+                database.withTransaction {
+                    sides.forEach { dao.deletePage(it.id) }
+                    dao.position(card.id, sides.minOf { it.position })
+                }
+                sides.map { it.source }.distinct().filter { dao.sourceUses(it) == 0 }.forEach { File(masters, it).delete() }
+            }
+            requireNotNull(dao.page(card.id))
+        } finally { file.delete() }
     }
 
     /**

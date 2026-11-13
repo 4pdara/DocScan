@@ -237,6 +237,43 @@
     <string name="note_color">Colour of the text line and timestamp</string>
     <string name="mark_preview">Preview</string>
     <string name="timestamp_corner">Timestamp position</string>
+    <string name="protected_pdf">Password PDF</string>
+    <string name="protected_pdf_hint">The file is encrypted with AES-256 and opens only with the password. The password is not stored in the app: if you forget it, the file cannot be opened.</string>
+    <string name="protected_pdf_saved">Password PDF saved</string>
+    <string name="password">Password (at least 4 characters)</string>
+    <string name="password_again">Password again</string>
+    <string name="password_mismatch">The passwords differ</string>
+    <string name="ok">OK</string>
+    <string name="copy">Copy</string>
+    <string name="delete">Delete</string>
+    <string name="qr_scan">Scan QR</string>
+    <string name="qr_hint">Point the camera at a QR code or barcode</string>
+    <string name="qr_from_image">From an image</string>
+    <string name="qr_none">No code found in the image</string>
+    <string name="qr_found">Code found</string>
+    <string name="qr_open">Open</string>
+    <string name="qr_copy_password">Copy password</string>
+    <string name="qr_again">Scan again</string>
+    <string name="qr_kind_link">Link</string>
+    <string name="qr_kind_wifi">Wi-Fi network</string>
+    <string name="qr_kind_phone">Phone</string>
+    <string name="qr_kind_email">Email</string>
+    <string name="qr_kind_sms">Message</string>
+    <string name="qr_kind_location">Location</string>
+    <string name="qr_kind_contact">Contact</string>
+    <string name="qr_kind_product">Product</string>
+    <string name="qr_kind_text">Text</string>
+    <string name="id_card">ID card</string>
+    <string name="id_card_front">Photograph the front of the card</string>
+    <string name="id_card_back">Now the back (or Done for one side)</string>
+    <string name="signature">Signature</string>
+    <string name="signature_choose">Pick a saved signature or draw a new one. Signatures are kept on this phone only.</string>
+    <string name="signature_new">New signature</string>
+    <string name="signature_draw">Sign with your finger</string>
+    <string name="signature_clear">Clear</string>
+    <string name="signature_place_hint">Drag the signature or tap where it should go. The original page does not change.</string>
+    <string name="signature_remove_page">Remove signatures from this page</string>
+    <string name="signature_apply">Add to page</string>
 </resources>
 
 

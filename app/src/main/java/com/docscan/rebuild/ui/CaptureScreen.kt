@@ -60,7 +60,7 @@ import kotlin.math.max
 private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
 
 @Composable
-fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, Frame?, (Boolean) -> Unit) -> Unit) {
+fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, Frame?, (Boolean) -> Unit) -> Unit, prompt: Int? = null) {
     val context = LocalContext.current; val lifecycle = LocalLifecycleOwner.current
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
@@ -183,6 +183,8 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                 Switch(automatic, null, Modifier.scale(.8f), colors = SwitchDefaults.colors(checkedTrackColor = ScanMint, uncheckedThumbColor = Color.LightGray, uncheckedTrackColor = Color(0xFF3A3C3D), uncheckedBorderColor = Color.Gray))
             }
         }
+        // A guided capture (the ID card tool) says which side to photograph next.
+        if (prompt != null) Text(stringResource(prompt), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp).testTag("capture-prompt"), style = MaterialTheme.typography.titleMedium, color = ScanMint)
         Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
