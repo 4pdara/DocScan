@@ -2,11 +2,12 @@
 set -euo pipefail
 apk_root='ci-apks'
 application_id=$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk_root/debug/app-debug.apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
-[[ "$application_id" == 'com.docscan.rebuild.preview.v0_1_8_1' ]]
-"$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk_root/debug/app-debug.apk" | grep -F "application-label:'DOCSCAN V0.1.8.1'"
+[[ "$application_id" == 'com.docscan.rebuild.preview.v0_1_8_2' ]]
+"$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk_root/debug/app-debug.apk" | grep -F "application-label:'DOCSCAN V0.1.8.2'"
 mkdir -p device-results
 collect_results() {
   test_status=$?; trap - EXIT
+  adb pull "/sdcard/Android/data/$application_id/files/tool-exports" device-results/exports || true
   adb logcat -d > device-results/logcat.txt || true
   adb exec-out screencap -p > device-results/final-screen.png || true
   if ! adb pull "/sdcard/Android/data/$application_id/files/screenshots" screenshots; then

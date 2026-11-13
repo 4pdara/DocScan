@@ -51,7 +51,7 @@ object ImagePipeline {
     }
 
     fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null): Bitmap {
-        ensureAvailable(); require(recipe.frame.valid() && recipe.curvature.valid())
+        ensureAvailable(); require(recipe.frame.valid() && recipe.curvature.valid() && recipe.decorations.valid())
         check(!recipe.treatment.requiresReferenceEngine || referenceEngineAvailable) { "Reference engine is not bundled for this device" }
         val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
@@ -124,7 +124,7 @@ object ImagePipeline {
                 Core.extractChannel(current, alpha, 3)
                 Core.insertChannel(alpha, result, 3)
             }
-            return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { Utils.matToBitmap(result, it) }
+            return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { try { Utils.matToBitmap(result, it);PageEffects.apply(it,recipe.decorations) } catch(failure:Throwable) { it.recycle();throw failure } }
         } finally { source.release(); current.release(); result.release(); alpha.release() }
     }
 

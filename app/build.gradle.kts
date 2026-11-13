@@ -8,7 +8,7 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
-val previewVersion = "0.1.8.1"
+val previewVersion = "0.1.8.2"
 val previewId = "v" + previewVersion.replace(".", "_")
 
 val camScannerNativeDir = providers.gradleProperty("camScannerNativeDir").orNull
@@ -49,7 +49,7 @@ android {
         manifestPlaceholders["docscanAppLabel"] = "DOCSCAN V$previewVersion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
+        versionCode = 11
         versionName = previewVersion
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
@@ -85,6 +85,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.5.1")
     implementation("org.opencv:opencv:4.12.0")
     implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

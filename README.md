@@ -1,5 +1,9 @@
 # DocScan חדש — בנייה עצמאית
 
+## בפיתוח: DOCSCAN V0.1.8.2 — כלי מסמכים ושמירה מפורשת
+
+[מפת כל 29 הכלים, השינויים, המגבלות והאימות](docs/TOOLS_0.1.8.2_HE.md). כלים לפי קטגוריות, חיפוש בית קומפקטי ותיקוני עברית, מחיקה לצמיתות באישור מתוך סל המחזור, ויציאה מסריקה ללא יצירת קובץ ריק. נוספו בקוד ייבוא PDF, המרות Office ותמונות, חתימות, סימני מים, עריכות מקומיות, ארגון מסמכים, נעילת PDF, הדפסה, CountCam וקריאת קודים. כלי הענן אופציונליים ודורשים שירות שהמשתמש מגדיר. זו עבודת הענף בלבד; ההורדה האחרונה המאומתת נשארת 0.1.8.1 עד לאימות חבילת המסירה החדשה.
+
 ## גרסת ניסוי Native 0.1.8.1 — כל היכולות הקודמות וכלי טקסט
 
 **[הורדת APK חתום](https://github.com/4pdara/DocScan/releases/download/native-v0.1.8.1-preview/DocScan-0.1.8.1-universal.apk)** · [Release](https://github.com/4pdara/DocScan/releases/tag/native-v0.1.8.1-preview) · [SHA256](https://github.com/4pdara/DocScan/releases/download/native-v0.1.8.1-preview/SHA256SUMS.txt) · [יכולות, התקנה ובדיקות](docs/RELEASE_0.1.8.1_HE.md).

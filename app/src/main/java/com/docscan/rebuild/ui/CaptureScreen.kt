@@ -57,7 +57,7 @@ import kotlin.math.max
 private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
 
 @Composable
-fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, (Boolean) -> Unit) -> Unit) {
+fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, (Boolean) -> Unit) -> Unit, onBack: () -> Unit = onDone) {
     val context = LocalContext.current; val lifecycle = LocalLifecycleOwner.current
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
@@ -86,7 +86,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         })
     }
     val latestShoot by rememberUpdatedState({ shoot() })
-    BackHandler { if (!taking && !busy) onDone() }
+    BackHandler { if (!taking && !busy) onBack() }
     DisposableEffect(allowed, lifecycle, preview) {
         var disposed = false; var provider: ProcessCameraProvider? = null
         val streamObserver = Observer<PreviewView.StreamState> { streaming = it == PreviewView.StreamState.STREAMING }
@@ -137,7 +137,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     }
     Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (!taking && !busy) onDone() }) { Icon(Icons.Outlined.Close, stringResource(R.string.back), tint = Color.White) }
+            IconButton(onClick = { if (!taking && !busy) onBack() }) { Icon(Icons.Outlined.Close, stringResource(R.string.back), tint = Color.White) }
             Text("HD", Modifier.border(1.dp, Color.White, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() }) { Icon(Icons.Outlined.DocumentScanner, stringResource(R.string.detect_bounds), tint = if (detectBounds) ScanMint else Color.White) }
@@ -173,7 +173,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
             FilterChip(selected = detectBounds, onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() },
                 label = { Text(stringResource(if (detectBounds) R.string.detect_bounds else R.string.full_photo)) })
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(automatic, { automatic = it; autoFlag.set(it); if (it) detectBounds = true; gate.failed() })
+                Checkbox(automatic, { automatic = it; autoFlag.set(it); if (it) detectBounds = true; gate.failed() },modifier=Modifier.testTag("capture-auto"))
                 Text(stringResource(R.string.auto_capture), style = MaterialTheme.typography.labelSmall)
             }
         }

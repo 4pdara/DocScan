@@ -57,6 +57,7 @@ import java.util.Date
 
 class ScanViewModel(val store: ScanStore) : ViewModel() {
     val library = store.dao.library().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val drafts = store.dao.drafts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val trash = store.dao.library(true).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     var busy by mutableStateOf(false); private set
     val notices = Channel<Int>(Channel.BUFFERED)
@@ -137,6 +138,10 @@ fun ScanApp(store: ScanStore) {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = ScanViewModel(store) as T
     })
     var route by rememberSaveable { mutableStateOf("library") }
+    var captureSession by rememberSaveable { mutableStateOf(false) }
+    var capturePageIds by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var discardDialog by remember { mutableStateOf(false) }
+    var scanMode by rememberSaveable { mutableStateOf<String?>(null) }
     var bookId by rememberSaveable { mutableStateOf<String?>(null) }
     var pageId by rememberSaveable { mutableStateOf<String?>(null) }
     var ocrText by rememberSaveable { mutableStateOf("") }
@@ -150,16 +155,25 @@ fun ScanApp(store: ScanStore) {
     var importBook by rememberSaveable { mutableStateOf<String?>(null) }
     val books by vm.library.collectAsState()
     val trash by vm.trash.collectAsState()
+    val drafts by vm.drafts.collectAsState()
     val pages by remember(bookId) { bookId?.let { store.dao.pages(it) } ?: flowOf(emptyList()) }.collectAsState(emptyList())
-    val currentTitle = books.firstOrNull { it.book.id == bookId }?.book?.title ?: stringResource(R.string.document)
+    val currentTitle = (books+drafts).firstOrNull { it.book.id == bookId }?.book?.title ?: stringResource(R.string.document)
     val snack = remember { SnackbarHostState() }
-    val defaultTitle = { context.getString(R.string.title_scan, DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date())) }
+    val defaultTitle = { context.getString(R.string.title_scan, androidx.core.text.BidiFormatter.getInstance().unicodeWrap(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()))) }
     LaunchedEffect(vm) { for (message in vm.notices) snack.showSnackbar(context.getString(message)) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) vm.perform(R.string.imported) {
-            val target = importBook ?: store.create(defaultTitle()).id
-            bookId = target; route = "document"
-            for (uri in uris) store.import(target, uri)
+            val target = importBook ?: store.create(defaultTitle(),draft=true).id
+            bookId = target
+            try {
+                val imported=mutableListOf<Sheet>()
+                for(uri in uris){val sheet=store.import(target,uri);imported+=sheet;if(captureSession)capturePageIds=capturePageIds+sheet.id}
+                if(captureSession){pageId=imported.first().id;route="review"}
+                else {store.dao.finalize(target);route="document"}
+            } catch(failure:Throwable) {
+                if(importBook==null)withContext(NonCancellable){if(store.dao.snapshot(target).isEmpty())store.discardCapture(target,emptyList())}
+                throw failure
+            }
         }
     }
     val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
@@ -239,8 +253,19 @@ fun ScanApp(store: ScanStore) {
             context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
         }
     }
-    fun startScan() { vm.perform { bookId = store.create(defaultTitle()).id; route = "camera" } }
-    BackHandler(route != "library" || vm.busy) { if (!vm.busy) route = if (route == "ocr") ocrReturn else if (route == "documentOcr") "document" else if (route == "editor" || route == "review" || route == "camera") "document" else "library" }
+    fun startScan(mode: String?=null) { if(vm.busy)return;bookId=null;captureSession=true;capturePageIds=emptyList();scanMode=mode;route="camera" }
+    fun leave() {
+        if(captureSession && route in listOf("camera","editor","review"))discardDialog=true
+        else route=if(route=="ocr")ocrReturn else if(route=="documentOcr")"document" else if(route in listOf("editor","review","camera"))"document" else "library"
+    }
+    BackHandler(route != "library" || vm.busy) { if(!vm.busy)leave() }
+    if(discardDialog)AlertDialog(onDismissRequest={discardDialog=false},title={Text(stringResource(R.string.discard_scan_title))},text={Text(stringResource(R.string.discard_scan_hint))},
+        confirmButton={TextButton(onClick={discardDialog=false;vm.perform { val id=bookId;val old=id?.let {store.dao.book(it)}
+            if(id!=null)store.discardCapture(id,capturePageIds)
+            captureSession=false;capturePageIds=emptyList();route=if(old!=null && !old.draft)"document" else "library"
+        }},modifier=Modifier.testTag("discard-scan-confirm")){Text(stringResource(R.string.discard_scan))}},
+        dismissButton={TextButton(onClick={discardDialog=false}){Text(stringResource(R.string.continue_scan))}})
+
     ScannerScreenTheme(dark = route == "camera" || route == "editor" || route == "review") {
     Box(Modifier.fillMaxSize()) {
         when (route) {
@@ -259,38 +284,52 @@ fun ScanApp(store: ScanStore) {
                     OfflineOcr(store).recognizeBook(id,OcrOptions(ocrLanguage,ocrLayout),replace,request,progress)
                 }},onExport={exportTextBook=bookId;textSaver.launch("recognized-document.txt")},
                 onPage={page -> pageId=page.id;ocrText=page.currentText().orEmpty();ocrRecipe=page.recipe;ocrReturn="documentOcr";route="ocr"})
-            "camera" -> bookId?.let { id ->
-                CaptureScreen(store, pages, vm.busy, snack = snack, onDone = { vm.perform { val captured = store.dao.snapshot(id); pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) }, onCaptured = { file, detectBounds, batch, complete ->
-                    if (vm.busy) { file.delete(); complete(false) }
-                    else vm.perform { var ok = false; try { val captured = vm.receive(id, file, detectBounds); if (!batch) { pageId = captured.id; route = "editor" }; ok = true } finally { complete(ok) } }
-                })
-            }
+            "camera" -> CaptureScreen(store,pages,vm.busy,snack=snack,onBack=::leave,onDone={vm.perform {
+                val id=bookId;val captured=id?.let { store.dao.snapshot(it) }.orEmpty()
+                if(captured.isEmpty())vm.notices.send(R.string.no_pages_short)
+                else {pageId=captured.firstOrNull { it.id in capturePageIds }?.id?:captured.first().id;route="review"}
+            }},onImport={ importBook=bookId;importer.launch(arrayOf("image/*")) },onCaptured={file,detectBounds,batch,complete ->
+                if(vm.busy){file.delete();complete(false)} else vm.perform {var ok=false;try {
+                    val id=bookId?:store.create(defaultTitle(),draft=true).id.also {bookId=it}
+                    val captured=vm.receive(id,file,detectBounds);capturePageIds=capturePageIds+captured.id
+                    val recipe=when(scanMode) {
+                        "ID_PHOTO"->captured.edit().centerCrop(35f/45f,captured.width,captured.height)
+                        "SLIDES"->captured.edit().copy(outputAspect=16f/9f)
+                        "WHITEBOARD"->captured.edit().copy(treatment=Treatment.PAPER)
+                        "TIMESTAMP"->captured.edit().copy(decorations=captured.edit().decorations.copy(timestamp=DateFormat.getDateTimeInstance().format(Date())))
+                        else->captured.edit()
+                    };store.save(captured,recipe)
+                    if(!batch){pageId=captured.id;route="editor"};ok=true
+                }finally{complete(ok)}}
+            })
             "editor", "review" -> pages.firstOrNull { it.id == pageId }?.let { page ->
-                PageEditor(store, page, vm.busy, snack = snack, onBack = { route = "document" }, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe); route = "document" } },
+                PageEditor(store, page, vm.busy, snack = snack, onBack = ::leave, onSave = { recipe -> vm.perform(R.string.saved) { store.save(page, recipe);store.dao.finalize(page.notebookId);captureSession=false;capturePageIds=emptyList(); route = "document" } },
                     onExportImage = { recipe -> imagePage = page.id; imageRecipe = RecipeCodec.encode(recipe); imageSaver.launch("scan-${page.position + 1}.jpg") },
                     onGallery = { recipe -> requestGallery(page, recipe) },
                     onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") },
-                    title = currentTitle, pageIndex = pages.indexOfFirst { it.id == page.id }, pageCount = pages.size, saveOnBack = route == "review",
+                    title = currentTitle, pageIndex = pages.indexOfFirst { it.id == page.id }, pageCount = pages.size, saveOnBack = false,
                     onNavigate = { index, recipe -> pages.getOrNull(index)?.let { target -> vm.perform { store.save(page, recipe); pageId = target.id } } },
                     onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } },
-                    onAddPages = { recipe -> vm.perform { store.save(page, recipe); route = "camera" } },
-                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;route="document"} },
+                    onAddPages = { recipe -> vm.perform { store.save(page, recipe);if(!captureSession){captureSession=true;capturePageIds=emptyList()}; route = "camera" } },
+                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;store.dao.finalize(page.notebookId);captureSession=false;capturePageIds=emptyList();route="document"} },
                     onOcr = { recipe -> vm.perform {
                         store.save(page,recipe);val current=requireNotNull(store.dao.page(page.id))
                         ocrText=current.currentText().orEmpty();ocrRecipe=current.recipe;ocrReturn="editor";route="ocr"
                     } })
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
-                onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
+                onCamera = { captureSession=true;capturePageIds=emptyList();scanMode=null;route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*")) },
                 onPdf = { pdfSaver.launch("${currentTitle.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf") }, onGallery = { requestGallery() }, onShare = { sharePdf() },
                 onMove = { page, direction -> bookId?.let { id -> vm.perform { store.move(id, page.id, direction) } } },
                 onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } }, snack = snack, onOcr={route="documentOcr"})
-            else -> LibraryScreen(store, books, trash, onScan = ::startScan, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" },
+            else -> LibraryScreen(store, books, trash, onScan = {startScan()}, onImport = { importBook = null; importer.launch(arrayOf("image/*")) }, onOpen = { bookId = it; route = "document" },
                 onShare = { id -> sharePdf(id) }, onPdf = { id ->
                     bookId = id
                     val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)
                     pdfSaver.launch("${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf")
-                }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack, onBackup={backupSaver.launch("DocScan-backup.zip")},onRestoreBackup={backupLoader.launch(arrayOf("application/zip","application/octet-stream"))})
+                }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack, onBackup={backupSaver.launch("DocScan-backup.zip")},onRestoreBackup={backupLoader.launch(arrayOf("application/zip","application/octet-stream"))},
+                onToolScan={tool->startScan(tool.name)},onToolOcr={id->bookId=id;route="documentOcr"},onDeleteForever={ids->vm.perform(R.string.deleted_forever){store.deleteForever(ids)}},
+                drafts=drafts,onResumeDraft={id->vm.perform {bookId=id;capturePageIds=store.dao.snapshot(id).map {it.id};captureSession=true;pageId=capturePageIds.firstOrNull();route=if(pageId==null)"camera" else "review"}})
         }
         if (vm.busy) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .12f)).clickable(enabled = true, onClick = {}), contentAlignment = Alignment.Center) {

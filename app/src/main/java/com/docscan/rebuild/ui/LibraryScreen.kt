@@ -2,6 +2,12 @@ package com.docscan.rebuild.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
+import com.docscan.rebuild.tools.ScanTool
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -40,11 +46,13 @@ fun LibraryScreen(
     store: ScanStore, entries: List<LibraryEntry>, trash: List<LibraryEntry>,
     onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit,
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
-    onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {}
+    onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {}, onToolScan:(ScanTool)->Unit={},onToolOcr:(String)->Unit={},onDeleteForever:(Set<String>)->Unit={},
+    drafts:List<LibraryEntry> = emptyList(),onResumeDraft:(String)->Unit={}
 ) {
     var search by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("home") }
     var inTrash by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     var selection by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
     val textMatches by remember(search) {
@@ -62,6 +70,9 @@ fun LibraryScreen(
     BackHandler(selection || inTrash || section != "home") {
         when { selection -> clear(); inTrash -> inTrash = false; else -> section = "home" }
     }
+    if(confirmDelete)AlertDialog(onDismissRequest={confirmDelete=false},title={Text(stringResource(R.string.delete_forever_title,selected.size))},text={Text(stringResource(R.string.delete_forever_hint))},
+        confirmButton={TextButton(onClick={confirmDelete=false;onDeleteForever(selected.toSet());clear()},modifier=Modifier.testTag("delete-forever-confirm")){Text(stringResource(R.string.delete_forever),color=MaterialTheme.colorScheme.error)}},
+        dismissButton={TextButton(onClick={confirmDelete=false}){Text(stringResource(R.string.cancel))}})
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Scaffold(
         containerColor = Color.White,
@@ -69,13 +80,16 @@ fun LibraryScreen(
         topBar = {
             Column(Modifier.statusBarsPadding().background(Color.White)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextField(search, { search = it; if (section == "tools" || section == "me") section = "home" },
-                        modifier = Modifier.weight(1f).testTag("home-search"),
-                        placeholder = { Text(stringResource(R.string.search)) }, singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = HomeTile, unfocusedContainerColor = HomeTile,
-                            focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
-                        leadingIcon = { Icon(Icons.Outlined.Search, null, tint = HomeMuted) })
+                    Surface(color=HomeTile,shape=RoundedCornerShape(10.dp),modifier=Modifier.weight(1f).heightIn(min=44.dp)) {
+                        Row(Modifier.padding(horizontal=12.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Outlined.Search,null,Modifier.size(20.dp),tint=HomeMuted)
+                            BasicTextField(search,{search=it;if(section=="tools"||section=="me")section="home"},singleLine=true,
+                                textStyle=TextStyle(fontSize=14.sp,color=Color(0xFF333D3B),textDirection=TextDirection.Content),
+                                modifier=Modifier.weight(1f).testTag("home-search"),decorationBox={inner ->
+                                    Box {if(search.isEmpty())Text(stringResource(R.string.search_compact),style=MaterialTheme.typography.bodySmall,maxLines=1,overflow=TextOverflow.Ellipsis,color=HomeMuted);inner()}
+                                })
+                        }
+                    }
                     IconButton(onClick = { selection = !selection; selected = emptyList() }) {
                         Icon(if (selection) Icons.Outlined.Close else Icons.Outlined.Checklist,
                             stringResource(if (selection) R.string.cancel else R.string.select_documents), tint = HomeMuted)
@@ -87,6 +101,9 @@ fun LibraryScreen(
                     Text(stringResource(R.string.selected_count, selected.size), Modifier.weight(1f))
                     IconButton(onClick = { selected = if (visible.all { it.book.id in selected }) emptyList() else visible.map { it.book.id } }) {
                         Icon(Icons.Outlined.SelectAll, stringResource(R.string.select_all))
+                    }
+                    if(inTrash)IconButton(onClick={confirmDelete=true},enabled=selected.isNotEmpty(),modifier=Modifier.testTag("delete-forever")) {
+                        Icon(Icons.Outlined.DeleteForever,stringResource(R.string.delete_forever),tint=MaterialTheme.colorScheme.error)
                     }
                     IconButton(onClick = { onTrash(selected.toSet(), inTrash); clear() }, enabled = selected.isNotEmpty()) {
                         Icon(if (inTrash) Icons.Outlined.RestoreFromTrash else Icons.Outlined.DeleteOutline,
@@ -118,14 +135,14 @@ fun LibraryScreen(
         Column(Modifier.fillMaxSize().padding(padding).testTag("library")) {
             when {
                 section == "me" -> LocalProfile(onFiles = ::files, onTrash = ::trash, onBackup = onBackup, onRestoreBackup = onRestoreBackup)
-                section == "tools" -> {
-                    Text(stringResource(R.string.tools_tab), Modifier.padding(20.dp), style = MaterialTheme.typography.headlineSmall)
-                    HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
-                        onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
-                        onPdf = { entries.firstOrNull { it.pageCount > 0 }?.let { onPdf(it.book.id) } ?: onScan() },
-                        onShare = { entries.firstOrNull { it.pageCount > 0 }?.let { onShare(it.book.id) } ?: onScan() })
-                }
+                section == "tools" -> ToolsScreen(store,entries,onToolScan,onImport,onToolOcr,onOpen,snack)
                 else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list"), contentPadding = PaddingValues(bottom = 96.dp)) {
+                    if(section=="home" && drafts.isNotEmpty())item(key="drafts") {
+                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            Text(stringResource(R.string.resume_drafts),style=MaterialTheme.typography.titleMedium)
+                            drafts.forEach { entry -> TextButton(onClick={onResumeDraft(entry.book.id)},modifier=Modifier.testTag("resume-draft")){Text(entry.book.title,maxLines=1,overflow=TextOverflow.Ellipsis)} }
+                        }
+                    }
                     if (section == "home" && !selection && !inTrash && search.isBlank()) item(key = "shortcuts") {
                         HomeShortcuts(onScan, onImport, ::files, ::trash, { selection = true; section = "files" },
                             onRecent = { entries.firstOrNull()?.let { onOpen(it.book.id) } ?: onScan() },
@@ -183,9 +200,9 @@ private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Bo
             Text(entry.book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (textMatch) Text(stringResource(R.string.ocr_search_match), style = MaterialTheme.typography.labelSmall, color = HomeGreen)
             Spacer(Modifier.height(6.dp))
-            Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(entry.book.created)),
+            Text(androidx.core.text.BidiFormatter.getInstance().unicodeWrap(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(entry.book.created))),
                 style = MaterialTheme.typography.bodySmall, color = HomeMuted, maxLines = 1)
-            Text(pluralStringResource(R.plurals.pages, entry.pageCount, entry.pageCount), style = MaterialTheme.typography.labelSmall, color = HomeMuted)
+            Text(androidx.core.text.BidiFormatter.getInstance().unicodeWrap(pluralStringResource(R.plurals.pages, entry.pageCount, entry.pageCount)), style = MaterialTheme.typography.labelSmall, color = HomeMuted)
         }
         Checkbox(checked, { onSelect() }, modifier = Modifier.testTag("select-${entry.book.id}"),
             colors = CheckboxDefaults.colors(checkedColor = HomeGreen, uncheckedColor = Color(0xFFD5D8D7)))
@@ -218,7 +235,7 @@ private fun HomeShortcuts(onScan: () -> Unit, onImport: () -> Unit, onFiles: () 
                             Icon(icon, null, Modifier.size(26.dp), tint = when (label) { R.string.pdf_tools -> Color(0xFFFF715D); R.string.import_images, R.string.files_tab -> Color(0xFF4480E8); else -> HomeGreen })
                         }
                         Spacer(Modifier.height(7.dp))
-                        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, textAlign=TextAlign.Center, maxLines = 3, minLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

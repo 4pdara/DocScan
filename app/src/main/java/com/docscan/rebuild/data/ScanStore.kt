@@ -21,10 +21,10 @@ import java.io.InputStream
 import java.util.UUID
 
 @Entity(tableName = "notebooks")
-data class Notebook(@PrimaryKey val id: String, val title: String, val created: Long, @ColumnInfo(defaultValue = "NULL") val trashedAt: Long? = null)
+data class Notebook(@PrimaryKey val id: String, val title: String, val created: Long, @ColumnInfo(defaultValue = "NULL") val trashedAt: Long? = null, @ColumnInfo(defaultValue = "0") val draft: Boolean = false)
 
 @Entity(tableName = "sheets", foreignKeys = [ForeignKey(entity = Notebook::class, parentColumns = ["id"], childColumns = ["notebookId"], onDelete = ForeignKey.CASCADE)], indices = [Index("notebookId")])
-data class Sheet(@PrimaryKey val id: String, val notebookId: String, val position: Int, val source: String, val width: Int, val height: Int, val mime: String, val recipe: String = "{}", @ColumnInfo(defaultValue = "NULL") val ocrText: String? = null, @ColumnInfo(defaultValue = "NULL") val ocrRecipe: String? = null) {
+data class Sheet(@PrimaryKey val id: String, val notebookId: String, val position: Int, val source: String, val width: Int, val height: Int, val mime: String, val recipe: String = "{}", @ColumnInfo(defaultValue = "NULL") val ocrText: String? = null, @ColumnInfo(defaultValue = "NULL") val ocrRecipe: String? = null, @ColumnInfo(defaultValue = "NULL") val pdfSource: String? = null) {
     fun edit() = RecipeCodec.decode(recipe)
     fun currentText(): String? = ocrText.takeIf { ocrRecipe == recipe }
 }
@@ -32,8 +32,12 @@ data class LibraryEntry(@Embedded val book: Notebook, val pageCount: Int, val co
 
 @Dao
 interface ScanQueries {
-    @Query("SELECT notebooks.*, COUNT(sheets.id) AS pageCount, (SELECT id FROM sheets s WHERE s.notebookId = notebooks.id ORDER BY position LIMIT 1) AS cover FROM notebooks LEFT JOIN sheets ON notebooks.id=sheets.notebookId WHERE (:trashed = 0 AND notebooks.trashedAt IS NULL) OR (:trashed = 1 AND notebooks.trashedAt IS NOT NULL) GROUP BY notebooks.id ORDER BY created DESC")
+    @Query("SELECT notebooks.*, COUNT(sheets.id) AS pageCount, (SELECT id FROM sheets s WHERE s.notebookId = notebooks.id ORDER BY position LIMIT 1) AS cover FROM notebooks LEFT JOIN sheets ON notebooks.id=sheets.notebookId WHERE (notebooks.draft=0 AND :trashed = 0 AND notebooks.trashedAt IS NULL) OR (:trashed = 1 AND notebooks.trashedAt IS NOT NULL) GROUP BY notebooks.id ORDER BY created DESC")
     fun library(trashed: Boolean = false): Flow<List<LibraryEntry>>
+    @Query("SELECT notebooks.*, COUNT(sheets.id) AS pageCount, (SELECT id FROM sheets s WHERE s.notebookId = notebooks.id ORDER BY position LIMIT 1) AS cover FROM notebooks LEFT JOIN sheets ON notebooks.id=sheets.notebookId WHERE notebooks.draft=1 AND notebooks.trashedAt IS NULL GROUP BY notebooks.id ORDER BY created DESC")
+    fun drafts(): Flow<List<LibraryEntry>>
+    @Query("UPDATE notebooks SET draft=0 WHERE id=:id") suspend fun finalize(id: String)
+    @Query("DELETE FROM sheets WHERE id IN (:ids)") suspend fun deletePages(ids: List<String>)
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") fun pages(id: String): Flow<List<Sheet>>
     @Query("SELECT * FROM sheets WHERE notebookId=:id ORDER BY position") suspend fun snapshot(id: String): List<Sheet>
     @Query("SELECT DISTINCT notebookId FROM sheets WHERE ocrRecipe=recipe AND ocrText LIKE :pattern ESCAPE '\\'")
@@ -43,6 +47,8 @@ interface ScanQueries {
     @Query("SELECT * FROM notebooks ORDER BY created, id") suspend fun allBooks(): List<Notebook>
     @Query("SELECT * FROM sheets ORDER BY notebookId, position, id") suspend fun allPages(): List<Sheet>
     @Query("UPDATE sheets SET ocrText=:text, ocrRecipe=:recipe WHERE id=:id AND sheets.recipe=:recipe") suspend fun recognized(id: String, text: String, recipe: String): Int
+    @Query("UPDATE sheets SET pdfSource=:source WHERE id=:id") suspend fun attachPdf(id: String, source: String)
+    @Query("DELETE FROM notebooks WHERE id=:id") suspend fun deleteBook(id: String)
     @Insert suspend fun insert(book: Notebook)
     @Insert suspend fun insert(page: Sheet)
     @Query("UPDATE sheets SET ocrText=CASE WHEN recipe=:recipe THEN ocrText ELSE NULL END, ocrRecipe=CASE WHEN recipe=:recipe THEN ocrRecipe ELSE NULL END, recipe=:recipe WHERE id=:id") suspend fun recipe(id: String, recipe: String)
@@ -50,10 +56,13 @@ interface ScanQueries {
     @Query("UPDATE sheets SET position=:position WHERE id=:id") suspend fun position(id: String, position: Int)
     @Query("UPDATE notebooks SET trashedAt=:at WHERE id IN (:ids)") suspend fun trash(ids: List<String>, at: Long?)
 }
-@Database(entities = [Notebook::class, Sheet::class], version = 3, exportSchema = true)
+@Database(entities = [Notebook::class, Sheet::class], version = 4, exportSchema = true)
 abstract class ScanDatabase : RoomDatabase() {
     abstract fun queries(): ScanQueries
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE sheets ADD COLUMN pdfSource TEXT DEFAULT NULL");db.execSQL("ALTER TABLE notebooks ADD COLUMN draft INTEGER NOT NULL DEFAULT 0") }
+        }
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE sheets ADD COLUMN ocrText TEXT DEFAULT NULL")
@@ -71,16 +80,29 @@ object RecipeCodec {
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
         .put("outputAspect", r.outputAspect?.toDouble() ?: JSONObject.NULL)
         .put("curveTop", r.curvature.top.toDouble()).put("curveBottom", r.curvature.bottom.toDouble())
+        .put("decorations", JSONObject().put("watermark",r.decorations.watermark).put("timestamp",r.decorations.timestamp)
+            .put("removeColorMarks",r.decorations.removeColorMarks).put("restorePhoto",r.decorations.restorePhoto)
+            .put("signature",JSONArray(r.decorations.signature.map { stroke -> JSONObject().put("width",stroke.width.toDouble()).put("points",JSONArray(stroke.points.map { JSONArray(listOf(it.x,it.y)) })) }))
+            .put("erasures",JSONArray(r.decorations.erasures.map { JSONArray(listOf(it.left.toDouble(),it.top.toDouble(),it.right.toDouble(),it.bottom.toDouble())) })))
         .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) })).toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
+        val d=o.optJSONObject("decorations") ?: JSONObject()
+        val strokes=d.optJSONArray("signature") ?: JSONArray(); val masks=d.optJSONArray("erasures") ?: JSONArray()
+        require(strokes.length()<=100 && masks.length()<=40)
+        val decorations=PageDecorations(d.optString("watermark"),d.optString("timestamp"),
+            (0 until strokes.length()).map { i -> val stroke=strokes.getJSONObject(i);val points=stroke.getJSONArray("points"); require(points.length()<=3000)
+                InkStroke((0 until points.length()).map { j -> val p=points.getJSONArray(j);Vertex(p.getDouble(0).toFloat(),p.getDouble(1).toFloat()) },stroke.optDouble("width",.004).toFloat()) },
+            (0 until masks.length()).map { i -> val r=masks.getJSONArray(i);EraseRegion(r.getDouble(0).toFloat(),r.getDouble(1).toFloat(),r.getDouble(2).toFloat(),r.getDouble(3).toFloat()) },
+            d.optBoolean("removeColorMarks"),d.optBoolean("restorePhoto"))
+        require(decorations.valid())
         val frame = if (q != null && q.length() == 4) Frame((0..3).map { val p = q.getJSONArray(it); Vertex(p.getDouble(0).toFloat(), p.getDouble(1).toFloat()) }) else Frame.FULL
         EditRecipe(frame.takeIf { it.valid() } ?: Frame.FULL, o.optInt("turns").mod(4),
             runCatching { Treatment.valueOf(o.optString("filter", "ORIGINAL")) }.getOrDefault(Treatment.ORIGINAL),
             o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
             o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
             o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f },
-            BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve())
+            BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve(), decorations)
     }.getOrDefault(EditRecipe())
 }
 
@@ -90,8 +112,9 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
     private val masters = File(context.filesDir, "masters").apply { mkdirs() }
     private val incoming = File(context.cacheDir, "incoming").apply { mkdirs() }
     fun source(page: Sheet): File = File(masters, page.source).also { require(it.canonicalFile.parentFile == masters.canonicalFile) }
-    suspend fun create(title: String): Notebook = withContext(Dispatchers.IO) {
-        Notebook(UUID.randomUUID().toString(), title, System.currentTimeMillis()).also { dao.insert(it) }
+    fun originalPdf(page: Sheet): File? = page.pdfSource?.let { name -> File(masters,name).also { require(it.canonicalFile.parentFile==masters.canonicalFile) } }
+    suspend fun create(title: String, draft: Boolean = false): Notebook = withContext(Dispatchers.IO) {
+        Notebook(UUID.randomUUID().toString(), title, System.currentTimeMillis(),draft=draft).also { dao.insert(it) }
     }
     suspend fun import(id: String, uri: Uri): Sheet = withContext(Dispatchers.IO) {
         context.contentResolver.openInputStream(uri).use { stream -> requireNotNull(stream); store(id, stream) }
@@ -120,7 +143,7 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
         } finally { temporary.delete() }
     }
     suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
-        require(edit.frame.valid() && edit.curvature.valid())
+        require(edit.frame.valid() && edit.curvature.valid() && edit.decorations.valid())
         require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
         // A legacy/default recipe can have different JSON while rendering identically.
         // Opening and saving it without changes must not erase manually corrected OCR.
@@ -147,6 +170,49 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             dao.insert(second)
             requireNotNull(dao.page(current.id))
         } }
+    }
+
+    suspend fun copyPages(title: String, pageIds: List<String>): Notebook = withContext(Dispatchers.IO) {
+        require(pageIds.isNotEmpty() && pageIds.distinct().size==pageIds.size)
+        lock.withLock { database.withTransaction {
+            val source=pageIds.map { requireNotNull(dao.page(it)) }
+            val book=Notebook(UUID.randomUUID().toString(),title.take(100),System.currentTimeMillis());dao.insert(book)
+            source.forEachIndexed { i,p -> dao.insert(p.copy(id=UUID.randomUUID().toString(),notebookId=book.id,position=i)) };book
+        } }
+    }
+    suspend fun reorder(bookId: String, orderedIds: List<String>) = withContext(Dispatchers.IO) {
+        lock.withLock { database.withTransaction {
+            val old=dao.snapshot(bookId)
+            require(orderedIds.size==old.size && orderedIds.toSet()==old.map { it.id }.toSet())
+            orderedIds.forEachIndexed { i,id -> dao.position(id,i) }
+        } }
+    }
+
+    /** Only explicitly selected trash entries may be destroyed. Shared originals remain referenced. */
+    suspend fun deleteForever(ids:Set<String>) = withContext(Dispatchers.IO) {
+        require(ids.isNotEmpty())
+        lock.withLock {
+            val removed=database.withTransaction {
+                val books=ids.map { requireNotNull(dao.book(it)) };require(books.all { it.trashedAt!=null })
+                val pages=books.flatMap { dao.snapshot(it.id) };books.forEach { dao.deleteBook(it.id) };pages
+            };removeUnreferenced(removed)
+        }
+    }
+    suspend fun discardCapture(bookId:String, ids:List<String>) = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val removed=database.withTransaction {
+                val book=requireNotNull(dao.book(bookId));val pages=ids.mapNotNull { dao.page(it) }
+                require(pages.all { it.notebookId==bookId });dao.deletePages(pages.map { it.id })
+                if(book.draft && dao.snapshot(bookId).isEmpty())dao.deleteBook(bookId)
+                pages
+            };removeUnreferenced(removed)
+        }
+    }
+    private suspend fun removeUnreferenced(removed:List<Sheet>) {
+        val remaining=dao.allPages();val used=remaining.flatMap { listOfNotNull(it.source,it.pdfSource) }.toSet()
+        removed.flatMap { listOfNotNull(it.source,it.pdfSource) }.distinct().filterNot { it in used }.forEach { name ->
+            val file=File(masters,name);require(file.canonicalFile.parentFile==masters.canonicalFile);if(file.exists())check(file.delete())
+        }
     }
 
     /** Recoverable removal: never deletes original files, recipes or page order. */

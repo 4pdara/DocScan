@@ -18,3 +18,11 @@ Tesseract4Android 4.9.0 is an Apache-2.0 wrapper around Tesseract 5.5.1 and its 
 The Hebrew and English tessdata_fast language data are Apache-2.0: https://github.com/tesseract-ocr/tessdata_fast/tree/87416418657359cb625c412a48b6e1d6d41c29bd . These verified models are downloaded during the build into generated assets; model binaries are not stored in Git. Recognition runs locally without adding an Internet permission. This dependency is separate from the optional reference processing engine.
 
 The APK bundles the original OCR component license texts under assets/licenses (Tesseract4Android, Tesseract, tessdata_fast, Leptonica, libpng and the IJG libjpeg README). This software is based in part on the work of the Independent JPEG Group.
+
+## Document tools 0.1.8.2
+
+PDFBox-Android 2.0.27.0 (Tom Roush / Apache PDFBox contributors), Apache-2.0: https://github.com/TomRoush/PdfBox-Android
+
+ZXing core 3.5.3 (ZXing contributors), Apache-2.0: https://github.com/zxing/zxing
+
+Original OOXML writers and local document-tool integration are part of this project. No proprietary reference binary or model was added.
