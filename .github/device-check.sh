@@ -25,7 +25,13 @@ adb shell run-as "$legacy_app" touch files/coinstall-preserved
 legacy_path=$(adb shell pm path "$legacy_app" | tr -d '\r')
 adb install -r "$apk_root/debug/app-debug.apk" | tee device-results/preview-install.txt
 adb install -r -t "$apk_root/androidTest/debug/app-debug-androidTest.apk"
-adb shell am instrument -w -r -e locale "${1:-en}" \
+# The Compose 1.9 test clock can resume layout on an IO thread on API 28.
+# Validate legacy-system UI through accessibility without installing its fake recomposer.
+test_filter=()
+if [[ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -le 28 ]]; then
+  test_filter=(-e class com.docscan.rebuild.LegacySystemUiTest)
+fi
+adb shell am instrument -w -r "${test_filter[@]}" -e locale "${1:-en}" \
   "$application_id.test/com.docscan.rebuild.LocaleTestRunner" | tee device-results/instrumentation.txt
 python3 - <<'PY'
 from pathlib import Path

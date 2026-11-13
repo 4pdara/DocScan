@@ -28,9 +28,8 @@ import java.io.File
 import java.security.MessageDigest
 
 @RunWith(AndroidJUnit4::class)
-@OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 class RebuildFlowTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>(effectContext = kotlinx.coroutines.test.StandardTestDispatcher())
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @get:Rule val cameraPermission = androidx.test.rule.GrantPermissionRule.grant(android.Manifest.permission.CAMERA)
     @get:Rule val storagePermission = if (Build.VERSION.SDK_INT <= 28)
         androidx.test.rule.GrantPermissionRule.grant(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) else androidx.test.rule.GrantPermissionRule.grant()
