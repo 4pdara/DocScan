@@ -244,6 +244,7 @@ object BoundaryDetector {
      * Open book: the winner runs off the frame across the facing page, so one of its sides is only the frame
      * border. A fully bounded quad inside it that keeps the winner's real sides and puts a real edge (the spine)
      * where the border side was, roughly parallel to it, is the page itself (owner's 0.3.0 photo of an open book).
+     * The real sides may sit up to 5% off the winner's lines: the winner is often the cover rim just outside the page.
      */
     private fun pageBesideSpine(best: Scored, valid: List<Scored>, w: Int, h: Int): Scored {
         if (best.borderSides.none { it }) return best
@@ -264,7 +265,7 @@ object BoundaryDetector {
                             var turn = abs(angle(f[i], f[(i + 1) % 4]) - angle(a, c)) % (2 * PI)
                             if (turn > PI) turn = 2 * PI - turn
                             turn < PI / 12
-                        } else offLine(f[i], a, c) < .03f && offLine(f[(i + 1) % 4], a, c) < .03f
+                        } else offLine(f[i], a, c) < .05f && offLine(f[(i + 1) % 4], a, c) < .05f
                     }
             }.maxWithOrNull(compareBy<Scored>({ it.support.average() }, { it.frame.area() })) ?: best
         } finally { outer.release() }
