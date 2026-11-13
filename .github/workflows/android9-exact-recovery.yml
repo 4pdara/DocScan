@@ -1,4 +1,4 @@
-name: Android 9 exact APK recovery check
+name: Android 9 exact APK tool regressions
 on:
   push:
     branches: [rebuild/camscanner-reference]
@@ -48,6 +48,16 @@ jobs:
         run: |
           gh release download native-v0.1.8-preview --pattern DocScan-0.1.8-universal.apk --pattern SHA256SUMS.txt --dir baseline
           (cd baseline && sha256sum --ignore-missing -c SHA256SUMS.txt)
+      - name: Select the changed tool and capture regression paths
+        run: |
+          python3 - <<'PYTEST'
+          from pathlib import Path
+          source=Path('.github/device-check.sh').read_text()
+          old='adb shell am instrument -w -r -e locale'
+          selector='com.docscan.rebuild.ToolsAndDraftTest,com.docscan.rebuild.RebuildFlowTest#cameraCapturesDurablePageAndDoneOpensReviewEditor,com.docscan.rebuild.RebuildFlowTest#singleCaptureOpensEditorAndConfirmedDiscardRemovesOnlyItsDraft,com.docscan.rebuild.RebuildFlowTest#homeSearchAndNavigationKeepDocumentsAndControlsReachable'
+          assert source.count(old)==1
+          Path('/tmp/docscan-android9-regressions.sh').write_text(source.replace(old,'adb shell am instrument -w -r -e class "'+selector+'" -e locale'))
+          PYTEST
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
@@ -64,7 +74,7 @@ jobs:
           emulator-boot-timeout: 300
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
-          script: timeout --kill-after=20s 480s bash .github/device-check.sh en baseline/DocScan-0.1.8-universal.apk
+          script: timeout --kill-after=20s 480s bash /tmp/docscan-android9-regressions.sh en baseline/DocScan-0.1.8-universal.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
