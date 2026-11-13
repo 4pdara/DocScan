@@ -11,6 +11,8 @@ data class OcrWord(val text: String, val left: Int, val top: Int, val right: Int
  * than about one and a half letter heights starts a new cell; cells line up into columns by their reading-side
  * edge (the right edge in Hebrew). Plain text gives one cell per line.
  */
+private class Cell(val text: String, val anchor: Int)
+
 object TableLayout {
     fun rows(words: List<OcrWord>, rightToLeft: Boolean): List<List<String>> {
         val clean = words.filter { it.text.isNotBlank() && it.bottom > it.top && it.right > it.left }
@@ -25,7 +27,6 @@ object TableLayout {
         }
         val unit = clean.map { it.height }.sorted()[clean.size / 2].coerceAtLeast(1)
         // Cells: in reading order, split where the gap is wide.
-        data class Cell(val text: String, val anchor: Int)
         val rows = lines.map { line ->
             val ordered = if (rightToLeft) line.sortedByDescending { it.right } else line.sortedBy { it.left }
             val cells = ArrayList<MutableList<OcrWord>>()

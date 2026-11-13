@@ -16,7 +16,7 @@ object ColorMarks {
     fun erase(rgba: Mat) {
         val rgb = Mat(); val lab = Mat(); val channels = ArrayList<Mat>(); val a = Mat(); val b = Mat(); val chroma = Mat()
         val strong = Mat(); val bright = Mat(); val mask = Mat(); val ring = Mat(); val gray = Mat(); val dark = Mat(); val light = Mat()
-        val small = Mat(); val paper = Mat(); val paperRgba = Mat(); val grayRgba = Mat(); val target = Mat()
+        val small = Mat(); val smooth = Mat(); val paper = Mat(); val paperRgba = Mat(); val grayRgba = Mat(); val target = Mat()
         try {
             Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
             Imgproc.cvtColor(rgb, lab, Imgproc.COLOR_RGB2Lab)
@@ -34,8 +34,8 @@ object ColorMarks {
             // The paper around: close away dark print at a quarter size, smooth, back to full size, neutral grey.
             Imgproc.resize(gray, small, Size(maxOf(1, gray.cols() / 4).toDouble(), maxOf(1, gray.rows() / 4).toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
             Imgproc.morphologyEx(small, small, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(9.0, 9.0)))
-            Imgproc.medianBlur(small, small, 9)
-            Imgproc.resize(small, paper, gray.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+            Imgproc.medianBlur(small, smooth, 9)
+            Imgproc.resize(smooth, paper, gray.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
             Imgproc.cvtColor(paper, paperRgba, Imgproc.COLOR_GRAY2RGBA)
             Imgproc.cvtColor(gray, grayRgba, Imgproc.COLOR_GRAY2RGBA)
             paperRgba.copyTo(rgba, strong)
@@ -43,7 +43,7 @@ object ColorMarks {
             Core.bitwise_and(ring, dark, target); grayRgba.copyTo(rgba, target)
         } finally {
             channels.forEach { it.release() }
-            listOf(rgb, lab, a, b, chroma, strong, bright, mask, ring, gray, dark, light, small, paper, paperRgba, grayRgba, target).forEach { it.release() }
+            listOf(rgb, lab, a, b, chroma, strong, bright, mask, ring, gray, dark, light, small, smooth, paper, paperRgba, grayRgba, target).forEach { it.release() }
         }
     }
 }

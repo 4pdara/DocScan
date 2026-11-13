@@ -54,7 +54,11 @@ object PageFlattener {
             val n = Imgproc.connectedComponentsWithStats(ink, labels, stats, centroids, 8, CvType.CV_32S)
             if (n < 50) return emptyList()
             val s = IntArray(n * 5).also { stats.get(0, 0, it) }
-            fun x(i: Int) = s[i * 5]; fun y(i: Int) = s[i * 5 + 1]; fun bw(i: Int) = s[i * 5 + 2]; fun bh(i: Int) = s[i * 5 + 3]; fun area(i: Int) = s[i * 5 + 4]
+            fun x(i: Int) = s[i * 5]
+            fun y(i: Int) = s[i * 5 + 1]
+            fun bw(i: Int) = s[i * 5 + 2]
+            fun bh(i: Int) = s[i * 5 + 3]
+            fun area(i: Int) = s[i * 5 + 4]
             var letters = (1 until n).filter { bh(it) >= max(5, h / 300) && bh(it) <= h / 12 && bw(it) <= w / 8 && area(it) >= 12 && bw(it) <= bh(it) * 4 }
             if (letters.size < 50) return emptyList()
             val median = letters.map { bh(it) }.sorted()[letters.size / 2]
@@ -91,10 +95,10 @@ object PageFlattener {
                 val xs = chain.map { cx[it] }; if (xs.max() - xs.min() < w * .12) continue
                 // Letter centres wander with ascenders and descenders: a running median along the line steadies them.
                 val ys = chain.map { cy[it] }
-                out += Array(chain.size) { t ->
+                out.add(Array(chain.size) { t ->
                     val window = ys.subList(max(0, t - 5), min(ys.size, t + 6)).sorted()
                     doubleArrayOf(xs[t] / w, window[window.size / 2] / h)
-                }
+                })
             }
             return out
         } finally { ink.release(); labels.release(); stats.release(); centroids.release() }
