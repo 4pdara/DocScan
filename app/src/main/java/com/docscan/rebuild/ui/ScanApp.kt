@@ -157,6 +157,7 @@ fun ScanApp(store: ScanStore) {
     val trash by vm.trash.collectAsState()
     val drafts by vm.drafts.collectAsState()
     val pages by remember(bookId) { bookId?.let { store.dao.pages(it) } ?: flowOf(emptyList()) }.collectAsState(emptyList())
+    val reviewPages=if(captureSession && capturePageIds.isNotEmpty())pages.filter {it.id in capturePageIds} else pages
     val currentTitle = (books+drafts).firstOrNull { it.book.id == bookId }?.book?.title ?: stringResource(R.string.document)
     val snack = remember { SnackbarHostState() }
     val defaultTitle = { context.getString(R.string.title_scan, androidx.core.text.BidiFormatter.getInstance().unicodeWrap(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()))) }
@@ -287,7 +288,7 @@ fun ScanApp(store: ScanStore) {
             "camera" -> CaptureScreen(store,pages,vm.busy,snack=snack,onBack=::leave,onDone={vm.perform {
                 val id=bookId;val captured=id?.let { store.dao.snapshot(it) }.orEmpty()
                 if(captured.isEmpty())vm.notices.send(R.string.no_pages_short)
-                else {pageId=captured.firstOrNull { it.id in capturePageIds }?.id?:captured.first().id;route="review"}
+                else {if(capturePageIds.isEmpty())captureSession=false;pageId=captured.firstOrNull { it.id in capturePageIds }?.id?:captured.first().id;route="review"}
             }},onImport={ importBook=bookId;importer.launch(arrayOf("image/*")) },onCaptured={file,detectBounds,batch,complete ->
                 if(vm.busy){file.delete();complete(false)} else vm.perform {var ok=false;try {
                     val id=bookId?:store.create(defaultTitle(),draft=true).id.also {bookId=it}
@@ -307,11 +308,18 @@ fun ScanApp(store: ScanStore) {
                     onExportImage = { recipe -> imagePage = page.id; imageRecipe = RecipeCodec.encode(recipe); imageSaver.launch("scan-${page.position + 1}.jpg") },
                     onGallery = { recipe -> requestGallery(page, recipe) },
                     onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") },
-                    title = currentTitle, pageIndex = pages.indexOfFirst { it.id == page.id }, pageCount = pages.size, saveOnBack = false,
-                    onNavigate = { index, recipe -> pages.getOrNull(index)?.let { target -> vm.perform { store.save(page, recipe); pageId = target.id } } },
+                    title = currentTitle, pageIndex = reviewPages.indexOfFirst { it.id == page.id }, pageCount = reviewPages.size, saveOnBack = false,
+                    onNavigate = { index, recipe -> reviewPages.getOrNull(index)?.let { target -> vm.perform { store.save(page, recipe); pageId = target.id } } },
                     onRename = { title -> bookId?.let { id -> vm.perform { store.dao.rename(id, title.trim().take(100)) } } },
                     onAddPages = { recipe -> vm.perform { store.save(page, recipe);if(!captureSession){captureSession=true;capturePageIds=emptyList()}; route = "camera" } },
-                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;store.dao.finalize(page.notebookId);captureSession=false;capturePageIds=emptyList();route="document"} },
+                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {
+                        val before=store.dao.snapshot(page.notebookId).map {it.id}.toSet()
+                        val first=store.split(page,recipe,position,rightFirst)
+                        if(captureSession){
+                            val added=store.dao.snapshot(page.notebookId).filterNot {it.id in before}.map {it.id}
+                            capturePageIds=capturePageIds+added;pageId=added.firstOrNull()?:first.id;route="review"
+                        } else {pageId=first.id;route="document"}
+                    } },
                     onOcr = { recipe -> vm.perform {
                         store.save(page,recipe);val current=requireNotNull(store.dao.page(page.id))
                         ocrText=current.currentText().orEmpty();ocrRecipe=current.recipe;ocrReturn="editor";route="ocr"

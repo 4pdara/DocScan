@@ -93,6 +93,23 @@ class ToolsAndDraftTest {
         compose.waitUntil(10000){compose.onAllNodesWithTag("home-navigation").fetchSemanticsNodes().isNotEmpty()}
         assertEquals(before,runBlocking{store.dao.allBooks().map{it.id}.toSet()})
     }
+    @Test fun splittingAnUnfinishedScanKeepsBothPagesUncommittedUntilSave(){
+        val store=(compose.activity.application as ScanApplication).store
+        val draft=runBlocking {val b=store.create("Split draft ${System.nanoTime()}",draft=true);val f=fixture();try{store.captured(b.id,f)}finally{f.delete()};b}
+        val original=runBlocking{store.dao.snapshot(draft.id).single()}
+        compose.waitUntil(10000){compose.onAllNodesWithText(draft.title).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText(draft.title).performClick()
+        compose.waitUntil(15000){compose.onAllNodesWithTag("page-tools").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("page-tools").performClick();compose.onNodeWithText(context.getString(R.string.split_book)).performClick()
+        compose.onNodeWithText(context.getString(R.string.split_apply)).performClick()
+        compose.waitUntil(10000){runBlocking{store.dao.snapshot(draft.id).size==2}}
+        assertTrue(runBlocking{store.dao.book(draft.id)!!.draft})
+        assertTrue(runBlocking{store.dao.library().first().none{it.book.id==draft.id}})
+        compose.waitUntil(10000){compose.onAllNodes(hasTestTag("save-edit") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
+        androidx.test.espresso.Espresso.pressBack();compose.onNodeWithTag("discard-scan-confirm").performClick()
+        compose.waitUntil(10000){runBlocking{store.dao.book(draft.id)==null} && !store.source(original).exists()}
+    }
+
     @Test fun permanentDeletionRequiresExplicitConfirmation(){
         val store=(compose.activity.application as ScanApplication).store
         val book=runBlocking {val b=store.create("Delete confirmation ${System.nanoTime()}");val f=fixture();try{store.captured(b.id,f)}finally{f.delete()};store.trash(setOf(b.id));b}

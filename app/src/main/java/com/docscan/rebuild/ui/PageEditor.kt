@@ -138,7 +138,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             Slider(split,{split=it},valueRange=.15f.. .85f,modifier=Modifier.testTag("book-split-position"))
                             Row(verticalAlignment=Alignment.CenterVertically) {
                                 Checkbox(rightFirst,{rightFirst=it});Text(stringResource(R.string.right_page_first),Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
-                                TextButton(onClick={onSplit?.invoke(edit,split,rightFirst)},enabled=!busy && runCatching { edit.frame.split(split) }.isSuccess){Text(stringResource(R.string.split_apply))}
+                                TextButton(onClick={tool="filters";onSplit?.invoke(edit,split,rightFirst)},enabled=!busy && runCatching { edit.frame.split(split) }.isSuccess){Text(stringResource(R.string.split_apply))}
                                 TextButton(onClick={tool="filters"}){Text(stringResource(R.string.cancel))}
                             }
                         }

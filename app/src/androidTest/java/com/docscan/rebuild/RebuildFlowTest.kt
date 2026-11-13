@@ -129,7 +129,7 @@ class RebuildFlowTest {
         androidx.test.espresso.Espresso.pressBack()
         compose.onNodeWithText(compose.activity.getString(R.string.discard_scan_title)).assertIsDisplayed()
         compose.onNodeWithTag("discard-scan-confirm").performClick()
-        compose.waitUntil(10000){runBlocking {store.dao.book(draft.book.id)==null}}
+        compose.waitUntil(10000){runBlocking {store.dao.book(draft.book.id)==null} && !store.source(captured).exists()}
         assertFalse(store.source(captured).exists())
     }
 
