@@ -169,7 +169,7 @@
     <string name="pdf_size_balanced">מאוזן (עמודים עד 2000 פיקסלים)</string>
     <string name="pdf_size_small">קטן (עמודים עד 1200 פיקסלים)</string>
     <string name="watermark">סימן מים</string>
-    <string name="watermark_hint">הטקסט יופיע באלכסון על כל עמוד. השארת השדה ריק מסירה את סימן המים. צילומי המקור לא משתנים.</string>
+    <string name="watermark_hint">התצוגה למעלה מראה איך העמוד ייראה. השארת השדה ריק מסירה את סימן המים. צילומי המקור לא משתנים.</string>
     <string name="remove_watermark">הסרת סימן המים</string>
     <string name="apply_all_pages">החלה על כל העמודים</string>
     <string name="print">הדפסה</string>
@@ -198,11 +198,45 @@
     <string name="corner_bottom_left">למטה משמאל</string>
     <string name="corner_top_right">למעלה מימין</string>
     <string name="corner_top_left">למעלה משמאל</string>
-    <string name="mark_settings">סימן מים וחותמת זמן</string>
-    <string name="mark_settings_hint">כבויים כברירת מחדל. כשמפעילים אותם, הם מתווספים רק לסריקות ולייבואים חדשים; עמודים שכבר נשמרו לא משתנים. אפשר להוסיף אותם גם למסמך מסוים דרך הכלים שלו.</string>
+    <string name="mark_settings">סימן מים, שורת טקסט וחותמת זמן</string>
+    <string name="mark_settings_hint">כולם כבויים כברירת מחדל. כשמפעילים אותם, הם מתווספים רק לסריקות ולייבואים חדשים; עמודים שכבר נשמרו לא משתנים. אפשר להוסיף אותם גם למסמך מסוים דרך הכלים שלו.</string>
     <string name="watermark_new_scans">סימן מים בסריקות חדשות</string>
     <string name="watermark_text">הטקסט של סימן המים</string>
     <string name="timestamp_new_scans">חותמת זמן בסריקות חדשות</string>
+    <string name="corner_bottom_center">למטה במרכז</string>
+    <string name="corner_top_center">למעלה במרכז</string>
+    <string name="mark_place">מיקום</string>
+    <string name="mark_font">גופן</string>
+    <string name="mark_color">צבע</string>
+    <string name="mark_strength">עוצמה</string>
+    <string name="mark_size">גודל</string>
+    <string name="font_bold">מודגש</string>
+    <string name="font_plain">פשוט</string>
+    <string name="font_classic">קלאסי</string>
+    <string name="font_david">דוד</string>
+    <string name="font_headline">כותרת</string>
+    <string name="font_festive">חגיגי</string>
+    <string name="font_handwriting">כתב יד</string>
+    <string name="color_grey">אפור</string>
+    <string name="color_black">שחור</string>
+    <string name="color_red">אדום</string>
+    <string name="color_blue">כחול</string>
+    <string name="color_green">ירוק</string>
+    <string name="color_orange">כתום</string>
+    <string name="strength_light">חלש</string>
+    <string name="strength_medium">רגיל</string>
+    <string name="strength_strong">חזק</string>
+    <string name="size_small">קטן</string>
+    <string name="size_medium">בינוני</string>
+    <string name="size_large">גדול</string>
+    <string name="footer">שורת טקסט</string>
+    <string name="footer_hint">שורה בקצה העמוד, כמו חותמת הזמן. השארת השדה ריק מסירה אותה.</string>
+    <string name="footer_example">לדוגמה: צולם ע\"י ישראל ישראלי</string>
+    <string name="remove_footer">הסרת שורת הטקסט</string>
+    <string name="footer_new_scans">שורת טקסט בסריקות חדשות</string>
+    <string name="note_color">צבע שורת הטקסט וחותמת הזמן</string>
+    <string name="mark_preview">תצוגה מקדימה</string>
+    <string name="timestamp_corner">מיקום חותמת הזמן</string>
 </resources>
 
 

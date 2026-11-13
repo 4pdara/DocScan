@@ -17,7 +17,7 @@ import kotlin.math.*
  * screenshots; see docs/DETECTION_0.2.0_HE.md.
  */
 object BoundaryDetector {
-    private class Scored(val frame: Frame, val score: Double, val support: DoubleArray)
+    private class Scored(val frame: Frame, val score: Double, val support: DoubleArray, val borderSides: BooleanArray = BooleanArray(4))
 
     fun detect(gray: Mat, rgba: Mat? = null): Frame? {
         val w = gray.cols(); val h = gray.rows(); val side = min(w, h).toDouble()
@@ -154,7 +154,7 @@ object BoundaryDetector {
                     // touches the frame edge), but the document's real sides must then be clearly visible: a quad that
                     // reaches the border across the facing page of an open book has a weak top or bottom side.
                     if (sides.any { (support, border) -> val least = if (border > .6) .2 else if (onBorder > 0) .7 else .3; support < least }) return@forEach
-                    valid += Scored(frame, sqrt(frame.area().toDouble()) * .65 + sup.average() * .35, sup)
+                    valid += Scored(frame, sqrt(frame.area().toDouble()) * .65 + sup.average() * .35, sup, BooleanArray(4) { sides[it].second > .6 })
                 }
             } finally { patch.release() }
             var best = valid.maxByOrNull { it.score } ?: return null
@@ -212,7 +212,9 @@ object BoundaryDetector {
                     // the border colours, but a panel on that cover is surrounded by the cover itself.
                     return gap(colour, centreColour(outer)) >= 25
                 }
+                var settled = false
                 repeat(3) {
+                    if (settled) return@repeat
                     val outer = MatOfPoint2f(*best.frame.points.map { Point(it.x.toDouble(), it.y.toDouble()) }.toTypedArray())
                     try {
                         val nested = valid.filter { candidate ->
@@ -227,14 +229,45 @@ object BoundaryDetector {
                                 } >= 1 &&
                                 restsOnSurface(best.frame, candidate.frame) && distinctObject(candidate.frame)
                         }
-                        best = nested.maxByOrNull { it.score } ?: return best.frame
+                        val next = nested.maxByOrNull { it.score }
+                        if (next == null) settled = true else best = next
                     } finally { outer.release() }
                 }
             } finally { smallPlain.release(); outerMask.release(); innerMask.release(); grow.release() }
-            return best.frame
+            return pageBesideSpine(best, valid, w, h).frame
         } finally {
             edges.release(); work.release(); blurred.release(); supported.release(); rgb.release(); labMat.release(); plainMat.release(); hierarchy.release(); kernel.release()
         }
+    }
+
+    /**
+     * Open book: the winner runs off the frame across the facing page, so one of its sides is only the frame
+     * border. A fully bounded quad inside it that keeps the winner's real sides and puts a real edge (the spine)
+     * where the border side was, roughly parallel to it, is the page itself (owner's 0.3.0 photo of an open book).
+     */
+    private fun pageBesideSpine(best: Scored, valid: List<Scored>, w: Int, h: Int): Scored {
+        if (best.borderSides.none { it }) return best
+        val b = best.frame.points
+        fun offLine(p: Vertex, a: Vertex, c: Vertex) =
+            abs((c.x - a.x) * (p.y - a.y) - (c.y - a.y) * (p.x - a.x)) / max(1e-6f, hypot(c.x - a.x, c.y - a.y))
+        fun angle(a: Vertex, c: Vertex) = atan2((c.y - a.y) * (h - 1.0), (c.x - a.x) * (w - 1.0))
+        val outer = MatOfPoint2f(*b.map { Point(it.x.toDouble(), it.y.toDouble()) }.toTypedArray())
+        try {
+            return valid.filter { candidate ->
+                val f = candidate.frame.points
+                candidate !== best && candidate.borderSides.none { it } && candidate.support.min() >= .8 &&
+                    candidate.frame.area() >= best.frame.area() * .3f &&
+                    f.all { Imgproc.pointPolygonTest(outer, Point(it.x.toDouble(), it.y.toDouble()), true) >= -.01 } &&
+                    (0..3).all { i ->
+                        val a = b[i]; val c = b[(i + 1) % 4]
+                        if (best.borderSides[i]) {
+                            var turn = abs(angle(f[i], f[(i + 1) % 4]) - angle(a, c)) % (2 * PI)
+                            if (turn > PI) turn = 2 * PI - turn
+                            turn < PI / 12
+                        } else offLine(f[i], a, c) < .03f && offLine(f[(i + 1) % 4], a, c) < .03f
+                    }
+            }.maxWithOrNull(compareBy<Scored>({ it.support.average() }, { it.frame.area() })) ?: best
+        } finally { outer.release() }
     }
 
     /** Regions that differ from the colours seen along the frame border (the table, tray or wall around the document). */

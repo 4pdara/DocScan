@@ -75,8 +75,14 @@ object RecipeCodec {
         .put("curveTop", r.curvature.top.toDouble()).put("curveBottom", r.curvature.bottom.toDouble())
         .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) }))
         .apply {
-            r.watermark?.let { put("watermark", it); put("watermarkPlace", r.watermarkPlace.name) }
+            r.watermark?.let {
+                put("watermark", it); put("watermarkPlace", r.watermarkPlace.name)
+                put("markFont", r.watermarkStyle.font.name); put("markColor", r.watermarkStyle.color.name)
+                put("markStrength", r.watermarkStyle.strength.name); put("markSize", r.watermarkStyle.size.name)
+            }
             r.stamp?.let { put("stamp", it); put("stampPlace", r.stampPlace.name) }
+            r.footer?.let { put("footer", it); put("footerPlace", r.footerPlace.name) }
+            if (r.stamp != null || r.footer != null) put("noteColor", r.noteColor.name)
         }.toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
@@ -89,8 +95,12 @@ object RecipeCodec {
             BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve(),
             o.optString("watermark").trim().take(80).ifBlank { null }, o.optString("stamp").trim().take(80).ifBlank { null },
             runCatching { MarkPlace.valueOf(o.optString("watermarkPlace", "DIAGONAL")) }.getOrDefault(MarkPlace.DIAGONAL),
-            runCatching { StampPlace.valueOf(o.optString("stampPlace", "BOTTOM_RIGHT")) }.getOrDefault(StampPlace.BOTTOM_RIGHT))
+            runCatching { StampPlace.valueOf(o.optString("stampPlace", "BOTTOM_RIGHT")) }.getOrDefault(StampPlace.BOTTOM_RIGHT),
+            MarkStyle(option(o, "markFont", MarkFont.BOLD), option(o, "markColor", MarkColor.GREY), option(o, "markStrength", MarkStrength.MEDIUM), option(o, "markSize", MarkSize.MEDIUM)),
+            o.optString("footer").trim().take(80).ifBlank { null }, option(o, "footerPlace", StampPlace.BOTTOM_CENTER), option(o, "noteColor", MarkColor.RED))
     }.getOrDefault(EditRecipe())
+    private inline fun <reified T : Enum<T>> option(o: JSONObject, key: String, default: T): T =
+        o.optString(key).takeIf { it.isNotEmpty() }?.let { name -> enumValues<T>().firstOrNull { it.name == name } } ?: default
 }
 
 class ScanStore(val context: Context, val database: ScanDatabase) {

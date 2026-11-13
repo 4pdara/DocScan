@@ -1,5 +1,6 @@
 package com.docscan.rebuild.ui
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -25,23 +26,30 @@ import androidx.compose.ui.unit.dp
 import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.export.DocumentOutput
+import com.docscan.rebuild.imaging.ImagePipeline
+import com.docscan.rebuild.model.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: (DocumentOutput.PdfSize) -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState,
-    onPrint: () -> Unit = {}, onWatermark: (String?, com.docscan.rebuild.model.MarkPlace) -> Unit = { _, _ -> }, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
+    onPrint: () -> Unit = {}, onWatermark: (String?, MarkPlace, MarkStyle) -> Unit = { _, _, _ -> }, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
+    onFooter: (String?, StampPlace, MarkColor) -> Unit = { _, _, _ -> },
     onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {}) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var pdfChoice by rememberSaveable { mutableStateOf(false) }
-    var watermark by rememberSaveable { mutableStateOf<String?>(null) }
-    var watermarkPlace by rememberSaveable { mutableStateOf(pages.firstOrNull()?.edit()?.watermarkPlace ?: com.docscan.rebuild.model.MarkPlace.DIAGONAL) }
+    // "watermark" or "footer" while its dialog is open; the draft holds the marks shown in the live preview.
+    var marking by rememberSaveable { mutableStateOf<String?>(null) }
+    var draft by remember { mutableStateOf(EditRecipe()) }
+    fun openMarks(kind: String) { draft = pages.firstOrNull()?.edit() ?: EditRecipe(); marking = kind }
     var extracting by rememberSaveable { mutableStateOf(false) }
     var chosen by rememberSaveable { mutableStateOf(listOf<String>()) }
     val stamped = pages.isNotEmpty() && pages.all { it.edit().stamp != null }
     // A tool picked on the Tools tab opens here on the chosen document.
     LaunchedEffect(startTool) {
         when (startTool) {
-            "watermark" -> watermark = pages.firstOrNull()?.edit()?.watermark.orEmpty()
+            "watermark", "footer" -> openMarks(if (startTool == "footer") "footer" else "watermark")
             "extract" -> { extracting = true; chosen = emptyList() }
             "compress" -> pdfChoice = true
         }
@@ -53,16 +61,40 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 TextButton({ pdfChoice = false; onPdf(size) }, Modifier.fillMaxWidth().testTag("pdf-size-${size.name.lowercase()}")) { Text(stringResource(label), Modifier.fillMaxWidth()) }
             }
         } }, confirmButton = {}, dismissButton = { TextButton({ pdfChoice = false }) { Text(stringResource(R.string.cancel)) } })
-    watermark?.let { text ->
-        AlertDialog(onDismissRequest = { watermark = null }, title = { Text(stringResource(R.string.watermark)) },
-            text = { Column {
-                Text(stringResource(R.string.watermark_hint), style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(text, { watermark = it.take(40) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("watermark-text"))
-                Spacer(Modifier.height(8.dp))
-                PlaceChips(markPlaceLabels, watermarkPlace, { watermarkPlace = it })
+    // The first page without any marks, drawn once; the preview draws the draft's marks on a copy of it.
+    val first = pages.firstOrNull()
+    val unmarked by produceState<Bitmap?>(null, first?.id, first?.edit(), marking != null) {
+        value = if (marking == null || first == null) null else withContext(Dispatchers.IO) {
+            runCatching { ImagePipeline.render(store.source(first), first.edit().copy(watermark = null, stamp = null, footer = null), 700) }.getOrNull()
+        }
+    }
+    marking?.let { kind ->
+        val footer = kind == "footer"
+        val empty = (if (footer) draft.footer else draft.watermark).isNullOrBlank()
+        AlertDialog(onDismissRequest = { marking = null }, title = { Text(stringResource(if (footer) R.string.footer else R.string.watermark)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                MarkPreview(unmarked, draft)
+                Text(stringResource(if (footer) R.string.footer_hint else R.string.watermark_hint), style = MaterialTheme.typography.bodySmall)
+                if (footer) {
+                    OutlinedTextField(draft.footer.orEmpty(), { draft = draft.copy(footer = it.take(60)) }, singleLine = true,
+                        placeholder = { Text(stringResource(R.string.footer_example)) }, modifier = Modifier.fillMaxWidth().testTag("footer-text"))
+                    MarkCaption(R.string.mark_place)
+                    PlaceChips(notePlaceLabels, draft.footerPlace, { draft = draft.copy(footerPlace = it) }, tag = "footer-place")
+                    MarkCaption(R.string.note_color)
+                    ColourChoice(draft.noteColor, { draft = draft.copy(noteColor = it) })
+                } else {
+                    OutlinedTextField(draft.watermark.orEmpty(), { draft = draft.copy(watermark = it.take(40)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("watermark-text"))
+                    WatermarkStyleControls(draft.watermarkPlace, draft.watermarkStyle, { draft = draft.copy(watermarkPlace = it) }, { draft = draft.copy(watermarkStyle = it) })
+                }
             } },
-            confirmButton = { TextButton({ onWatermark(text.trim().ifBlank { null }, watermarkPlace); watermark = null }, modifier = Modifier.testTag("apply-watermark")) { Text(stringResource(if (text.isBlank()) R.string.remove_watermark else R.string.apply_all_pages)) } },
-            dismissButton = { TextButton({ watermark = null }) { Text(stringResource(R.string.cancel)) } })
+            confirmButton = { TextButton({
+                if (footer) onFooter(draft.footer?.trim()?.ifBlank { null }, draft.footerPlace, draft.noteColor)
+                else onWatermark(draft.watermark?.trim()?.ifBlank { null }, draft.watermarkPlace, draft.watermarkStyle)
+                marking = null
+            }, modifier = Modifier.testTag(if (footer) "apply-footer" else "apply-watermark")) {
+                Text(stringResource(if (!empty) R.string.apply_all_pages else if (footer) R.string.remove_footer else R.string.remove_watermark))
+            } },
+            dismissButton = { TextButton({ marking = null }) { Text(stringResource(R.string.cancel)) } })
     }
     var actions by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
@@ -97,9 +129,13 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 DocumentAction(R.string.long_image, Icons.Outlined.ViewDay, Modifier.weight(1f).testTag("tool-long-image"), pages.isNotEmpty()) { actions = false; onLongImage() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DocumentAction(R.string.watermark, Icons.Outlined.WaterDrop, Modifier.weight(1f).testTag("tool-watermark"), pages.isNotEmpty()) { actions = false; watermark = pages.firstOrNull()?.edit()?.watermark.orEmpty() }
+                DocumentAction(R.string.watermark, Icons.Outlined.WaterDrop, Modifier.weight(1f).testTag("tool-watermark"), pages.isNotEmpty()) { actions = false; openMarks("watermark") }
+                DocumentAction(R.string.footer, Icons.Outlined.Title, Modifier.weight(1f).testTag("tool-footer"), pages.isNotEmpty()) { actions = false; openMarks("footer") }
                 DocumentAction(if (stamped) R.string.remove_timestamp else R.string.timestamp, Icons.Outlined.Schedule, Modifier.weight(1f).testTag("tool-timestamp"), pages.isNotEmpty()) { actions = false; onStamp(!stamped) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.extract_pages, Icons.Outlined.ContentCut, Modifier.weight(1f).testTag("tool-extract"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
+                Spacer(Modifier.weight(1f)); Spacer(Modifier.weight(1f))
             }
             TextButton(onClick = { actions = false }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
         }

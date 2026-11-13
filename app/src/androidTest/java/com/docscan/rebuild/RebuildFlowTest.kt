@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.export.DocumentOutput
 import com.docscan.rebuild.imaging.ImagePipeline
+import com.docscan.rebuild.imaging.PageMarks
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -128,15 +129,29 @@ class RebuildFlowTest {
         val first = store.captured(book.id, fixture("tools-1.jpg")); val second = store.captured(book.id, fixture("tools-2.jpg"))
         // Settings: both marks are off until turned on, and then reach new pages with the chosen text and places.
         val settings = MarkSettings(context)
-        val saved = listOf(settings.watermarkOn, settings.stampOn)
+        val saved = listOf(settings.watermarkOn, settings.stampOn, settings.footerOn)
         try {
-            settings.watermarkOn = false; settings.stampOn = false
+            settings.watermarkOn = false; settings.stampOn = false; settings.footerOn = false
             assertEquals(EditRecipe(), settings.applyTo(EditRecipe()))
             settings.watermarkOn = true; settings.watermarkText = "עותק"; settings.watermarkPlace = MarkPlace.SIDE; settings.stampOn = true; settings.stampPlace = StampPlace.TOP_LEFT
+            val style = MarkStyle(MarkFont.HANDWRITING, MarkColor.BLUE, MarkStrength.STRONG, MarkSize.LARGE); settings.watermarkStyle = style
+            settings.footerOn = true; settings.footerText = "צולם ע\"י ישראל ישראלי"; settings.footerPlace = StampPlace.TOP_LEFT; settings.noteColor = MarkColor.GREEN
             val applied = settings.applyTo(EditRecipe())
             assertEquals("עותק", applied.watermark); assertEquals(MarkPlace.SIDE, applied.watermarkPlace); assertNotNull(applied.stamp); assertEquals(StampPlace.TOP_LEFT, applied.stampPlace)
+            assertEquals(style, applied.watermarkStyle); assertEquals("צולם ע\"י ישראל ישראלי", applied.footer); assertEquals(StampPlace.TOP_LEFT, applied.footerPlace); assertEquals(MarkColor.GREEN, applied.noteColor)
             assertEquals(applied, RecipeCodec.decode(RecipeCodec.encode(applied)))
-        } finally { settings.watermarkOn = saved[0]; settings.stampOn = saved[1] }
+            // Every bundled font loads and draws Hebrew, and the footer stacks with the timestamp in a shared corner.
+            val page = Bitmap.createBitmap(400, 560, Bitmap.Config.ARGB_8888)
+            MarkFont.values().forEach { font ->
+                page.eraseColor(Color.WHITE); PageMarks.draw(page, EditRecipe(watermark = "שלום", watermarkPlace = MarkPlace.CENTER, watermarkStyle = MarkStyle(font, MarkColor.BLACK, MarkStrength.STRONG)))
+                val px = IntArray(400 * 560).also { page.getPixels(it, 0, 400, 0, 0, 400, 560) }
+                assertTrue("Font $font draws", px.count { it != Color.WHITE } > 300)
+            }
+            page.eraseColor(Color.WHITE); PageMarks.draw(page, applied.copy(watermark = null))
+            val top = IntArray(400 * 60).also { page.getPixels(it, 0, 400, 0, 0, 400, 60) }
+            assertTrue("Footer and time at the top left", top.count { it != Color.WHITE } > 200)
+            page.recycle()
+        } finally { settings.watermarkOn = saved[0]; settings.stampOn = saved[1]; settings.footerOn = saved[2] }
         // Watermark and timestamp are stored with the page edit and drawn on its output; the source never changes.
         val plain = ImagePipeline.render(store.source(first), first.edit())
         store.save(first, first.edit().copy(watermark = "טיוטה", stamp = "13.11.2026 10:00"))

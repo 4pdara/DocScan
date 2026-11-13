@@ -59,6 +59,7 @@ class BookFeaturesTest {
         fun Canvas.printLines(l:Float,t:Float,r:Float,b:Float,colour:Int){var y=t;while(y<b){box(l,y,r,y+.008f,colour);y+=.025f}}
         val cover=Frame(listOf(Vertex(.08f,0f),Vertex(.92f,0f),Vertex(.95f,.9f),Vertex(.06f,.92f)))
         val page=Frame(listOf(Vertex(.12f,.08f),Vertex(.8f,.06f),Vertex(.79f,.86f),Vertex(.08f,.84f)))
+        val spread=Frame(listOf(Vertex(.1f,.04f),Vertex(.8f,.03f),Vertex(.88f,.84f),Vertex(.02f,.85f)))
         val scenes=listOf(cover to fixture("cover-edge",w,h) { c ->
             c.drawColor(Color.rgb(215,222,225));c.poly(cover.points,Color.rgb(36,42,62));c.box(.55f,.05f,.85f,.85f,Color.rgb(42,50,72))
             for(x in listOf(.5f,.88f))c.box(x,.03f,x+.006f,.88f,Color.rgb(92,172,205))
@@ -68,6 +69,13 @@ class BookFeaturesTest {
             c.poly(listOf(Vertex(.82f,.04f),Vertex(1f,.02f),Vertex(1f,.9f),Vertex(.81f,.88f)),Color.rgb(215,210,200));c.poly(page.points,Color.rgb(235,232,225))
             c.poly(listOf(Vertex(.79f,.06f),Vertex(.82f,.04f),Vertex(.81f,.88f),Vertex(.79f,.86f)),Color.rgb(120,115,105))
             c.printLines(.17f,.14f,.74f,.8f,Color.rgb(40,40,40));c.printLines(.85f,.1f,.98f,.8f,Color.rgb(40,40,40))
+        },spread to fixture("facing-page",w,h) { c ->
+            // Owner's 0.3.0 photo: the facing page runs off the frame, so the bright area reaches the frame edge.
+            c.drawColor(Color.rgb(60,100,150))
+            c.poly(listOf(Vertex(.08f,.03f),Vertex(1f,.01f),Vertex(1f,.87f),Vertex(0f,.87f)),Color.rgb(30,30,120))
+            c.poly(listOf(Vertex(.8f,.03f),Vertex(1f,.02f),Vertex(1f,.85f),Vertex(.88f,.84f)),Color.rgb(220,228,230));c.poly(spread.points,Color.rgb(228,234,236))
+            c.drawLine(.8f*w,.03f*h,.88f*w,.84f*h,Paint().apply {color=Color.rgb(160,170,175);strokeWidth=5f})
+            var y=.1f;while(y<.78f){c.box(.16f,y,.74f,y+.008f,Color.rgb(40,40,40));y+=.07f}
         })
         for((expected,file) in scenes) try {val frame=requireNotNull(ImagePipeline.detect(file)) {"No boundary in ${file.name}"};assertTrue("${file.name}: $frame",frame.motion(expected)<.05f)} finally {file.delete()}
     }

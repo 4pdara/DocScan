@@ -285,7 +285,7 @@ fun ScanApp(store: ScanStore) {
                                 "word" -> wordSaver.launch(fileName(title, "docx"))
                                 "long" -> longImageSaver.launch(fileName(title, "jpg"))
                                 "images" -> requestGallery()
-                                "timestamp" -> { route = "document"; val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val corner = MarkSettings(context).stampPlace; markPages { it.copy(stamp = now, stampPlace = corner) } }
+                                "timestamp" -> { route = "document"; val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val marks = MarkSettings(context); markPages { it.copy(stamp = now, stampPlace = marks.stampPlace, noteColor = if (it.footer != null) it.noteColor else marks.noteColor) } }
                                 else -> { documentTool = tool; route = "document" }
                             }
                         }, Modifier.fillMaxWidth()) {
@@ -340,9 +340,10 @@ fun ScanApp(store: ScanStore) {
             } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             "document" -> DocumentScreen(store, currentTitle, pages, onBack = { route = "library" }, onEdit = { pageId = it.id; route = "editor" },
                 onPrint = { bookId?.let(::printDocument) }, onWord = { wordSaver.launch(fileName(currentTitle, "docx")) }, onLongImage = { longImageSaver.launch(fileName(currentTitle, "jpg")) },
-                onWatermark = { text, place -> markPages { it.copy(watermark = text, watermarkPlace = place) } },
-                onStamp = { add -> val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val corner = MarkSettings(context).stampPlace
-                    markPages { it.copy(stamp = if (add) now else null, stampPlace = corner) } },
+                onWatermark = { text, place, style -> markPages { it.copy(watermark = text, watermarkPlace = place, watermarkStyle = style) } },
+                onFooter = { text, place, colour -> markPages { it.copy(footer = text, footerPlace = place, noteColor = colour) } },
+                onStamp = { add -> val now = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date()); val marks = MarkSettings(context)
+                    markPages { it.copy(stamp = if (add) now else null, stampPlace = marks.stampPlace, noteColor = if (it.footer != null) it.noteColor else marks.noteColor) } },
                 onExtract = { ids -> pdfPages = ids.toList(); pdfSaver.launch(fileName(currentTitle, "pdf")) },
                 startTool = documentTool, onToolStarted = { documentTool = null },
                 onCamera = { route = "camera" }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) },

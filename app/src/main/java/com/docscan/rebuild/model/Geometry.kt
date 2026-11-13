@@ -86,16 +86,26 @@ enum class Treatment(val referenceEngineVariant: Boolean = false) {
     LIGHTEN, ECO, NATIVE_BOARD(true), NATIVE_BOARD_PAPER(true), NATIVE_INVERT_BOARD(true)
 }
 /**
- * [watermark]: text drawn diagonally across the page; [stamp]: a date and time printed in the bottom corner.
- * Both are drawn on every output of the page (preview, PDF, gallery, print); the source photo never changes.
+ * [watermark]: text drawn across the page in [watermarkStyle]; [stamp]: a date and time; [footer]: a line of the
+ * user's own text ("scanned by ..."). [stamp] and [footer] sit at the page edge in [noteColor]; when they share a
+ * place they are stacked. All are drawn on every output of the page (preview, PDF, gallery, print); the source
+ * photo never changes.
  */
 data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve(),
-    val watermark: String? = null, val stamp: String? = null, val watermarkPlace: MarkPlace = MarkPlace.DIAGONAL, val stampPlace: StampPlace = StampPlace.BOTTOM_RIGHT)
+    val watermark: String? = null, val stamp: String? = null, val watermarkPlace: MarkPlace = MarkPlace.DIAGONAL, val stampPlace: StampPlace = StampPlace.BOTTOM_RIGHT,
+    val watermarkStyle: MarkStyle = MarkStyle(), val footer: String? = null, val footerPlace: StampPlace = StampPlace.BOTTOM_CENTER, val noteColor: MarkColor = MarkColor.RED)
 
 /** Where a watermark is drawn: corner to corner, across the middle, along the top or bottom, or up the side. */
 enum class MarkPlace { DIAGONAL, CENTER, TOP, BOTTOM, SIDE }
-/** The corner that holds the timestamp. */
-enum class StampPlace { BOTTOM_RIGHT, BOTTOM_LEFT, TOP_RIGHT, TOP_LEFT }
+/** Where the timestamp or the footer line is drawn: a corner, or centred at the bottom or top edge. */
+enum class StampPlace { BOTTOM_RIGHT, BOTTOM_LEFT, TOP_RIGHT, TOP_LEFT, BOTTOM_CENTER, TOP_CENTER }
+/** Bundled Hebrew fonts (SIL OFL 1.1, see assets/licenses). */
+enum class MarkFont { BOLD, PLAIN, CLASSIC, DAVID, HEADLINE, FESTIVE, HANDWRITING }
+enum class MarkColor(val rgb: Int) { GREY(0x787878), BLACK(0x1A1A1A), RED(0xC8281E), BLUE(0x1E50C8), GREEN(0x1E8C3C), ORANGE(0xE07814) }
+/** Opacity of the watermark ink, 0-255. */
+enum class MarkStrength(val alpha: Int) { LIGHT(40), MEDIUM(70), STRONG(130) }
+enum class MarkSize(val scale: Float) { SMALL(.7f), MEDIUM(1f), LARGE(1.35f) }
+data class MarkStyle(val font: MarkFont = MarkFont.BOLD, val color: MarkColor = MarkColor.GREY, val strength: MarkStrength = MarkStrength.MEDIUM, val size: MarkSize = MarkSize.MEDIUM)
 
 /** Vertical page warp after perspective correction, before rotation. Values are image-height fractions. */
 data class BookCurve(val top: Float = 0f, val bottom: Float = 0f) {

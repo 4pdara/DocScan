@@ -169,7 +169,7 @@
     <string name="pdf_size_balanced">Balanced (pages up to 2000 pixels)</string>
     <string name="pdf_size_small">Small (pages up to 1200 pixels)</string>
     <string name="watermark">Watermark</string>
-    <string name="watermark_hint">The text is drawn diagonally on every page. Leave it empty to remove the watermark. The original photos do not change.</string>
+    <string name="watermark_hint">The preview above shows how the page will look. Leave the field empty to remove the watermark. Original photos never change.</string>
     <string name="remove_watermark">Remove watermark</string>
     <string name="apply_all_pages">Apply to all pages</string>
     <string name="print">Print</string>
@@ -198,11 +198,45 @@
     <string name="corner_bottom_left">Bottom left</string>
     <string name="corner_top_right">Top right</string>
     <string name="corner_top_left">Top left</string>
-    <string name="mark_settings">Watermark and timestamp</string>
-    <string name="mark_settings_hint">Off by default. When turned on, they are added to new scans and imports only; saved pages do not change. Any document can also get them from its tools.</string>
+    <string name="mark_settings">Watermark, text line and timestamp</string>
+    <string name="mark_settings_hint">All are off by default. When on, they are added only to new scans and imports; saved pages do not change. You can also add them to one document from its tools.</string>
     <string name="watermark_new_scans">Watermark on new scans</string>
     <string name="watermark_text">Watermark text</string>
     <string name="timestamp_new_scans">Timestamp on new scans</string>
+    <string name="corner_bottom_center">Bottom centre</string>
+    <string name="corner_top_center">Top centre</string>
+    <string name="mark_place">Position</string>
+    <string name="mark_font">Font</string>
+    <string name="mark_color">Colour</string>
+    <string name="mark_strength">Strength</string>
+    <string name="mark_size">Size</string>
+    <string name="font_bold">Bold</string>
+    <string name="font_plain">Plain</string>
+    <string name="font_classic">Classic</string>
+    <string name="font_david">David</string>
+    <string name="font_headline">Headline</string>
+    <string name="font_festive">Festive</string>
+    <string name="font_handwriting">Handwriting</string>
+    <string name="color_grey">Grey</string>
+    <string name="color_black">Black</string>
+    <string name="color_red">Red</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_green">Green</string>
+    <string name="color_orange">Orange</string>
+    <string name="strength_light">Light</string>
+    <string name="strength_medium">Normal</string>
+    <string name="strength_strong">Strong</string>
+    <string name="size_small">Small</string>
+    <string name="size_medium">Medium</string>
+    <string name="size_large">Large</string>
+    <string name="footer">Text line</string>
+    <string name="footer_hint">A line at the page edge, like the timestamp. Leave the field empty to remove it.</string>
+    <string name="footer_example">For example: Scanned by Jane Doe</string>
+    <string name="remove_footer">Remove the text line</string>
+    <string name="footer_new_scans">Text line on new scans</string>
+    <string name="note_color">Colour of the text line and timestamp</string>
+    <string name="mark_preview">Preview</string>
+    <string name="timestamp_corner">Timestamp position</string>
 </resources>
 
 

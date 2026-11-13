@@ -1,8 +1,8 @@
-name: Build, verify and publish DocScan 0.3.0
+name: Build, verify and publish DocScan 0.3.1
 on:
   push:
     branches: [feature/original-filters]
-    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_0.3.0_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
+    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_0.3.1_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +10,7 @@ concurrency:
   group: scanner-release-${{ github.ref }}
   cancel-in-progress: true
 env:
-  TAG: scanner-v0.3.0
+  TAG: scanner-v0.3.1
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -60,17 +60,17 @@ jobs:
         run: |
           tools="$ANDROID_HOME/build-tools/35.0.0"
           mkdir -p release-apks/tests
-          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-0.3.0.apk
-          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-0.3.0-tests.apk
-          apk=release-apks/DocScan-0.3.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-0.3.1.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-0.3.1-tests.apk
+          apk=release-apks/DocScan-0.3.1.apk
           "$tools/apksigner" verify --verbose --print-certs "$apk" | tee release-apks/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' release-apks/signature.txt
           grep -q 'Signer #1 certificate DN: CN=DocScan Scanner, O=DocScan' release-apks/signature.txt
           # The installed 0.2.1 was signed with this certificate; any other key could not update it.
           grep -q 'Signer #1 certificate SHA-256 digest: 337893de08efbf6819d34a714cd81b0aed3ab07c124b01d8402f9a8cbcebe4b5' release-apks/signature.txt
-          "$tools/apksigner" verify --print-certs release-apks/tests/DocScan-0.3.0-tests.apk | grep -q 'CN=DocScan Scanner, O=DocScan'
+          "$tools/apksigner" verify --print-certs release-apks/tests/DocScan-0.3.1-tests.apk | grep -q 'CN=DocScan Scanner, O=DocScan'
           "$tools/aapt" dump badging "$apk" | tee release-apks/badging.txt
-          grep -q "package: name='com.docscan.rebuild.scanner' versionCode='15' versionName='0.3.0'" release-apks/badging.txt
+          grep -q "package: name='com.docscan.rebuild.scanner' versionCode='16' versionName='0.3.1'" release-apks/badging.txt
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do grep '^native-code:' release-apks/badging.txt | grep -q "'$abi'"; done
           "$tools/zipalign" -c -v 4 "$apk" > /dev/null
           python3 - "$apk" <<'PY'
@@ -87,10 +87,10 @@ jobs:
                   raise SystemExit('Native libraries must be compressed for install-time extraction')
               print(len(libs), 'native libraries, none from the research engine')
           PY
-          ( cd release-apks && sha256sum DocScan-0.3.0.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
+          ( cd release-apks && sha256sum DocScan-0.3.1.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
       - uses: actions/upload-artifact@v4
         with:
-          name: DocScan-0.3.0-exact-apks
+          name: DocScan-0.3.1-exact-apks
           path: release-apks/
           retention-days: 30
       - uses: actions/upload-artifact@v4
@@ -174,7 +174,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@v4
         with:
-          name: DocScan-0.3.0-exact-apks
+          name: DocScan-0.3.1-exact-apks
           path: release-apks
       - name: Enable KVM
         run: |
@@ -210,7 +210,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: DocScan-0.3.0-exact-apks
+          name: DocScan-0.3.1-exact-apks
           path: release-apks
       - name: Publish only the exact APK that passed every check
         env:
@@ -222,20 +222,20 @@ jobs:
           cert=$(grep -m1 'Signer #1 certificate SHA-256 digest' signature.txt | awk '{print $NF}')
           python3 - "$cert" <<'PY'
           import hashlib, json, os, sys
-          apk = 'DocScan-0.3.0.apk'
-          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=15, version_name='0.3.0', minimum_android_api=26,
+          apk = 'DocScan-0.3.1.apk'
+          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=16, version_name='0.3.1', minimum_android_api=26,
                          architectures=['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'], research_engine_included=False,
                          certificate_sha256=sys.argv[1], apk_size=os.path.getsize(apk),
                          apk_sha256=hashlib.sha256(open(apk, 'rb').read()).hexdigest(),
                          source_commit=os.environ['GITHUB_SHA'], workflow_run=os.environ['GITHUB_RUN_ID']),
                       open('BUILD.json', 'w'), indent=2)
           PY
-          cp ../docs/RELEASE_0.3.0_HE.md notes.md
+          cp ../docs/RELEASE_0.3.1_HE.md notes.md
           printf '\n\n[ריצת הבנייה, הבדיקות והפרסום](%s/%s/actions/runs/%s)\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> notes.md
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to replace it"; exit 1
           fi
-          gh release create "$TAG" DocScan-0.3.0.apk SHA256SUMS.txt BUILD.json \
+          gh release create "$TAG" DocScan-0.3.1.apk SHA256SUMS.txt BUILD.json \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title 'DocScan 0.3.0 — כלים: הדפסה, Word, סימן מים, חותמת זמן, חילוץ עמודים, דחיסה וייבוא PDF' --notes-file notes.md
+            --title 'DocScan 0.3.1 — תצוגה מקדימה, גופנים וצבעים לסימן המים, שורת טקסט, וזיהוי ספר פתוח' --notes-file notes.md
           gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size) \(.digest)"'

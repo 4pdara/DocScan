@@ -15,6 +15,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
@@ -28,6 +29,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -171,10 +174,13 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         LinearProgressIndicator(progress = { observation.progress }, modifier = Modifier.fillMaxWidth().height(2.dp), color = ScanMint, trackColor = Color(0xFF252727))
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             FilterChip(selected = detectBounds, onClick = { detectBounds = !detectBounds; if (!detectBounds) { automatic = false; autoFlag.set(false) }; gate.failed() },
-                label = { Text(stringResource(if (detectBounds) R.string.detect_bounds else R.string.full_photo)) })
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(automatic, { automatic = it; autoFlag.set(it); if (it) detectBounds = true; gate.failed() })
-                Text(stringResource(R.string.auto_capture), style = MaterialTheme.typography.labelSmall)
+                label = { Text(stringResource(if (detectBounds) R.string.detect_bounds else R.string.full_photo)) },
+                colors = FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedLabelColor = Color.White, selectedContainerColor = Color(0xFF3B4F4C)))
+            // Auto capture: a labelled switch (the bare checkbox it replaced had a label that was invisible on black).
+            Row(Modifier.testTag("auto-capture").toggleable(automatic, role = Role.Switch, onValueChange = { automatic = it; autoFlag.set(it); if (it) detectBounds = true; gate.failed() })
+                .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.auto_capture), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                Switch(automatic, null, Modifier.scale(.8f), colors = SwitchDefaults.colors(checkedTrackColor = ScanMint, uncheckedThumbColor = Color.LightGray, uncheckedTrackColor = Color(0xFF3A3C3D), uncheckedBorderColor = Color.Gray))
             }
         }
         Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
