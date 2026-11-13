@@ -410,7 +410,10 @@ class RebuildFlowTest {
 
     @Test fun sourceRecipeAndOrderSurviveDatabaseReopen(): Unit = runBlocking {
         @Suppress("DEPRECATION") val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
-        assertFalse(packageInfo.requestedPermissions.orEmpty().contains(android.Manifest.permission.INTERNET))
+        // Internet and package installation exist only for "check for updates"; nothing else (no location, contacts, ...).
+        val platform = packageInfo.requestedPermissions.orEmpty().filter { it.startsWith("android.permission.") }.toSet()
+        assertTrue("$platform", platform.all { it in setOf(android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            android.Manifest.permission.INTERNET, android.Manifest.permission.REQUEST_INSTALL_PACKAGES) })
         assertEquals(0, context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)
         val name = "test-${System.nanoTime()}.db"
         var db = Room.databaseBuilder(context, ScanDatabase::class.java, name).build()
