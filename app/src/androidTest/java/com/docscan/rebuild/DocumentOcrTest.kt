@@ -19,8 +19,9 @@ import java.io.File
 import java.io.StringWriter
 import java.security.MessageDigest
 
+@OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 class DocumentOcrTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>(effectContext = kotlinx.coroutines.test.StandardTestDispatcher())
     private val context get() = ApplicationProvider.getApplicationContext<android.content.Context>()
     private fun fixture(): File {
         val bitmap = Bitmap.createBitmap(1600,900,Bitmap.Config.ARGB_8888)

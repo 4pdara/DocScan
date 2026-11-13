@@ -22,8 +22,9 @@ import java.security.MessageDigest
 import java.util.zip.*
 import kotlin.math.*
 
+@OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 class BookFeaturesTest {
-    @get:Rule val compose=createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose=createAndroidComposeRule<MainActivity>(effectContext = kotlinx.coroutines.test.StandardTestDispatcher())
     private val context get()=ApplicationProvider.getApplicationContext<android.content.Context>()
     private fun hash(file:File)=MessageDigest.getInstance("SHA-256").digest(file.readBytes()).toList()
     private fun fixture(name:String,width:Int=1600,height:Int=1000,draw:(Canvas)->Unit={}):File {

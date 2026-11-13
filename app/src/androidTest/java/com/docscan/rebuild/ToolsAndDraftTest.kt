@@ -27,8 +27,9 @@ import java.security.MessageDigest
 import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 
+@OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 class ToolsAndDraftTest {
-    @get:Rule val compose=createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose=createAndroidComposeRule<MainActivity>(effectContext = kotlinx.coroutines.test.StandardTestDispatcher())
     @get:Rule val cameraPermission=androidx.test.rule.GrantPermissionRule.grant(android.Manifest.permission.CAMERA)
     private val context get()=ApplicationProvider.getApplicationContext<android.content.Context>()
     private fun fixture():File {
