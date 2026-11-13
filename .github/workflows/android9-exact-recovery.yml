@@ -1,0 +1,75 @@
+name: Android 9 exact APK recovery check
+on:
+  push:
+    branches: [rebuild/camscanner-reference]
+    paths: [.github/workflows/android9-exact-recovery.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: android9-exact-recovery-0.1.8.2
+  cancel-in-progress: true
+jobs:
+  android9:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stop only the stalled verification run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$(gh api repos/4pdara/DocScan/actions/runs/43440951980 --jq .status)
+          if [[ "$state" != completed ]]; then gh api --method POST repos/4pdara/DocScan/actions/runs/43440951980/cancel; fi
+      - name: Reserve space for the virtual device
+        run: sudo rm -rf /usr/share/dotnet
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Use the exact APKs already verified on Android 10 and 15
+        uses: actions/download-artifact@v4
+        with:
+          name: rebuild-exact-test-input
+          run-id: 43440951980
+          github-token: ${{ github.token }}
+          path: ci-apks
+      - name: Record the exact input hashes
+        run: sha256sum ci-apks/debug/app-debug.apk ci-apks/androidTest/debug/app-debug-androidTest.apk
+      - name: Get the unchanged parallel-install baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download native-v0.1.8-preview --pattern DocScan-0.1.8-universal.apk --pattern SHA256SUMS.txt --dir baseline
+          (cd baseline && sha256sum --ignore-missing -c SHA256SUMS.txt)
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          emulator-build: '10696886'
+          api-level: 28
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 300
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -memory 4096
+          script: timeout --kill-after=20s 480s bash .github/device-check.sh en baseline/DocScan-0.1.8-universal.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android9-exact-apk-recovery
+          path: |
+            device-results/
+            screenshots/
+          overwrite: true
