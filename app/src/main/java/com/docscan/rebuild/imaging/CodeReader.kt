@@ -12,6 +12,7 @@ import com.google.zxing.Result
 import com.google.zxing.client.result.ParsedResult
 import com.google.zxing.client.result.ParsedResultType
 import com.google.zxing.client.result.ResultParser
+import com.google.zxing.client.result.URIParsedResult
 import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.multi.GenericMultipleBarcodeReader
@@ -32,7 +33,14 @@ object CodeReader {
     private fun hints(hard: Boolean) = mapOf(DecodeHintType.POSSIBLE_FORMATS to formats, DecodeHintType.CHARACTER_SET to "UTF-8")
         .let { if (hard) it + (DecodeHintType.TRY_HARDER to true) else it }
 
-    private fun code(result: Result) = ResultParser.parseResult(result).let { ScannedCode(result.text, result.barcodeFormat, it.type, it) }
+    private val webLink = Regex("^(https?)://[^\\s]+$", RegexOption.IGNORE_CASE)
+
+    private fun code(result: Result): ScannedCode {
+        var parsed = ResultParser.parseResult(result)
+        // ZXing reads a link with Hebrew (non-ASCII) letters as plain text; it is still a link.
+        if (parsed.type == ParsedResultType.TEXT && webLink.matches(result.text.trim())) parsed = URIParsedResult(result.text.trim(), null)
+        return ScannedCode(result.text, result.barcodeFormat, parsed.type, parsed)
+    }
 
     /** One camera frame (the Y plane): fast, a single code. */
     fun frame(luma: ByteArray, rowStride: Int, width: Int, height: Int): ScannedCode? {
