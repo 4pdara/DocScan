@@ -341,6 +341,79 @@ class RebuildFlowTest {
         } finally { runBlocking { store.trash(setOf(page.notebookId)); store.deleteForever(setOf(page.notebookId)) } }
     }
 
+    @Test fun pdfPageSettingsCollageTagsLockAndIdPhotos(): Unit = runBlocking {
+        val store = (compose.activity.application as ScanApplication).store
+        val book = store.create("Organize ${System.nanoTime()}")
+        val pages = (1..3).map { store.captured(book.id, fixture("organize-$it.jpg")) }
+        val output = DocumentOutput(context, store)
+        fun sizes(file: File) = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { PdfRenderer(it).use { r -> (0 until r.pageCount).map { i -> r.openPage(i).use { it.width to it.height } } } }
+        // PDF page settings: A4 with margins, Letter turned to landscape, and the scan's own shape.
+        val a4 = output.pdf(book.id, layout = com.docscan.rebuild.export.PdfLayout(com.docscan.rebuild.export.PdfLayout.Paper.A4, com.docscan.rebuild.export.PdfLayout.Orientation.AUTO, com.docscan.rebuild.export.PdfLayout.Margin.NORMAL))
+        val letter = output.pdf(book.id, layout = com.docscan.rebuild.export.PdfLayout(com.docscan.rebuild.export.PdfLayout.Paper.LETTER, com.docscan.rebuild.export.PdfLayout.Orientation.LANDSCAPE))
+        val fit = output.pdf(book.id, layout = com.docscan.rebuild.export.PdfLayout())
+        val locked = output.protectedPdf(book.id, "1234", layout = com.docscan.rebuild.export.PdfLayout(com.docscan.rebuild.export.PdfLayout.Paper.A5))
+        try {
+            assertEquals(List(3) { 595 to 842 }, sizes(a4)); assertEquals(List(3) { 792 to 612 }, sizes(letter)); assertTrue(sizes(fit).all { it.first == 595 && it.second > 595 })
+            ParcelFileDescriptor.open(a4, ParcelFileDescriptor.MODE_READ_ONLY).use { PdfRenderer(it).use { r -> r.openPage(0).use { page ->
+                val bitmap = Bitmap.createBitmap(595, 842, Bitmap.Config.ARGB_8888); bitmap.eraseColor(Color.MAGENTA)
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                // 10 mm of white, then the scan: the fixture's dark surround starts right inside the margin.
+                val margin = bitmap.getPixel(10, 421); val inside = bitmap.getPixel(58, 421)
+                bitmap.recycle()
+                assertTrue("The margin is white paper", Color.red(margin) > 240 && Color.green(margin) > 240 && Color.blue(margin) > 240)
+                assertTrue("The scan starts inside the margin", Color.red(inside) < 100)
+            } } }
+            assertTrue(String(locked.readBytes(), Charsets.ISO_8859_1).contains("/MediaBox [0 0 419.53 595.28]"))
+        } finally { listOf(a4, letter, fit, locked).forEach { it.delete() } }
+        // Collage: three pages on one 2 x 2 sheet at the end; the empty fourth cell stays white.
+        val added = store.collage(book.id, pages, 2, 2, rightToLeft = false)
+        assertEquals(1, added.size); assertEquals(4, store.dao.snapshot(book.id).size); assertEquals(pages.map { it.id }, store.dao.snapshot(book.id).take(3).map { it.id })
+        assertEquals(com.docscan.rebuild.export.CollageLayout.WIDTH, added[0].width); assertEquals(com.docscan.rebuild.export.CollageLayout.HEIGHT, added[0].height)
+        val sheet = BitmapFactory.decodeFile(store.source(added[0]).path)
+        try {
+            val cells = com.docscan.rebuild.export.CollageLayout.cells(2, 2, false)
+            fun dark(r: android.graphics.RectF): Int { var n = 0; for (y in r.top.toInt() until r.bottom.toInt() step 4) for (x in r.left.toInt() until r.right.toInt() step 4) if (Color.red(sheet.getPixel(x, y)) < 100) n++; return n }
+            assertTrue("First cell holds a page", dark(cells[0]) > 500); assertTrue(dark(cells[2]) > 500); assertEquals("Fourth cell is empty", 0, dark(cells[3]))
+        } finally { sheet.recycle() }
+        // Tags: cleaned, without duplicates, and offered for other documents.
+        val tags = DocumentTags(context)
+        tags.set(book.id, listOf(" קבלות ", "בית   ספר", "קבלות", ""))
+        assertEquals(listOf("קבלות", "בית ספר"), tags.of(book.id)); assertTrue("קבלות" in tags.names())
+        // Lock: a salted code; a locked document stays closed until the code is entered.
+        val lock = DocumentLock(context)
+        try {
+            assertFalse(DocumentLock.valid("12a4")); assertFalse(DocumentLock.valid("123"))
+            lock.setCode("2468"); assertTrue(lock.check("2468")); assertFalse(lock.check("1357"))
+            lock.setLocked(book.id, true); DocumentLock.closeAll()
+            assertTrue(lock.locked(book.id)); assertFalse(lock.isOpen(book.id))
+            lock.opened(book.id); assertTrue(lock.isOpen(book.id))
+            lock.removeCode(); assertFalse(lock.locked(book.id)); assertFalse(lock.hasCode)
+        } finally { lock.removeCode(); tags.set(book.id, emptyList()) }
+        // ID photos: a portrait on a green wall becomes a 35 x 45 mm photo on white, on an A4 sheet and a 10 x 15 print.
+        val portrait = File(context.cacheDir, "portrait.jpg")
+        Bitmap.createBitmap(1200, 1600, Bitmap.Config.ARGB_8888).also { b ->
+            val canvas = Canvas(b); canvas.drawColor(Color.rgb(120, 170, 150))
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(215, 170, 140) }
+            canvas.drawOval(android.graphics.RectF(420f, 330f, 780f, 900f), paint)
+            paint.color = Color.rgb(30, 40, 60); canvas.drawOval(android.graphics.RectF(150f, 1150f, 1050f, 2100f), paint)
+            portrait.outputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 95, it) }; b.recycle()
+        }
+        val photos = store.create("Photos ${System.nanoTime()}")
+        try {
+            val made = store.idPhotos(photos.id, portrait, android.graphics.RectF(.1f, .1f, .9f, 1f), com.docscan.rebuild.imaging.IdPhoto.Size.MM35X45, com.docscan.rebuild.imaging.IdPhoto.Backdrop.WHITE)
+            assertEquals(listOf(2480 to 3508, 1181 to 1772, 413 to 531), made.map { it.width to it.height })
+            val photo = BitmapFactory.decodeFile(store.source(made[2]).path)
+            try {
+                val corner = photo.getPixel(8, 8); val face = photo.getPixel(206, 200)
+                android.util.Log.i("DocScanIdPhoto", "corner ${Integer.toHexString(corner)} face ${Integer.toHexString(face)}")
+                assertTrue("Background is white", Color.red(corner) > 235 && Color.green(corner) > 235 && Color.blue(corner) > 235)
+                assertTrue("The face keeps its colour", Color.red(face) > 180 && Color.blue(face) < 170)
+            } finally { photo.recycle() }
+            assertEquals(10, com.docscan.rebuild.imaging.IdPhoto.grid(com.docscan.rebuild.imaging.IdPhoto.Size.MM35X45, com.docscan.rebuild.imaging.IdPhoto.Sheet.A4).let { it.first * it.second })
+        } finally { portrait.delete(); store.trash(setOf(photos.id)); store.deleteForever(setOf(photos.id)) }
+        store.trash(setOf(book.id)); store.deleteForever(setOf(book.id))
+    }
+
     @Test fun qrIdCardSignatureAndPasswordPdf(): Unit = runBlocking {
         // QR code and barcode: in a photo-like picture (tilted, among clutter) and from a camera frame's luma.
         fun drawn(matrix: com.google.zxing.common.BitMatrix) = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).also { b ->

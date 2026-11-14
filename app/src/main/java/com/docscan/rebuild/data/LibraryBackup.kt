@@ -27,8 +27,9 @@ class LibraryBackup(private val store: ScanStore) {
         require(books.all { it.title.length<=1000 } && pages.all { it.recipe.length<=65536 && (it.ocrText?.length?:0)<=2_000_000 }) { "Library metadata exceeds backup limits" }
         val sources=pages.distinctBy { it.source }.map { store.source(it) }
         require(sources.all { it.length()<=100L*1024*1024 } && sources.sumOf { it.length() }<=8L*1024*1024*1024) { "Library exceeds backup size limit" }
+        val tags=DocumentTags(store.context)
         val manifest=JSONObject().put("format","docscan-backup").put("version",1)
-            .put("books",JSONArray(books.map { b -> JSONObject().put("id",b.id).put("title",b.title).put("created",b.created).put("trashedAt",b.trashedAt?:JSONObject.NULL) }))
+            .put("books",JSONArray(books.map { b -> JSONObject().put("id",b.id).put("title",b.title).put("created",b.created).put("trashedAt",b.trashedAt?:JSONObject.NULL).put("tags",JSONArray(tags.of(b.id))) }))
             .put("pages",JSONArray(pages.map { p ->
                 val file=store.source(p);check(file.isFile)
                 JSONObject().put("id",p.id).put("book",p.notebookId).put("position",p.position).put("source",p.source)
@@ -101,6 +102,10 @@ class LibraryBackup(private val store: ScanStore) {
                     }
                 }
                 committed=true
+                // Tags (added in 1.2.0; older backups have none) follow their documents' new identities.
+                val tags=DocumentTags(store.context)
+                for(i in 0 until books.length()) { val b=books.getJSONObject(i); val list=b.optJSONArray("tags")?:continue
+                    tags.set(mapping.getValue(b.getString("id")),(0 until minOf(list.length(),20)).map { list.optString(it) }) }
             } }
             books.length()
         } finally { if(!committed)copied.forEach { it.delete() };stage.deleteRecursively() }

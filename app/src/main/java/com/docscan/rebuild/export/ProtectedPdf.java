@@ -24,11 +24,18 @@ import javax.crypto.spec.SecretKeySpec;
  * checked on a computer against qpdf.
  */
 public final class ProtectedPdf {
-    /** One page: JPEG bytes, the image's pixel size and the page size in points. */
+    /**
+     * One page: JPEG bytes, the image's pixel size, the page size in points, and where the image is drawn on the
+     * page (left, bottom, width, height in points); by default it fills the page.
+     */
     public static final class Page {
-        final byte[] jpeg; final int pixelWidth, pixelHeight; final double width, height;
+        final byte[] jpeg; final int pixelWidth, pixelHeight; final double width, height, x, y, drawWidth, drawHeight;
         public Page(byte[] jpeg, int pixelWidth, int pixelHeight, double width, double height) {
+            this(jpeg, pixelWidth, pixelHeight, width, height, 0, 0, width, height);
+        }
+        public Page(byte[] jpeg, int pixelWidth, int pixelHeight, double width, double height, double x, double y, double drawWidth, double drawHeight) {
             this.jpeg = jpeg; this.pixelWidth = pixelWidth; this.pixelHeight = pixelHeight; this.width = width; this.height = height;
+            this.x = x; this.y = y; this.drawWidth = drawWidth; this.drawHeight = drawHeight;
         }
     }
 
@@ -166,7 +173,7 @@ public final class ProtectedPdf {
             String w = number(page.width), h = number(page.height);
             begin(out, id);
             emit(out, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + w + " " + h + "] /Resources << /XObject << /Im0 " + (id + 2) + " 0 R >> >> /Contents " + (id + 1) + " 0 R >>\nendobj\n");
-            stream(out, id + 1, "", ("q " + w + " 0 0 " + h + " 0 0 cm /Im0 Do Q").getBytes(StandardCharsets.ISO_8859_1));
+            stream(out, id + 1, "", ("q " + number(page.drawWidth) + " 0 0 " + number(page.drawHeight) + " " + number(page.x) + " " + number(page.y) + " cm /Im0 Do Q").getBytes(StandardCharsets.ISO_8859_1));
             stream(out, id + 2, "/Type /XObject /Subtype /Image /Width " + page.pixelWidth + " /Height " + page.pixelHeight
                 + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode", page.jpeg);
         }

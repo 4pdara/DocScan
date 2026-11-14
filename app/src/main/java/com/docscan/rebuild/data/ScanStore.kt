@@ -380,6 +380,50 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
     }
 
     /**
+     * Collage: the [pages] drawn [columns] x [rows] to a sheet, as many sheets as needed, added at the end of the
+     * document as new pages. The pages themselves stay as they are.
+     */
+    suspend fun collage(bookId: String, pages: List<Sheet>, columns: Int, rows: Int, rightToLeft: Boolean): List<Sheet> = withContext(Dispatchers.IO) {
+        require(pages.isNotEmpty())
+        val edge = com.docscan.rebuild.export.CollageLayout.edge(columns, rows)
+        pages.chunked(columns * rows).map { group ->
+            coroutineContext.ensureActive()
+            val file = File(incoming, "collage-${UUID.randomUUID()}.jpg")
+            try {
+                val sheet = com.docscan.rebuild.export.CollageLayout.compose(group.size, columns, rows, rightToLeft) { i ->
+                    com.docscan.rebuild.imaging.ImagePipeline.render(source(group[i]), group[i].edit(), edge)
+                }
+                try { FileOutputStream(file).use { out -> check(sheet.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)); out.fd.sync() } } finally { sheet.recycle() }
+                captured(bookId, file)
+            } finally { file.delete() }
+        }
+    }
+
+    /**
+     * ID photos from [photo] (cropped to [crop], in fractions of the photo): an A4 print sheet and a 10 x 15 cm
+     * print at real size (300 dpi), then the single photo, added to the document as pages.
+     */
+    suspend fun idPhotos(bookId: String, photo: File, crop: android.graphics.RectF, size: com.docscan.rebuild.imaging.IdPhoto.Size,
+        backdrop: com.docscan.rebuild.imaging.IdPhoto.Backdrop): List<Sheet> = withContext(Dispatchers.IO) {
+        val source = com.docscan.rebuild.imaging.ImagePipeline.decode(photo, 3000)
+        val single = try { com.docscan.rebuild.imaging.IdPhoto.photo(source, crop, size, backdrop) } finally { source.recycle() }
+        try {
+            suspend fun save(bitmap: android.graphics.Bitmap): Sheet {
+                val file = File(incoming, "idphoto-${UUID.randomUUID()}.jpg")
+                try {
+                    FileOutputStream(file).use { out -> check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)); out.fd.sync() }
+                    return captured(bookId, file)
+                } finally { file.delete() }
+            }
+            val sheets = listOf(com.docscan.rebuild.imaging.IdPhoto.Sheet.A4, com.docscan.rebuild.imaging.IdPhoto.Sheet.PHOTO_10X15).map { kind ->
+                val sheet = com.docscan.rebuild.imaging.IdPhoto.sheet(single, size, kind)
+                try { save(sheet) } finally { sheet.recycle() }
+            }
+            sheets + save(single)
+        } finally { single.recycle() }
+    }
+
+    /**
      * Permanently removes a scan the user left without saving: its pages, and each original no other page shares.
      * Only used for unsaved scan sessions and empty documents; saved documents go to the recoverable trash.
      */

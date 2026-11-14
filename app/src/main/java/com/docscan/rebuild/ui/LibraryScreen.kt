@@ -43,7 +43,8 @@ fun LibraryScreen(
     onScan: () -> Unit, onImport: () -> Unit, onOpen: (String) -> Unit, onExtractText: () -> Unit = onScan,
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
     onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {},
-    onDeleteForever: (Set<String>) -> Unit = {}, onTool: (String) -> Unit = {}
+    onDeleteForever: (Set<String>) -> Unit = {}, onTool: (String) -> Unit = {},
+    tags: Map<String, List<String>> = emptyMap(), locked: Set<String> = emptySet()
 ) {
     var search by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("home") }
@@ -51,7 +52,12 @@ fun LibraryScreen(
     var selection by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    val visible = (if (inTrash) trash else entries).filter { it.book.title.contains(search, true) }
+    var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    val allTags = entries.flatMap { tags[it.book.id].orEmpty() }.distinct().sorted()
+    LaunchedEffect(allTags) { if (tagFilter != null && tagFilter !in allTags) tagFilter = null }
+    // Search finds titles and tags; a chosen tag shows only its documents.
+    val visible = (if (inTrash) trash else entries).filter { e -> e.book.title.contains(search, true) || tags[e.book.id].orEmpty().any { it.contains(search, true) } }
+        .filter { e -> tagFilter == null || tagFilter in tags[e.book.id].orEmpty() }
     fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id; selection = true }
     fun clear() { selection = false; selected = emptyList() }
     fun files() { section = "files"; inTrash = false; clear() }
@@ -144,6 +150,11 @@ fun LibraryScreen(
                             }
                         }
                         if (inTrash) Text(stringResource(R.string.trash_hint), Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall)
+                        if (section == "files" && !inTrash && allTags.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag("tag-filter"),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(tagFilter == null, { tagFilter = null }, label = { Text(stringResource(R.string.tags_all)) })
+                            allTags.forEach { tag -> FilterChip(tagFilter == tag, { tagFilter = if (tagFilter == tag) null else tag }, label = { Text(tag) }, modifier = Modifier.testTag("tag-filter-$tag")) }
+                        }
                     }
                     if (visible.isEmpty()) item(key = "empty") {
                         Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -154,7 +165,7 @@ fun LibraryScreen(
                         }
                     }
                     itemsIndexed(visible, key = { _, entry -> entry.book.id }) { index, entry ->
-                        RecentDocumentRow(store, entry, entry.book.id in selected,
+                        RecentDocumentRow(store, entry, entry.book.id in selected, tags[entry.book.id].orEmpty(), entry.book.id in locked,
                             onOpen = { if (selection || inTrash) toggle(entry.book.id) else onOpen(entry.book.id) },
                             onSelect = { toggle(entry.book.id) })
                         if (index == 0 && section == "home" && !selection && !inTrash && search.isBlank() && entry.pageCount > 0) {
@@ -173,12 +184,14 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Boolean, onOpen: () -> Unit, onSelect: () -> Unit) {
+private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Boolean, tags: List<String>, locked: Boolean, onOpen: () -> Unit, onSelect: () -> Unit) {
     val pages by remember(entry.book.id) { store.dao.pages(entry.book.id) }.collectAsState(emptyList())
     Row(Modifier.fillMaxWidth().background(if (checked) Color(0xFFE9F9F5) else Color.White)
         .combinedClickable(onClick = onOpen, onLongClick = onSelect).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(72.dp).clip(RoundedCornerShape(6.dp)).border(1.dp, Color(0xFFEEEEEE), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-            pages.firstOrNull()?.let { PagePicture(store, it, Modifier.fillMaxSize().padding(3.dp), edge = 240) }
+            // A locked document shows no preview.
+            if (locked) Icon(Icons.Outlined.Lock, stringResource(R.string.locked), Modifier.testTag("locked-${entry.book.id}"), tint = HomeGreen)
+            else pages.firstOrNull()?.let { PagePicture(store, it, Modifier.fillMaxSize().padding(3.dp), edge = 240) }
                 ?: Icon(Icons.Outlined.Description, null, tint = HomeMuted)
         }
         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
@@ -187,6 +200,7 @@ private fun RecentDocumentRow(store: ScanStore, entry: LibraryEntry, checked: Bo
             Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(entry.book.created)),
                 style = MaterialTheme.typography.bodySmall, color = HomeMuted, maxLines = 1)
             Text(pluralStringResource(R.plurals.pages, entry.pageCount, entry.pageCount), style = MaterialTheme.typography.labelSmall, color = HomeMuted)
+            if (tags.isNotEmpty()) Text(tags.joinToString("  ") { "#$it" }, style = MaterialTheme.typography.labelSmall, color = HomeGreen, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Checkbox(checked, { onSelect() }, modifier = Modifier.testTag("select-${entry.book.id}"),
             colors = CheckboxDefaults.colors(checkedColor = HomeGreen, uncheckedColor = Color(0xFFD5D8D7)))
@@ -255,6 +269,14 @@ private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () 
         HorizontalDivider(Modifier.padding(vertical=12.dp))
         UpdateCard()
         HorizontalDivider(Modifier.padding(vertical=12.dp))
+        var pdfSettings by remember { mutableStateOf(false) }
+        Text(stringResource(R.string.pdf_settings), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.pdf_settings_hint), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton({ pdfSettings = true }, modifier = Modifier.testTag("settings-pdf")) { Text(stringResource(R.string.pdf_settings)) }
+        if (pdfSettings) PdfSettingsDialog(onDismiss = { pdfSettings = false })
+        HorizontalDivider(Modifier.padding(vertical=12.dp))
+        LockSettings()
+        HorizontalDivider(Modifier.padding(vertical=12.dp))
         MarkSettingsCard()
     }
 }
@@ -266,7 +288,7 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
     val blue = Color(0xFF4480E8); val red = Color(0xFFFF715D)
     val groups = listOf(
         R.string.tools_scan to listOf(Tool(R.string.smart_scan, Icons.Outlined.DocumentScanner, HomeGreen) { onTool("scan") }, Tool(R.string.extract_text, Icons.Outlined.TextFields, HomeGreen) { onTool("ocr") },
-            Tool(R.string.id_card, Icons.Outlined.Badge, HomeGreen) { onTool("idcard") }, Tool(R.string.tool_book, Icons.Outlined.AutoStories, blue) { onTool("book") },
+            Tool(R.string.id_card, Icons.Outlined.Badge, HomeGreen) { onTool("idcard") }, Tool(R.string.idphoto, Icons.Outlined.AccountBox, blue) { onTool("idphoto") }, Tool(R.string.tool_book, Icons.Outlined.AutoStories, blue) { onTool("book") },
             Tool(R.string.tool_whiteboard, Icons.Outlined.Dashboard, HomeGreen) { onTool("board") }, Tool(R.string.tool_slides, Icons.Outlined.Slideshow, red) { onTool("slides") },
             Tool(R.string.timestamp_camera, Icons.Outlined.Schedule, blue) { onTool("stampscan") }),
         R.string.tools_import to listOf(Tool(R.string.import_images, Icons.Outlined.Image, blue) { onTool("import") }, Tool(R.string.import_pdf, Icons.Outlined.FileOpen, blue) { onTool("import") }),
@@ -278,7 +300,9 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
             Tool(R.string.edit_text, Icons.Outlined.TextFields, HomeGreen) { onTool("text") }, Tool(R.string.header_short, Icons.Outlined.FormatListNumbered, blue) { onTool("footer") },
             Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") }, Tool(R.string.merge_documents, Icons.Outlined.MergeType, red) { onTool("merge") },
             Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.reorder_pages, Icons.Outlined.SwapVert, blue) { onTool("reorder") },
-            Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") }, Tool(R.string.protected_pdf, Icons.Outlined.Lock, HomeGreen) { onTool("protect") }),
+            Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") }, Tool(R.string.protected_pdf, Icons.Outlined.Lock, HomeGreen) { onTool("protect") },
+            Tool(R.string.collage, Icons.Outlined.Dashboard, blue) { onTool("collage") }, Tool(R.string.lock_document, Icons.Outlined.Lock, red) { onTool("lock") },
+            Tool(R.string.tags, Icons.Outlined.Sell, HomeGreen) { onTool("tags") }, Tool(R.string.pdf_settings, Icons.Outlined.Settings, HomeMuted) { onTool("pdfsettings") }),
         R.string.tools_utilities to listOf(Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, HomeGreen) { onTool("qr") }, Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") },
             Tool(R.string.email, Icons.Outlined.Email, blue) { onTool("email") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
             Tool(R.string.select_documents, Icons.Outlined.Checklist, HomeGreen, onSelect), Tool(R.string.trash, Icons.Outlined.RestoreFromTrash, HomeGreen, onTrash),
@@ -320,6 +344,7 @@ fun MergeDialog(choices: List<LibraryEntry>, onDismiss: () -> Unit, onMerge: (Li
                         Spacer(Modifier.width(10.dp))
                         Text(entry.book.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(pluralStringResource(R.plurals.pages, entry.pageCount, entry.pageCount), style = MaterialTheme.typography.labelSmall, color = HomeMuted)
+            if (tags.isNotEmpty()) Text(tags.joinToString("  ") { "#$it" }, style = MaterialTheme.typography.labelSmall, color = HomeGreen, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

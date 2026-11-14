@@ -117,7 +117,7 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
      * A PDF that opens only with [password] (AES-256, PDF standard security revision 6). Pages are the same as in
      * [pdf]: 595 points wide, each page's image stored as JPEG at quality 90.
      */
-    suspend fun protectedPdf(bookId: String, password: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null): File = withContext(Dispatchers.IO) {
+    suspend fun protectedPdf(bookId: String, password: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null, layout: PdfLayout = com.docscan.rebuild.data.PdfSettings(context).layout): File = withContext(Dispatchers.IO) {
         val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
         val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pdf")
         val scope = coroutineContext
@@ -130,7 +130,8 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
                         val bitmap = pdfBitmap(pages[index], size)
                         try {
                             val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)) }.toByteArray()
-                            return ProtectedPdf.Page(jpeg, bitmap.width, bitmap.height, 595.0, 595.0 * bitmap.height / bitmap.width)
+                            val at = layout.place(bitmap.width, bitmap.height)
+                            return ProtectedPdf.Page(jpeg, bitmap.width, bitmap.height, at.pageWidth, at.pageHeight, at.x, at.y, at.width, at.height)
                         } finally { bitmap.recycle() }
                     }
                 }, password, out)
@@ -178,7 +179,8 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
         } catch (failure: Throwable) { target.delete(); throw failure }
     }
 
-    suspend fun pdf(bookId: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null): File = withContext(Dispatchers.IO) {
+    /** Pages follow [layout] (page size, orientation, margins; by default the user's PDF settings). */
+    suspend fun pdf(bookId: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null, layout: PdfLayout = com.docscan.rebuild.data.PdfSettings(context).layout): File = withContext(Dispatchers.IO) {
         val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
         val target = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${UUID.randomUUID()}.pdf")
         val document = PdfDocument()
@@ -187,9 +189,10 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
                 coroutineContext.ensureActive()
                 val bitmap = pdfBitmap(sheet, size)
                 try {
-                    val width = 595; val height = (width * bitmap.height.toDouble() / bitmap.width).roundToInt().coerceAtLeast(1)
-                    val page = document.startPage(PdfDocument.PageInfo.Builder(width, height, index + 1).create())
-                    page.canvas.drawBitmap(bitmap, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
+                    val at = layout.place(bitmap.width, bitmap.height)
+                    val page = document.startPage(PdfDocument.PageInfo.Builder(at.pageWidth.roundToInt().coerceAtLeast(1), at.pageHeight.roundToInt().coerceAtLeast(1), index + 1).create())
+                    if (at.x > 0 || at.y > 0) page.canvas.drawColor(android.graphics.Color.WHITE)
+                    page.canvas.drawBitmap(bitmap, null, RectF(at.x.toFloat(), at.top.toFloat(), (at.x + at.width).toFloat(), (at.top + at.height).toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
                     document.finishPage(page)
                 } finally { bitmap.recycle() }
             }

@@ -155,6 +155,31 @@ fun ScanApp(store: ScanStore) {
     // Signing one page from the page view.
     var signPage by rememberSaveable { mutableStateOf<String?>(null) }
     var signMark by remember { mutableStateOf<SignatureMark?>(null) }
+    // Tags and locks are kept outside the database; their change counters refresh the screens.
+    val tagStore = remember { DocumentTags(context) }
+    val tagChanges by DocumentTags.changes.collectAsState()
+    val tagMap = remember(tagChanges) { tagStore.all() }
+    val lock = remember { DocumentLock(context) }
+    val lockChanges by DocumentLock.changes.collectAsState()
+    val lockedIds = remember(lockChanges) { lock.lockedIds() }
+    var unlocking by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var settingCode by rememberSaveable { mutableStateOf<String?>(null) }
+    var pdfSettingsOpen by rememberSaveable { mutableStateOf(false) }
+    /** Runs [action] for a locked document only after its code is entered (once per use of the app). */
+    fun guarded(id: String, action: () -> Unit) { if (lock.isOpen(id)) action() else unlocking = id to action }
+    // Locked documents close again when the app has been in the background for five minutes.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        var stoppedAt = 0L
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> stoppedAt = System.currentTimeMillis()
+                androidx.lifecycle.Lifecycle.Event.ON_START -> if (stoppedAt > 0 && System.currentTimeMillis() - stoppedAt > 5 * 60_000L) DocumentLock.closeAll()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer); onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val books by vm.library.collectAsState()
     val trash by vm.trash.collectAsState()
     val pages by remember(bookId) { bookId?.let { store.dao.pages(it) } ?: flowOf(emptyList()) }.collectAsState(emptyList())
@@ -389,9 +414,9 @@ fun ScanApp(store: ScanStore) {
                 else LazyColumn(Modifier.heightIn(max = 360.dp).testTag("document-picker")) {
                     items(choices, key = { it.book.id }) { entry ->
                         TextButton({
-                            pickFor = null; val id = entry.book.id; bookId = id
+                            pickFor = null; val id = entry.book.id
                             val title = entry.book.title
-                            when (tool) {
+                            guarded(id) { bookId = id; when (tool) {
                                 "print" -> printDocument(id)
                                 "word" -> wordSaver.launch(fileName(title, "docx"))
                                 "excel" -> excelSaver.launch(fileName(title, "xlsx"))
@@ -402,8 +427,10 @@ fun ScanApp(store: ScanStore) {
                                 "erase", "text" -> vm.perform { store.dao.snapshot(id).firstOrNull()?.let { openEditor(it, tool) } }
                                 "erasecolor" -> { route = "document"; toggleColourMarks(id) }
                                 "email" -> emailPdf(id)
+                                "lock" -> { route = "document"; if (lock.locked(id)) lock.setLocked(id, false) else if (lock.hasCode) { lock.setLocked(id, true); lock.opened(id) } else settingCode = id }
+                                "collage" -> { documentTool = "collage"; route = "document" }
                                 else -> { documentTool = tool; route = "document" }
-                            }
+                            } }
                         }, Modifier.fillMaxWidth()) {
                             Text(entry.book.title, Modifier.fillMaxWidth(), maxLines = 2)
                         }
@@ -411,7 +438,17 @@ fun ScanApp(store: ScanStore) {
                 }
             }, confirmButton = {}, dismissButton = { TextButton({ pickFor = null }) { Text(stringResource(R.string.cancel)) } })
     }
-    if (merging) MergeDialog(books.filter { it.pageCount > 0 }, onDismiss = { merging = false }) { ids ->
+    unlocking?.let { (id, action) ->
+        PinDialog(R.string.lock_enter, confirm = false, onDismiss = { unlocking = null }, check = { lock.check(it) }) { lock.opened(id); unlocking = null; action() }
+    }
+    settingCode?.let { id ->
+        PinDialog(R.string.lock_new_code, confirm = true, onDismiss = { settingCode = null }) { code -> lock.setCode(code); lock.setLocked(id, true); lock.opened(id); settingCode = null }
+    }
+    if (pdfSettingsOpen) PdfSettingsDialog(onDismiss = { pdfSettingsOpen = false })
+    // A locked document reached without its code (the app was restored or left for a while) asks for it first.
+    val gate = bookId?.takeIf { lockChanges >= 0 && route in setOf("document", "page", "editor", "review", "watermark") && draft == null && !lock.isOpen(it) }
+    if (gate != null && unlocking == null) PinDialog(R.string.lock_enter, confirm = false, onDismiss = { route = "library" }, check = { lock.check(it) }) { lock.opened(gate) }
+    if (merging) MergeDialog(books.filter { it.pageCount > 0 && lock.isOpen(it.book.id) }, onDismiss = { merging = false }) { ids ->
         merging = false
         val name = books.firstOrNull { it.book.id == ids.first() }?.book?.title ?: context.getString(R.string.document)
         vm.perform(R.string.merged) { val merged = store.merge(ids, context.getString(R.string.merged_title, name)); bookId = merged.id; route = "document" }
@@ -428,6 +465,12 @@ fun ScanApp(store: ScanStore) {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "qr" -> QrScreen(onBack = { route = "library" })
+            "idphoto" -> IdPhotoScreen(vm.busy, onBack = { route = "library" }) { file, crop, size, backdrop ->
+                vm.perform(R.string.idphoto_created) {
+                    val book = store.create(context.getString(R.string.idphoto_title, DateFormat.getDateInstance(DateFormat.SHORT).format(Date())))
+                    store.idPhotos(book.id, file, crop, size, backdrop); bookId = book.id; route = "document"
+                }
+            }
             "ocr" -> OcrScreen(ocrText,{ocrText=it},ocrLanguage,snack,
                 onBack={route=ocrBack},onSave={textSaver.launch("recognized-text.txt")},
                 onRecognize={pageId?.let(::recognize)},onLanguageRecognize={language->ocrLanguage=language;pageId?.let(::recognize)},
@@ -517,6 +560,10 @@ fun ScanApp(store: ScanStore) {
                 onOpen = { pageId = it.id; route = "page" }, onPageTool = { tool -> pages.firstOrNull()?.let { openEditor(it, tool) } },
                 onDeletePages = { ids -> vm.perform(R.string.page_deleted) { ids.forEach { id -> store.dao.page(id)?.let { store.deletePage(it) } } } },
                 onEraseColor = { bookId?.let(::toggleColourMarks) }, onEmail = { emailPdf() },
+                tags = bookId?.let { tagMap[it] }.orEmpty(), allTags = tagMap.values.flatten().distinct().sorted(), onTags = { list -> bookId?.let { tagStore.set(it, list) } },
+                locked = bookId?.let { it in lockedIds } == true,
+                onLock = { lockIt -> bookId?.let { id -> if (!lockIt) lock.setLocked(id, false) else if (lock.hasCode) { lock.setLocked(id, true); lock.opened(id) } else settingCode = id } },
+                onCollage = { ids, columns, rows -> bookId?.let { id -> vm.perform(R.string.collage_created) { store.collage(id, ids.mapNotNull { store.dao.page(it) }, columns, rows, rightToLeft) } } },
                 onPrint = { bookId?.let(::printDocument) }, onWord = { wordSaver.launch(fileName(currentTitle, "docx")) },
                 onExcel = { excelSaver.launch(fileName(currentTitle, "xlsx")) }, onPowerPoint = { powerPointSaver.launch(fileName(currentTitle, "pptx")) }, onLongImage = { longImageSaver.launch(fileName(currentTitle, "jpg")) },
                 onWatermark = { route = "watermark" }, onHeader = { choice -> applyHeader(choice) },
@@ -536,12 +583,14 @@ fun ScanApp(store: ScanStore) {
             else -> LibraryScreen(store, books, trash, onScan = { startScan() }, onExtractText = { startScan(recognize = true) },
                 onTool = { tool -> when (tool) { "scan" -> startScan(); "ocr" -> startScan(recognize = true); "idcard" -> startScan(card = true); "qr" -> route = "qr"
                     "book", "board", "slides" -> startScan(mode = tool); "stampscan" -> startScan(mode = "stamp"); "merge" -> merging = true
-                    "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }, onOpen = { bookId = it; route = "document" },
-                onShare = { id -> sharePdf(id) }, onPdf = { id ->
+                    "idphoto" -> route = "idphoto"; "pdfsettings" -> pdfSettingsOpen = true
+                    "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) },
+                onOpen = { id -> guarded(id) { bookId = id; route = "document" } }, tags = tagMap, locked = lockedIds,
+                onShare = { id -> guarded(id) { sharePdf(id) } }, onPdf = { id -> guarded(id) {
                     bookId = id
                     val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)
                     pdfSaver.launch("${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf")
-                }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack, onDeleteForever = { ids -> vm.perform(R.string.deleted_forever) { store.deleteForever(ids) } }, onBackup={backupSaver.launch("DocScan-backup.zip")},onRestoreBackup={backupLoader.launch(arrayOf("application/zip","application/octet-stream"))})
+                } }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack, onDeleteForever = { ids -> vm.perform(R.string.deleted_forever) { store.deleteForever(ids) } }, onBackup={backupSaver.launch("DocScan-backup.zip")},onRestoreBackup={backupLoader.launch(arrayOf("application/zip","application/octet-stream"))})
         }
         // A downloaded update asks to be installed on whatever screen is open.
         UpdateReadyDialog()

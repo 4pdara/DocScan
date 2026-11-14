@@ -42,7 +42,9 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
     onHeader: (HeaderChoice) -> Unit = {}, onProtectedPdf: (String) -> Unit = {},
     onSign: (Sheet, SignatureMark?) -> Unit = { _, _ -> }, onExcel: () -> Unit = {}, onPowerPoint: () -> Unit = {},
     onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {},
-    onOpen: (Sheet) -> Unit = onEdit, onDeletePages: (Set<String>) -> Unit = {}, onPageTool: (String) -> Unit = {}, onEraseColor: () -> Unit = {}, onEmail: () -> Unit = {}) {
+    onOpen: (Sheet) -> Unit = onEdit, onDeletePages: (Set<String>) -> Unit = {}, onPageTool: (String) -> Unit = {}, onEraseColor: () -> Unit = {}, onEmail: () -> Unit = {},
+    tags: List<String> = emptyList(), allTags: List<String> = emptyList(), onTags: (List<String>) -> Unit = {}, locked: Boolean = false, onLock: (Boolean) -> Unit = {},
+    onCollage: (List<String>, Int, Int) -> Unit = { _, _, _ -> }) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var pdfChoice by rememberSaveable { mutableStateOf(false) }
     var protecting by remember { mutableStateOf(false) }
@@ -52,9 +54,15 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
     // Header, footer line, page numbers and time for every page.
     var header by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    // Page selection: extract the chosen pages to a PDF or delete them.
+    var editingTags by remember { mutableStateOf(false) }
+    var pdfSettings by remember { mutableStateOf(false) }
+    var collage by remember { mutableStateOf(false) }
+    // From the Tools tab: every page chosen for a collage once the pages have loaded.
+    var collageAll by remember { mutableStateOf(false) }
+    // Page selection: extract the chosen pages to a PDF, delete them, or put them in a collage.
     var extracting by rememberSaveable { mutableStateOf(false) }
     var chosen by rememberSaveable { mutableStateOf(listOf<String>()) }
+    LaunchedEffect(collageAll, pages.size) { if (collageAll && pages.isNotEmpty()) { chosen = pages.map { it.id }; extracting = true; collage = true; collageAll = false } }
     val stamped = pages.isNotEmpty() && pages.all { it.edit().stamp != null }
     // A tool picked on the Tools tab opens here on the chosen document.
     LaunchedEffect(startTool) {
@@ -63,6 +71,9 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             "footer" -> header = true
             "reorder" -> reorder = true
             "extract", "select" -> { extracting = true; chosen = emptyList() }
+            "collage" -> collageAll = true
+            "tags" -> editingTags = true
+            "pdfsettings" -> pdfSettings = true
             "compress" -> pdfChoice = true
             "protect" -> protecting = true
             "signature" -> choosingSignature = true
@@ -78,6 +89,9 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             TextButton({ pdfChoice = false; protecting = true }, Modifier.fillMaxWidth().testTag("pdf-protected")) {
                 Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.protected_pdf), Modifier.fillMaxWidth())
             }
+            TextButton({ pdfChoice = false; pdfSettings = true }, Modifier.fillMaxWidth().testTag("pdf-page-settings")) {
+                Icon(Icons.Outlined.Settings, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.pdf_settings), Modifier.fillMaxWidth())
+            }
         } }, confirmButton = {}, dismissButton = { TextButton({ pdfChoice = false }) { Text(stringResource(R.string.cancel)) } })
     if (choosingSignature) SignatureChooser(onChosen = { choosingSignature = false; placing = it }, onDismiss = { choosingSignature = false })
     placing?.let { signature ->
@@ -90,6 +104,11 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
         value = if (!header || first == null) null else withContext(Dispatchers.IO) {
             runCatching { ImagePipeline.render(store.source(first), first.edit().copy(stamp = null, footer = null, numberText = null), 700) }.getOrNull()
         }
+    }
+    if (editingTags) TagsDialog(tags, allTags, onSave = { editingTags = false; onTags(it) }, onDismiss = { editingTags = false })
+    if (pdfSettings) PdfSettingsDialog(onDismiss = { pdfSettings = false })
+    if (collage) CollageDialog(chosen.size, onDismiss = { collage = false }) { columns, rows ->
+        collage = false; extracting = false; onCollage(pages.map { it.id }.filter { it in chosen }, columns, rows)
     }
     if (header) HeaderDialog(unmarked, first?.edit() ?: EditRecipe(), pages.size, onApply = { header = false; onHeader(it) }, onDismiss = { header = false })
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
@@ -156,11 +175,20 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 DocumentAction(R.string.extract_pages, Icons.Outlined.ContentCut, Modifier.weight(1f).testTag("tool-extract"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
                 DocumentAction(R.string.reorder, Icons.Outlined.SwapVert, Modifier.weight(1f).testTag("tool-reorder"), pages.size > 1) { actions = false; reorder = !reorder }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.collage, Icons.Outlined.Dashboard, Modifier.weight(1f).testTag("tool-collage"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = pages.map { it.id } }
+                DocumentAction(R.string.tags, Icons.Outlined.Sell, Modifier.weight(1f).testTag("tool-tags")) { actions = false; editingTags = true }
+                DocumentAction(if (locked) R.string.unlock_document else R.string.lock_document, if (locked) Icons.Outlined.LockOpen else Icons.Outlined.Lock, Modifier.weight(1f).testTag("tool-lock")) { actions = false; onLock(!locked) }
+            }
             Text(stringResource(R.string.tools_utilities), style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.protected_pdf, Icons.Outlined.Lock, Modifier.weight(1f).testTag("tool-protect"), pages.isNotEmpty()) { actions = false; protecting = true }
                 DocumentAction(R.string.pdf_size, Icons.Outlined.Compress, Modifier.weight(1f).testTag("tool-compress"), pages.isNotEmpty()) { actions = false; pdfChoice = true }
                 DocumentAction(R.string.email, Icons.Outlined.Email, Modifier.weight(1f).testTag("tool-email"), pages.isNotEmpty()) { actions = false; onEmail() }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.pdf_settings, Icons.Outlined.Settings, Modifier.weight(1f).testTag("tool-pdf-settings")) { actions = false; pdfSettings = true }
+                Spacer(Modifier.weight(1f)); Spacer(Modifier.weight(1f))
             }
             TextButton(onClick = { actions = false }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
         }
@@ -178,11 +206,12 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
     }, bottomBar = {
         if (extracting) Surface(shadowElevation = 4.dp) {
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton({ extracting = false }) { Text(stringResource(R.string.cancel)) }
-                Text(stringResource(R.string.selected_count, chosen.size), Modifier.weight(1f))
+                IconButton({ extracting = false }) { Icon(Icons.Outlined.Close, stringResource(R.string.cancel)) }
+                Text(stringResource(R.string.selected_count, chosen.size), Modifier.weight(1f), maxLines = 1)
                 IconButton({ chosen = if (chosen.size == pages.size) emptyList() else pages.map { it.id } }) { Icon(Icons.Outlined.SelectAll, stringResource(R.string.select_all)) }
                 IconButton({ confirmDelete = true }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("delete-selected")) { Icon(Icons.Outlined.Delete, stringResource(R.string.delete)) }
-                Button({ extracting = false; onExtract(chosen.toSet()) }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("extract-selected")) { Text(stringResource(R.string.extract_to_pdf)) }
+                IconButton({ collage = true }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("collage-selected")) { Icon(Icons.Outlined.Dashboard, stringResource(R.string.collage)) }
+                IconButton({ extracting = false; onExtract(chosen.toSet()) }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("extract-selected")) { Icon(Icons.Outlined.PictureAsPdf, stringResource(R.string.extract_to_pdf)) }
             }
         } else Surface(shadowElevation = 4.dp) {
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 6.dp, vertical = 6.dp).testTag("document-actions"), verticalAlignment = Alignment.CenterVertically) {
