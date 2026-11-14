@@ -37,16 +37,14 @@ import com.docscan.rebuild.imaging.PageMarks
 import com.docscan.rebuild.model.*
 
 val markPlaceLabels = listOf(MarkPlace.DIAGONAL to R.string.place_diagonal, MarkPlace.CENTER to R.string.place_center,
-    MarkPlace.TOP to R.string.place_top, MarkPlace.BOTTOM to R.string.place_bottom, MarkPlace.SIDE to R.string.place_side)
+    MarkPlace.TOP to R.string.place_top, MarkPlace.BOTTOM to R.string.place_bottom, MarkPlace.SIDE to R.string.place_side, MarkPlace.TILE to R.string.watermark_tile)
 val stampPlaceLabels = listOf(StampPlace.BOTTOM_RIGHT to R.string.corner_bottom_right, StampPlace.BOTTOM_LEFT to R.string.corner_bottom_left,
     StampPlace.TOP_RIGHT to R.string.corner_top_right, StampPlace.TOP_LEFT to R.string.corner_top_left)
 val notePlaceLabels = listOf(StampPlace.BOTTOM_CENTER to R.string.corner_bottom_center) + stampPlaceLabels + listOf(StampPlace.TOP_CENTER to R.string.corner_top_center)
 private val fontLabels = listOf(MarkFont.BOLD to R.string.font_bold, MarkFont.PLAIN to R.string.font_plain, MarkFont.CLASSIC to R.string.font_classic,
-    MarkFont.DAVID to R.string.font_david, MarkFont.HEADLINE to R.string.font_headline, MarkFont.FESTIVE to R.string.font_festive, MarkFont.HANDWRITING to R.string.font_handwriting)
+    MarkFont.DAVID to R.string.font_david, MarkFont.SERIF to R.string.font_serif, MarkFont.HEADLINE to R.string.font_headline, MarkFont.FESTIVE to R.string.font_festive, MarkFont.HANDWRITING to R.string.font_handwriting)
 private val colourLabels = listOf(MarkColor.GREY to R.string.color_grey, MarkColor.BLACK to R.string.color_black, MarkColor.RED to R.string.color_red,
     MarkColor.BLUE to R.string.color_blue, MarkColor.GREEN to R.string.color_green, MarkColor.ORANGE to R.string.color_orange)
-private val strengthLabels = listOf(MarkStrength.LIGHT to R.string.strength_light, MarkStrength.MEDIUM to R.string.strength_medium, MarkStrength.STRONG to R.string.strength_strong)
-private val sizeLabels = listOf(MarkSize.SMALL to R.string.size_small, MarkSize.MEDIUM to R.string.size_medium, MarkSize.LARGE to R.string.size_large)
 
 @Composable
 fun <T> PlaceChips(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -> Unit, enabled: Boolean = true, tag: String? = null) {
@@ -95,25 +93,29 @@ fun ColourChoice(selected: MarkColor, onSelect: (MarkColor) -> Unit, enabled: Bo
     }
 }
 
-/** Font, colour, strength and size of a watermark. Each font chip is written in its own font. */
+/** Font choice; each chip is written in its own font. */
+@Composable
+fun FontChips(selected: MarkFont, onSelect: (MarkFont) -> Unit, enabled: Boolean = true) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        fontLabels.forEach { (font, label) ->
+            val family = remember(font) { FontFamily(PageMarks.typeface(font)) }
+            FilterChip(selected = font == selected, onClick = { onSelect(font) }, enabled = enabled,
+                label = { Text(stringResource(label), fontFamily = family, style = MaterialTheme.typography.titleMedium) }, modifier = Modifier.testTag("font-${font.name.lowercase()}"))
+        }
+    }
+}
+
+/** Place, font, colour, strength and size of a watermark. */
 @Composable
 fun WatermarkStyleControls(place: MarkPlace, style: MarkStyle, onPlace: (MarkPlace) -> Unit, onStyle: (MarkStyle) -> Unit, enabled: Boolean = true) {
     MarkCaption(R.string.mark_place)
     PlaceChips(markPlaceLabels, place, onPlace, enabled)
     MarkCaption(R.string.mark_font)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        fontLabels.forEach { (font, label) ->
-            val family = remember(font) { FontFamily(PageMarks.typeface(font)) }
-            FilterChip(selected = font == style.font, onClick = { onStyle(style.copy(font = font)) }, enabled = enabled,
-                label = { Text(stringResource(label), fontFamily = family, style = MaterialTheme.typography.titleMedium) }, modifier = Modifier.testTag("font-${font.name.lowercase()}"))
-        }
-    }
+    FontChips(style.font, { onStyle(style.copy(font = it)) }, enabled)
     MarkCaption(R.string.mark_color)
-    ColourChoice(style.color, { onStyle(style.copy(color = it)) }, enabled)
-    MarkCaption(R.string.mark_strength)
-    PlaceChips(strengthLabels, style.strength, { onStyle(style.copy(strength = it)) }, enabled)
-    MarkCaption(R.string.mark_size)
-    PlaceChips(sizeLabels, style.size, { onStyle(style.copy(size = it)) }, enabled)
+    PaletteRow(MarkPalette.watermark, style.rgb, { if (enabled) onStyle(style.copy(rgb = it)) }, "colour")
+    ToolSlider(R.string.mark_strength, style.alpha.toFloat(), 15f..230f, "mark-strength", "${style.alpha * 100 / 255}%") { if (enabled) onStyle(style.copy(alpha = it.toInt())) }
+    ToolSlider(R.string.mark_size, style.scale, .3f..3f, "mark-size") { if (enabled) onStyle(style.copy(scale = it)) }
 }
 
 /** Settings for marks on new scans. All start off; turning them on never changes pages already saved. */

@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -37,28 +38,31 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: () -> Unit, onEdit: (Sheet) -> Unit, onCamera: () -> Unit, onImport: () -> Unit, onPdf: (DocumentOutput.PdfSize) -> Unit, onGallery: () -> Unit, onShare: () -> Unit, onMove: (Sheet, Int) -> Unit, onRename: (String) -> Unit, snack: SnackbarHostState,
-    onPrint: () -> Unit = {}, onWatermark: (String?, MarkPlace, MarkStyle) -> Unit = { _, _, _ -> }, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
-    onFooter: (String?, StampPlace, MarkColor) -> Unit = { _, _, _ -> }, onProtectedPdf: (String) -> Unit = {},
+    onPrint: () -> Unit = {}, onWatermark: () -> Unit = {}, onStamp: (Boolean) -> Unit = {}, onExtract: (Set<String>) -> Unit = {},
+    onHeader: (HeaderChoice) -> Unit = {}, onProtectedPdf: (String) -> Unit = {},
     onSign: (Sheet, SignatureMark?) -> Unit = { _, _ -> }, onExcel: () -> Unit = {}, onPowerPoint: () -> Unit = {},
-    onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {}) {
+    onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {},
+    onOpen: (Sheet) -> Unit = onEdit, onDeletePages: (Set<String>) -> Unit = {}, onPageTool: (String) -> Unit = {}, onEraseColor: () -> Unit = {}, onEmail: () -> Unit = {}) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var pdfChoice by rememberSaveable { mutableStateOf(false) }
     var protecting by remember { mutableStateOf(false) }
     // Signature: choosing (or drawing) one, then placing it on a page.
     var choosingSignature by remember { mutableStateOf(false) }
     var placing by remember { mutableStateOf<SignatureMark?>(null) }
-    // "watermark" or "footer" while its dialog is open; the draft holds the marks shown in the live preview.
-    var marking by rememberSaveable { mutableStateOf<String?>(null) }
-    var draft by remember { mutableStateOf(EditRecipe()) }
-    fun openMarks(kind: String) { draft = pages.firstOrNull()?.edit() ?: EditRecipe(); marking = kind }
+    // Header, footer line, page numbers and time for every page.
+    var header by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    // Page selection: extract the chosen pages to a PDF or delete them.
     var extracting by rememberSaveable { mutableStateOf(false) }
     var chosen by rememberSaveable { mutableStateOf(listOf<String>()) }
     val stamped = pages.isNotEmpty() && pages.all { it.edit().stamp != null }
     // A tool picked on the Tools tab opens here on the chosen document.
     LaunchedEffect(startTool) {
         when (startTool) {
-            "watermark", "footer" -> openMarks(if (startTool == "footer") "footer" else "watermark")
-            "extract" -> { extracting = true; chosen = emptyList() }
+            "watermark" -> onWatermark()
+            "footer" -> header = true
+            "reorder" -> reorder = true
+            "extract", "select" -> { extracting = true; chosen = emptyList() }
             "compress" -> pdfChoice = true
             "protect" -> protecting = true
             "signature" -> choosingSignature = true
@@ -80,41 +84,19 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
         SignaturePlacer(store, pages, signature, onApply = { page, mark -> placing = null; onSign(page, mark) }, onRemoveAll = { page -> placing = null; onSign(page, null) }, onDismiss = { placing = null })
     }
     if (protecting) PasswordDialog(onDismiss = { protecting = false }) { password -> protecting = false; onProtectedPdf(password) }
-    // The first page without any marks, drawn once; the preview draws the draft's marks on a copy of it.
+    // The first page without its edge notes, drawn once for the header preview.
     val first = pages.firstOrNull()
-    val unmarked by produceState<Bitmap?>(null, first?.id, first?.edit(), marking != null) {
-        value = if (marking == null || first == null) null else withContext(Dispatchers.IO) {
-            runCatching { ImagePipeline.render(store.source(first), first.edit().copy(watermark = null, stamp = null, footer = null), 700) }.getOrNull()
+    val unmarked by produceState<Bitmap?>(null, first?.id, first?.edit(), header) {
+        value = if (!header || first == null) null else withContext(Dispatchers.IO) {
+            runCatching { ImagePipeline.render(store.source(first), first.edit().copy(stamp = null, footer = null, numberText = null), 700) }.getOrNull()
         }
     }
-    marking?.let { kind ->
-        val footer = kind == "footer"
-        val empty = (if (footer) draft.footer else draft.watermark).isNullOrBlank()
-        AlertDialog(onDismissRequest = { marking = null }, title = { Text(stringResource(if (footer) R.string.footer else R.string.watermark)) },
-            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MarkPreview(unmarked, draft)
-                Text(stringResource(if (footer) R.string.footer_hint else R.string.watermark_hint), style = MaterialTheme.typography.bodySmall)
-                if (footer) {
-                    OutlinedTextField(draft.footer.orEmpty(), { draft = draft.copy(footer = it.take(60)) }, singleLine = true,
-                        placeholder = { Text(stringResource(R.string.footer_example)) }, modifier = Modifier.fillMaxWidth().testTag("footer-text"))
-                    MarkCaption(R.string.mark_place)
-                    PlaceChips(notePlaceLabels, draft.footerPlace, { draft = draft.copy(footerPlace = it) }, tag = "footer-place")
-                    MarkCaption(R.string.note_color)
-                    ColourChoice(draft.noteColor, { draft = draft.copy(noteColor = it) })
-                } else {
-                    OutlinedTextField(draft.watermark.orEmpty(), { draft = draft.copy(watermark = it.take(40)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("watermark-text"))
-                    WatermarkStyleControls(draft.watermarkPlace, draft.watermarkStyle, { draft = draft.copy(watermarkPlace = it) }, { draft = draft.copy(watermarkStyle = it) })
-                }
-            } },
-            confirmButton = { TextButton({
-                if (footer) onFooter(draft.footer?.trim()?.ifBlank { null }, draft.footerPlace, draft.noteColor)
-                else onWatermark(draft.watermark?.trim()?.ifBlank { null }, draft.watermarkPlace, draft.watermarkStyle)
-                marking = null
-            }, modifier = Modifier.testTag(if (footer) "apply-footer" else "apply-watermark")) {
-                Text(stringResource(if (!empty) R.string.apply_all_pages else if (footer) R.string.remove_footer else R.string.remove_watermark))
-            } },
-            dismissButton = { TextButton({ marking = null }) { Text(stringResource(R.string.cancel)) } })
-    }
+    if (header) HeaderDialog(unmarked, first?.edit() ?: EditRecipe(), pages.size, onApply = { header = false; onHeader(it) }, onDismiss = { header = false })
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
+        title = { Text(pluralStringResource(R.plurals.delete_pages_title, chosen.size, chosen.size)) }, text = { Text(stringResource(R.string.delete_page_message)) },
+        confirmButton = { TextButton({ confirmDelete = false; extracting = false; onDeletePages(chosen.toSet()) }, modifier = Modifier.testTag("confirm-delete-pages")) {
+            Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }) { Text(stringResource(R.string.cancel)) } })
     var actions by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var newTitle by remember(title) { mutableStateOf(title) }
@@ -152,15 +134,33 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                 DocumentAction(R.string.to_powerpoint, Icons.Outlined.Slideshow, Modifier.weight(1f).testTag("tool-powerpoint"), pages.isNotEmpty()) { actions = false; onPowerPoint() }
                 Spacer(Modifier.weight(1f))
             }
+            Text(stringResource(R.string.tools_edit), style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DocumentAction(R.string.watermark, Icons.Outlined.WaterDrop, Modifier.weight(1f).testTag("tool-watermark"), pages.isNotEmpty()) { actions = false; openMarks("watermark") }
-                DocumentAction(R.string.footer, Icons.Outlined.Title, Modifier.weight(1f).testTag("tool-footer"), pages.isNotEmpty()) { actions = false; openMarks("footer") }
-                DocumentAction(if (stamped) R.string.remove_timestamp else R.string.timestamp, Icons.Outlined.Schedule, Modifier.weight(1f).testTag("tool-timestamp"), pages.isNotEmpty()) { actions = false; onStamp(!stamped) }
+                DocumentAction(R.string.smart_erase, Icons.Outlined.AutoFixHigh, Modifier.weight(1f).testTag("tool-erase"), pages.isNotEmpty()) { actions = false; onPageTool("erase") }
+                DocumentAction(R.string.edit_text, Icons.Outlined.TextFields, Modifier.weight(1f).testTag("tool-edit-text"), pages.isNotEmpty()) { actions = false; onPageTool("text") }
+                DocumentAction(R.string.erase_color_marks, Icons.Outlined.FormatColorReset, Modifier.weight(1f).testTag("tool-erase-colour"), pages.isNotEmpty()) { actions = false; onEraseColor() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DocumentAction(R.string.extract_pages, Icons.Outlined.ContentCut, Modifier.weight(1f).testTag("tool-extract"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
                 DocumentAction(R.string.signature, Icons.Outlined.Draw, Modifier.weight(1f).testTag("tool-signature"), pages.isNotEmpty()) { actions = false; choosingSignature = true }
+                DocumentAction(R.string.add_text, Icons.Outlined.Title, Modifier.weight(1f).testTag("tool-add-text"), pages.isNotEmpty()) { actions = false; onPageTool("addtext") }
+                DocumentAction(R.string.brush, Icons.Outlined.Brush, Modifier.weight(1f).testTag("tool-brush"), pages.isNotEmpty()) { actions = false; onPageTool("brush") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.watermark, Icons.Outlined.WaterDrop, Modifier.weight(1f).testTag("tool-watermark"), pages.isNotEmpty()) { actions = false; onWatermark() }
+                DocumentAction(R.string.header_short, Icons.Outlined.FormatListNumbered, Modifier.weight(1f).testTag("tool-footer"), pages.isNotEmpty()) { actions = false; header = true }
+                DocumentAction(if (stamped) R.string.remove_timestamp else R.string.timestamp, Icons.Outlined.Schedule, Modifier.weight(1f).testTag("tool-timestamp"), pages.isNotEmpty()) { actions = false; onStamp(!stamped) }
+            }
+            Text(stringResource(R.string.tab_pages), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DocumentAction(R.string.select_pages, Icons.Outlined.Checklist, Modifier.weight(1f).testTag("tool-select"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
+                DocumentAction(R.string.extract_pages, Icons.Outlined.ContentCut, Modifier.weight(1f).testTag("tool-extract"), pages.isNotEmpty()) { actions = false; extracting = true; chosen = emptyList() }
+                DocumentAction(R.string.reorder, Icons.Outlined.SwapVert, Modifier.weight(1f).testTag("tool-reorder"), pages.size > 1) { actions = false; reorder = !reorder }
+            }
+            Text(stringResource(R.string.tools_utilities), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.protected_pdf, Icons.Outlined.Lock, Modifier.weight(1f).testTag("tool-protect"), pages.isNotEmpty()) { actions = false; protecting = true }
+                DocumentAction(R.string.pdf_size, Icons.Outlined.Compress, Modifier.weight(1f).testTag("tool-compress"), pages.isNotEmpty()) { actions = false; pdfChoice = true }
+                DocumentAction(R.string.email, Icons.Outlined.Email, Modifier.weight(1f).testTag("tool-email"), pages.isNotEmpty()) { actions = false; onEmail() }
             }
             TextButton(onClick = { actions = false }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
         }
@@ -180,13 +180,17 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton({ extracting = false }) { Text(stringResource(R.string.cancel)) }
                 Text(stringResource(R.string.selected_count, chosen.size), Modifier.weight(1f))
+                IconButton({ chosen = if (chosen.size == pages.size) emptyList() else pages.map { it.id } }) { Icon(Icons.Outlined.SelectAll, stringResource(R.string.select_all)) }
+                IconButton({ confirmDelete = true }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("delete-selected")) { Icon(Icons.Outlined.Delete, stringResource(R.string.delete)) }
                 Button({ extracting = false; onExtract(chosen.toSet()) }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("extract-selected")) { Text(stringResource(R.string.extract_to_pdf)) }
             }
         } else Surface(shadowElevation = 4.dp) {
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp).testTag("document-actions"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onCamera, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.Add, null); Text(stringResource(R.string.add_pages), maxLines = 1) }
-                IconButton(onShare, enabled = pages.isNotEmpty()) { Icon(Icons.Outlined.Share, stringResource(R.string.share)) }
-                Button({ pdfChoice = true }, enabled = pages.isNotEmpty(), shape = RoundedCornerShape(22.dp), modifier = Modifier.weight(1f).testTag("save-pdf"), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(stringResource(R.string.export_pdf), maxLines = 1) }
+            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 6.dp, vertical = 6.dp).testTag("document-actions"), verticalAlignment = Alignment.CenterVertically) {
+                BarAction(R.string.add, Icons.Outlined.AddAPhoto, "doc-add", Modifier.weight(1f), true, onCamera)
+                BarAction(R.string.edit, Icons.Outlined.Edit, "doc-edit", Modifier.weight(1f), pages.isNotEmpty()) { pages.firstOrNull()?.let(onEdit) }
+                BarAction(R.string.share, Icons.Outlined.Share, "doc-share", Modifier.weight(1f), pages.isNotEmpty(), onShare)
+                BarAction(R.string.to_word, Icons.Outlined.Description, "doc-word", Modifier.weight(1f), pages.isNotEmpty(), onWord)
+                Button({ pdfChoice = true }, enabled = pages.isNotEmpty(), shape = RoundedCornerShape(22.dp), modifier = Modifier.weight(1.2f).testTag("save-pdf"), contentPadding = PaddingValues(horizontal = 8.dp)) { Text(stringResource(R.string.export_pdf), maxLines = 1) }
             }
         }
     }) { padding ->
@@ -197,7 +201,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
 
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (extracting) Checkbox(page.id in chosen, { chosen = if (page.id in chosen) chosen - page.id else chosen + page.id }, modifier = Modifier.testTag("choose-${page.id}"))
-                        TextButton(onClick = { onEdit(page) }) { Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(stringResource(R.string.edit)) }
+                        TextButton(onClick = { onEdit(page) }, modifier = Modifier.testTag("edit-page-${page.id}")) { Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(stringResource(R.string.edit)) }
                         Spacer(Modifier.weight(1f))
                         if (reorder) {
                             IconButton(onClick = { onMove(page, -1) }, enabled = index > 0) { Icon(Icons.Outlined.KeyboardArrowUp, stringResource(R.string.move_up)) }
@@ -205,12 +209,21 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
                         }
                         Text(stringResource(R.string.page_counter, index + 1, pages.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Surface(Modifier.fillMaxWidth().clickable { if (extracting) chosen = if (page.id in chosen) chosen - page.id else chosen + page.id else onEdit(page) }, shadowElevation = 3.dp) {
+                    Surface(Modifier.fillMaxWidth().clickable { if (extracting) chosen = if (page.id in chosen) chosen - page.id else chosen + page.id else onOpen(page) }, shadowElevation = 3.dp) {
                         PagePicture(store, page, Modifier.fillMaxWidth().testTag("page-image-${page.id}"), naturalHeight = true, description = stringResource(R.string.page_number, index + 1))
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BarAction(label: Int, icon: ImageVector, tag: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
+    Column(modifier.clip(RoundedCornerShape(10.dp)).clickable(enabled = enabled, onClick = onClick).padding(vertical = 4.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
+        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
     }
 }
 

@@ -109,4 +109,33 @@ class GeometryTest {
         assertEquals(close, Frame.choose(close, null))
         assertNull(Frame.choose(null, null))
     }
+    @Test fun turningAPageCarriesItsMarksAlongAndFourTurnsReturnThem() {
+        val recipe = EditRecipe(
+            erase = listOf(EraseMark(EraseKind.RECT, listOf(Vertex(.1f, .2f), Vertex(.3f, .25f))), EraseMark(EraseKind.STROKE, listOf(Vertex(.5f, .5f), Vertex(.6f, .7f)), .02f)),
+            ink = listOf(InkStroke(listOf(Vertex(.2f, .8f)), .01f, 0xFF0000)), texts = listOf(TextMark("שלום", .25f, .75f, .04f)),
+            watermarkSpot = MarkSpot(.2f, .3f, -30f), signatures = listOf(SignatureMark(listOf(listOf(Vertex(0f, 0f), Vertex(1f, 1f))), 2f, .5f, .7f, .3f)))
+        assertTrue(recipe.valid())
+        val once = recipe.turnedBy(1, .75f)
+        assertEquals(1, once.turns)
+        // Clockwise: the point (x, y) goes to (1 - y, x); a rectangle stays top-left / bottom-right.
+        assertEquals(listOf(Vertex(.75f, .1f), Vertex(.8f, .3f)), once.erase[0].points)
+        assertEquals(.25f, once.texts[0].x, 1e-6f); assertEquals(.25f, once.texts[0].y, 1e-6f)
+        assertEquals(.7f, once.watermarkSpot.x, 1e-6f); assertEquals(.2f, once.watermarkSpot.y, 1e-6f); assertEquals(-30f, once.watermarkSpot.angle)
+        // The signature keeps its size on paper: 0.3 of a page 0.75 as wide as tall is 0.225 of the turned page's width.
+        assertEquals(.225f, once.signatures[0].width, 1e-5f)
+        assertTrue(once.valid())
+        val back = recipe.turnedBy(4, .75f)
+        assertEquals(0, back.turns)
+        recipe.erase.zip(back.erase).forEach { (a, b) -> a.points.zip(b.points).forEach { (p, q) -> assertEquals(p.x, q.x, 1e-5f); assertEquals(p.y, q.y, 1e-5f) } }
+        assertEquals(recipe.signatures[0].width, back.signatures[0].width, 1e-5f)
+        assertEquals(recipe.signatures[0].x, back.signatures[0].x, 1e-5f); assertEquals(recipe.signatures[0].y, back.signatures[0].y, 1e-5f)
+    }
+    @Test fun markValidationRejectsOutOfRangeValues() {
+        assertFalse(EraseMark(EraseKind.RECT, listOf(Vertex(.1f, .1f))).valid())
+        assertFalse(EraseMark(EraseKind.STROKE, listOf(Vertex(2f, .1f))).valid())
+        assertFalse(InkStroke(emptyList(), .01f, 0).valid())
+        assertFalse(TextMark(" ", .5f, .5f, .04f).valid())
+        assertFalse(MarkStyle(alpha = 0).valid())
+        assertEquals(MarkStyle(MarkFont.BOLD, MarkColor.BLUE, MarkStrength.STRONG, MarkSize.LARGE), MarkStyle(MarkFont.BOLD, MarkColor.BLUE.rgb, 130, 1.35f))
+    }
 }

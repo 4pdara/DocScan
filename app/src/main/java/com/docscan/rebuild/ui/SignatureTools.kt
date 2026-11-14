@@ -45,6 +45,7 @@ import com.docscan.rebuild.data.Sheet
 import com.docscan.rebuild.data.SignatureCodec
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.PageMarks
+import com.docscan.rebuild.model.EditRecipe
 import com.docscan.rebuild.model.MarkColor
 import com.docscan.rebuild.model.SignatureMark
 import kotlinx.coroutines.Dispatchers
@@ -141,13 +142,16 @@ fun SignaturePad(onCancel: () -> Unit, onDone: (SignatureMark) -> Unit) {
  * The page is shown as saved, without its other signatures' handles; existing signatures stay drawn.
  */
 @Composable
-fun SignaturePlacer(store: ScanStore, pages: List<Sheet>, signature: SignatureMark, onApply: (Sheet, SignatureMark) -> Unit, onRemoveAll: (Sheet) -> Unit, onDismiss: () -> Unit) {
-    var index by remember { mutableIntStateOf(0) }
+fun SignaturePlacer(store: ScanStore, pages: List<Sheet>, signature: SignatureMark, onApply: (Sheet, SignatureMark) -> Unit, onRemoveAll: (Sheet) -> Unit, onDismiss: () -> Unit,
+    recipe: EditRecipe? = null, startIndex: Int = 0) {
+    var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))) }
     var mark by remember { mutableStateOf(signature) }
     val page = pages.getOrNull(index) ?: return
-    val shown by produceState<Bitmap?>(null, page.id, page.recipe) {
+    // The editor passes its unsaved edit for the page it shows; otherwise the page as saved.
+    val shownRecipe = recipe ?: page.edit()
+    val shown by produceState<Bitmap?>(null, page.id, shownRecipe) {
         value = null
-        value = withContext(Dispatchers.IO) { runCatching { ImagePipeline.render(store.source(page), page.edit(), 1100) }.getOrNull() }
+        value = withContext(Dispatchers.IO) { runCatching { ImagePipeline.render(store.source(page), shownRecipe, 1100) }.getOrNull() }
     }
     var area by remember { mutableStateOf(IntSize.Zero) }
     fun clamp(m: SignatureMark): SignatureMark {
@@ -190,7 +194,7 @@ fun SignaturePlacer(store: ScanStore, pages: List<Sheet>, signature: SignatureMa
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (page.edit().signatures.isNotEmpty()) TextButton({ onRemoveAll(page) }) { Text(stringResource(R.string.signature_remove_page), color = Color(0xFFFF8A80)) }
+                    if (shownRecipe.signatures.isNotEmpty()) TextButton({ onRemoveAll(page) }) { Text(stringResource(R.string.signature_remove_page), color = Color(0xFFFF8A80)) }
                     Spacer(Modifier.weight(1f))
                     TextButton(onDismiss) { Text(stringResource(R.string.cancel)) }
                     Button({ onApply(page, clamp(mark)) }, modifier = Modifier.testTag("apply-signature")) { Text(stringResource(R.string.signature_apply)) }

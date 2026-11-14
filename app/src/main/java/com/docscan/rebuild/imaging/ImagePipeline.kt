@@ -76,6 +76,8 @@ object ImagePipeline {
                 2 -> Core.rotate(current, current, Core.ROTATE_180)
                 3 -> Core.rotate(current, current, Core.ROTATE_90_COUNTERCLOCKWISE)
             }
+            // Smart erase on the turned page (where its marks were placed), before the filter evens the paper.
+            if (recipe.erase.isNotEmpty()) PageEraser.apply(current, recipe.erase)
             when (recipe.treatment) {
                 Treatment.ORIGINAL -> current.copyTo(result)
                 Treatment.COLOR -> current.convertTo(result, -1, 1.1, -7.0)

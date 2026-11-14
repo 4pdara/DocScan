@@ -87,35 +87,78 @@ enum class Treatment(val referenceEngineVariant: Boolean = false) {
 }
 /**
  * [watermark]: text drawn across the page in [watermarkStyle]; [stamp]: a date and time; [footer]: a line of the
- * user's own text ("scanned by ..."). [stamp] and [footer] sit at the page edge in [noteColor]; when they share a
- * place they are stacked. All are drawn on every output of the page (preview, PDF, gallery, print); the source
- * photo never changes.
+ * user's own text ("scanned by ..."); [numberText]: the page number in [numbers] format, kept current by the store.
+ * [stamp], [footer] and the number sit at the page edge in [noteColor]; when they share a place they are stacked.
+ * [erase]: areas painted out with the paper around them (smart erase), applied before the filter. [ink] (brush),
+ * [texts], [signatures] and the watermark are drawn after the filter so their colours stay. All positions are
+ * fractions of the turned page. All are drawn on every output of the page; the source photo never changes.
  */
 data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val treatment: Treatment = Treatment.ORIGINAL, val brightness: Float = 0f, val contrast: Float = 1f, val outputAspect: Float? = null, val curvature: BookCurve = BookCurve(),
     val watermark: String? = null, val stamp: String? = null, val watermarkPlace: MarkPlace = MarkPlace.DIAGONAL, val stampPlace: StampPlace = StampPlace.BOTTOM_RIGHT,
     val watermarkStyle: MarkStyle = MarkStyle(), val footer: String? = null, val footerPlace: StampPlace = StampPlace.BOTTOM_CENTER, val noteColor: MarkColor = MarkColor.RED,
-    val signatures: List<SignatureMark> = emptyList(), val flatten: List<Float> = emptyList(), val eraseColor: Boolean = false)
+    val signatures: List<SignatureMark> = emptyList(), val flatten: List<Float> = emptyList(), val eraseColor: Boolean = false,
+    val erase: List<EraseMark> = emptyList(), val ink: List<InkStroke> = emptyList(), val texts: List<TextMark> = emptyList(),
+    val watermarkSpot: MarkSpot = MarkSpot(), val numbers: NumberFormat? = null, val numberPlace: StampPlace = StampPlace.BOTTOM_CENTER, val numberText: String? = null) {
+    /** Everything drawn over the page removed: what text recognition should read. Erased areas stay erased. */
+    fun withoutMarks() = copy(watermark = null, stamp = null, footer = null, signatures = emptyList(), ink = emptyList(), texts = emptyList(), numberText = null)
+    val marked: Boolean get() = watermark != null || stamp != null || footer != null || numberText != null || signatures.isNotEmpty() || ink.isNotEmpty() || texts.isNotEmpty()
+    fun valid() = frame.valid() && curvature.valid() && signatures.all { it.valid() } && erase.all { it.valid() } && ink.all { it.valid() } && texts.all { it.valid() } &&
+        watermarkSpot.valid() && watermarkStyle.valid() && (flatten.isEmpty() || flatten.size == 9 && flatten.all { it.isFinite() && it in -1f..1f }) &&
+        (outputAspect == null || outputAspect.isFinite() && outputAspect in .1f..10f)
 
-/**
- * A drawn signature: strokes as points within its own box (0..1 on both axes; the box is [aspect] times as wide as
- * tall), placed with its top-left corner at ([x], [y]) of the page and [width] of the page width wide.
- */
-data class SignatureMark(val strokes: List<List<Vertex>>, val aspect: Float, val x: Float = .55f, val y: Float = .8f, val width: Float = .35f, val color: MarkColor = MarkColor.BLACK) {
-    fun valid() = strokes.isNotEmpty() && strokes.all { it.isNotEmpty() } && aspect.isFinite() && aspect in .2f..20f &&
-        x.isFinite() && y.isFinite() && width.isFinite() && width in .03f..1f && x in -.5f..1f && y in -.5f..1f
+    /**
+     * The page turned [quarters] times clockwise, with everything placed on it moving along. [aspect] is the
+     * width / height of the page before turning; signatures keep their size on the page.
+     */
+    fun turnedBy(quarters: Int, aspect: Float): EditRecipe {
+        var result = this; var a = aspect
+        repeat(quarters.mod(4)) {
+            fun t(v: Vertex) = Vertex(1f - v.y, v.x)
+            result = result.copy(turns = (result.turns + 1).mod(4),
+                erase = result.erase.map { m -> if (m.kind == EraseKind.RECT) m.copy(points = m.points.map(::t).let { p -> listOf(Vertex(min(p[0].x, p[1].x), min(p[0].y, p[1].y)), Vertex(max(p[0].x, p[1].x), max(p[0].y, p[1].y))) }) else m.copy(points = m.points.map(::t)) },
+                ink = result.ink.map { it.copy(points = it.points.map(::t)) },
+                texts = result.texts.map { val c = t(Vertex(it.x, it.y)); it.copy(x = c.x, y = c.y) },
+                watermarkSpot = result.watermarkSpot.let { val c = t(Vertex(it.x, it.y)); it.copy(x = c.x, y = c.y) },
+                signatures = result.signatures.map { s ->
+                    // Same size on paper: the width share changes with the page width.
+                    val boxH = s.width * a / s.aspect
+                    val c = t(Vertex(s.x + s.width / 2, s.y + boxH / 2)); val width = (s.width * a).coerceIn(.03f, 1f)
+                    val newBoxH = width / a / s.aspect
+                    s.copy(x = c.x - width / 2, y = c.y - newBoxH / 2, width = width)
+                })
+            a = 1f / a
+        }
+        return result
+    }
 }
 
-/** Where a watermark is drawn: corner to corner, across the middle, along the top or bottom, or up the side. */
-enum class MarkPlace { DIAGONAL, CENTER, TOP, BOTTOM, SIDE }
-/** Where the timestamp or the footer line is drawn: a corner, or centred at the bottom or top edge. */
-enum class StampPlace { BOTTOM_RIGHT, BOTTOM_LEFT, TOP_RIGHT, TOP_LEFT, BOTTOM_CENTER, TOP_CENTER }
-/** Bundled Hebrew fonts (SIL OFL 1.1, see assets/licenses). */
-enum class MarkFont { BOLD, PLAIN, CLASSIC, DAVID, HEADLINE, FESTIVE, HANDWRITING }
-enum class MarkColor(val rgb: Int) { GREY(0x787878), BLACK(0x1A1A1A), RED(0xC8281E), BLUE(0x1E50C8), GREEN(0x1E8C3C), ORANGE(0xE07814) }
-/** Opacity of the watermark ink, 0-255. */
-enum class MarkStrength(val alpha: Int) { LIGHT(40), MEDIUM(70), STRONG(130) }
-enum class MarkSize(val scale: Float) { SMALL(.7f), MEDIUM(1f), LARGE(1.35f) }
-data class MarkStyle(val font: MarkFont = MarkFont.BOLD, val color: MarkColor = MarkColor.GREY, val strength: MarkStrength = MarkStrength.MEDIUM, val size: MarkSize = MarkSize.MEDIUM)
+/** What smart erase paints out: a brush stroke [width] wide (a share of the page's short side), a rectangle (two corners), or the word or blot under a tap. */
+enum class EraseKind { STROKE, RECT, SHAPE }
+data class EraseMark(val kind: EraseKind, val points: List<Vertex>, val width: Float = .03f) {
+    fun valid() = points.isNotEmpty() && points.size <= 5000 && points.all { it.x.isFinite() && it.y.isFinite() && it.x in -.2f..1.2f && it.y in -.2f..1.2f } &&
+        width.isFinite() && width in .001f.. .5f && (kind != EraseKind.RECT || points.size == 2) && (kind != EraseKind.SHAPE || points.size == 1)
+}
+/** A brush stroke drawn over the page: [width] is a share of the page's short side, [rgb] its colour and [alpha] 255 for a pen, less for a highlighter. */
+data class InkStroke(val points: List<Vertex>, val width: Float, val rgb: Int, val alpha: Int = 255) {
+    fun valid() = points.isNotEmpty() && points.size <= 5000 && points.all { it.x.isFinite() && it.y.isFinite() && it.x in -.2f..1.2f && it.y in -.2f..1.2f } &&
+        width.isFinite() && width in .001f.. .2f && alpha in 1..255
+}
+/** Text written on the page, centred at ([x], [y]); [size] is the letter height as a share of the page's short side. Lines split at newlines. */
+data class TextMark(val text: String, val x: Float, val y: Float, val size: Float, val rgb: Int = 0x1A1A1A, val font: MarkFont = MarkFont.PLAIN) {
+    fun valid() = text.isNotBlank() && text.length <= 500 && x.isFinite() && y.isFinite() && x in -.2f..1.2f && y in -.2f..1.2f && size.isFinite() && size in .005f.. .5f
+}
+/** Where a free watermark sits: its centre in page fractions and its angle in degrees (negative turns it up to the right). */
+data class MarkSpot(val x: Float = .5f, val y: Float = .5f, val angle: Float = -45f) {
+    fun valid() = x.isFinite() && y.isFinite() && angle.isFinite() && x in -.2f..1.2f && y in -.2f..1.2f && angle in -180f..180f
+}
+/** Page numbers: "3", "3 / 12" or "Page 3 of 12". */
+enum class NumberFormat { PLAIN, SLASH, WORDS }
+
+/** Colours offered for marks: watermark ink and brush. */
+object MarkPalette {
+    val watermark = listOf(0x787878, 0xBDBAB4, 0x1A1A1A, 0x5D3A1A, 0xC8281E, 0xFF2D2D, 0xF07840, 0xFFA040, 0xE0B000, 0x1E8C3C, 0x008F86, 0x1E50C8, 0x6A3FC8, 0xD62AF0, 0xFF3399, 0xFFA0D0)
+    val ink = listOf(0xFFE600, 0xFFF59D, 0x1E88E5, 0xFF6B6B, 0xFF9800, 0x1DB9A0, 0xFFFFFF, 0x000000, 0xD32F2F, 0x2E7D32)
+}
 
 /** Vertical page warp after perspective correction, before rotation. Values are image-height fractions. */
 data class BookCurve(val top: Float = 0f, val bottom: Float = 0f) {

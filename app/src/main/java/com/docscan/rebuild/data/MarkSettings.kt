@@ -16,9 +16,17 @@ class MarkSettings(context: Context) {
     var watermarkPlace: MarkPlace
         get() = runCatching { MarkPlace.valueOf(prefs.getString("watermarkPlace", null) ?: "DIAGONAL") }.getOrDefault(MarkPlace.DIAGONAL)
         set(v) { prefs.edit().putString("watermarkPlace", v.name).apply() }
+    /** Stored as values since 1.1.0; settings saved before name a preset colour, strength and size. */
     var watermarkStyle: MarkStyle
-        get() = MarkStyle(option("markFont", MarkFont.BOLD), option("markColor", MarkColor.GREY), option("markStrength", MarkStrength.MEDIUM), option("markSize", MarkSize.MEDIUM))
-        set(v) { prefs.edit().putString("markFont", v.font.name).putString("markColor", v.color.name).putString("markStrength", v.strength.name).putString("markSize", v.size.name).apply() }
+        get() = MarkStyle(option("markFont", MarkFont.BOLD),
+            if (prefs.contains("markRgb")) prefs.getInt("markRgb", MarkColor.GREY.rgb) and 0xFFFFFF else option("markColor", MarkColor.GREY).rgb,
+            if (prefs.contains("markAlpha")) prefs.getInt("markAlpha", MarkStrength.MEDIUM.alpha).coerceIn(10, 255) else option("markStrength", MarkStrength.MEDIUM).alpha,
+            if (prefs.contains("markScale")) prefs.getFloat("markScale", 1f).takeIf { it.isFinite() }?.coerceIn(.2f, 4f) ?: 1f else option("markSize", MarkSize.MEDIUM).scale)
+        set(v) { prefs.edit().putString("markFont", v.font.name).putInt("markRgb", v.rgb).putInt("markAlpha", v.alpha).putFloat("markScale", v.scale).apply() }
+    /** Where a free or tiled watermark sits on new pages. */
+    var watermarkSpot: MarkSpot
+        get() = MarkSpot(prefs.getFloat("spotX", .5f), prefs.getFloat("spotY", .5f), prefs.getFloat("spotAngle", -45f)).takeIf { it.valid() } ?: MarkSpot()
+        set(v) { prefs.edit().putFloat("spotX", v.x).putFloat("spotY", v.y).putFloat("spotAngle", v.angle).apply() }
     var footerOn: Boolean get() = prefs.getBoolean("footerOn", false); set(v) { prefs.edit().putBoolean("footerOn", v).apply() }
     var footerText: String get() = prefs.getString("footerText", "").orEmpty(); set(v) { prefs.edit().putString("footerText", v.take(60)).apply() }
     var footerPlace: StampPlace get() = option("footerPlace", StampPlace.BOTTOM_CENTER); set(v) { prefs.edit().putString("footerPlace", v.name).apply() }
@@ -33,7 +41,7 @@ class MarkSettings(context: Context) {
     fun applyTo(recipe: EditRecipe, now: Date = Date()): EditRecipe {
         var result = recipe
         val text = watermarkText.trim()
-        if (watermarkOn && text.isNotEmpty()) result = result.copy(watermark = text, watermarkPlace = watermarkPlace, watermarkStyle = watermarkStyle)
+        if (watermarkOn && text.isNotEmpty()) result = result.copy(watermark = text, watermarkPlace = watermarkPlace, watermarkStyle = watermarkStyle, watermarkSpot = watermarkSpot)
         val footer = footerText.trim()
         if (footerOn && footer.isNotEmpty()) result = result.copy(footer = footer, footerPlace = footerPlace, noteColor = noteColor)
         if (stampOn) result = result.copy(stamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(now), stampPlace = stampPlace, noteColor = noteColor)

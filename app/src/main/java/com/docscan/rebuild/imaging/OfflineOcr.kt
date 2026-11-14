@@ -2,6 +2,7 @@ package com.docscan.rebuild.imaging
 
 import com.docscan.rebuild.data.ScanStore
 import com.docscan.rebuild.data.Sheet
+import com.docscan.rebuild.model.EditRecipe
 import com.googlecode.tesseract.android.TessBaseAPI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -12,14 +13,26 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 
+/** Recognized words of a page and the size of the rendering their boxes refer to. */
+data class PageText(val words: List<com.docscan.rebuild.export.OcrWord>, val width: Int, val height: Int)
+
 /** Hebrew/English recognition stays on the device. Models are bundled; no network permission is needed. */
 class OfflineOcr(private val store: ScanStore) {
-    suspend fun recognize(sheet: Sheet, languages: String = "heb+eng"): String = read(sheet, languages) { engine, text -> text }
+    suspend fun recognize(sheet: Sheet, languages: String = "heb+eng"): String = read(sheet, languages) { _, text, _ -> text }
 
     /** Text and the box of every word, for tables (the Excel export). The page's text is stored as by [recognize]. */
-    suspend fun words(sheet: Sheet, languages: String = "heb+eng"): List<com.docscan.rebuild.export.OcrWord> = read(sheet, languages) { engine, _ ->
+    suspend fun words(sheet: Sheet, languages: String = "heb+eng"): List<com.docscan.rebuild.export.OcrWord> = read(sheet, languages) { engine, _, _ -> boxes(engine) }
+
+    /**
+     * The words of the page as it looks with [recipe] (the editor's unsaved edit), without the marks drawn over it,
+     * with their boxes in the pixels of a [PageText.width] x [PageText.height] rendering. Nothing is stored.
+     */
+    suspend fun layout(sheet: Sheet, recipe: EditRecipe, languages: String = "heb+eng"): PageText =
+        read(sheet, languages, recipe.withoutMarks(), 2400, keep = false) { engine, _, page -> PageText(boxes(engine), page.width, page.height) }
+
+    private fun boxes(engine: TessBaseAPI): List<com.docscan.rebuild.export.OcrWord> {
         val words = ArrayList<com.docscan.rebuild.export.OcrWord>()
-        val iterator = engine.resultIterator ?: return@read words
+        val iterator = engine.resultIterator ?: return words
         try {
             iterator.begin()
             do {
@@ -28,10 +41,10 @@ class OfflineOcr(private val store: ScanStore) {
                 if (!text.isNullOrEmpty() && box != null) words += com.docscan.rebuild.export.OcrWord(text, box.left, box.top, box.right, box.bottom)
             } while (iterator.next(TessBaseAPI.PageIteratorLevel.RIL_WORD))
         } finally { iterator.delete() }
-        words
+        return words
     }
 
-    private suspend fun <T> read(sheet: Sheet, languages: String, result: (TessBaseAPI, String) -> T): T = withContext(Dispatchers.Default) {
+    private suspend fun <T> read(sheet: Sheet, languages: String, recipe: EditRecipe = sheet.edit().withoutMarks(), edge: Int? = null, keep: Boolean = true, result: (TessBaseAPI, String, android.graphics.Bitmap) -> T): T = withContext(Dispatchers.Default) {
         require(languages in listOf("heb+eng","heb","eng"))
         lock.withLock {
             val root=File(store.context.filesDir,"ocr");val data=File(root,"tessdata").apply { check(isDirectory || mkdirs()) }
@@ -47,7 +60,7 @@ class OfflineOcr(private val store: ScanStore) {
                 }
             }
             coroutineContext.ensureActive()
-            val bitmap=ImagePipeline.render(store.source(sheet),sheet.edit())
+            val bitmap=ImagePipeline.render(store.source(sheet),recipe,edge)
             val engine=TessBaseAPI()
             try {
                 check(engine.init(root.path,languages,TessBaseAPI.OEM_LSTM_ONLY)) { "OCR initialization failed" }
@@ -56,8 +69,8 @@ class OfflineOcr(private val store: ScanStore) {
                 engine.setImage(bitmap)
                 val text=tidy(engine.getUTF8Text().orEmpty())
                 coroutineContext.ensureActive()
-                check(store.dao.recognized(sheet.id,text,sheet.recipe)==1) { "Page changed during OCR" }
-                result(engine, text)
+                if(keep) check(store.dao.recognized(sheet.id,text,sheet.recipe)==1) { "Page changed during OCR" }
+                result(engine, text, bitmap)
             } finally { engine.recycle();bitmap.recycle() }
         }
     }

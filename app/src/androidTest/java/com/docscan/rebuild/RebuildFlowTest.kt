@@ -21,6 +21,9 @@ import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.PageMarks
 import com.docscan.rebuild.imaging.CodeReader
 import com.docscan.rebuild.imaging.PageFlattener
+import com.docscan.rebuild.imaging.OfflineOcr
+import com.docscan.rebuild.ui.boxes
+import com.docscan.rebuild.ui.readingOrder
 import com.docscan.rebuild.model.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -187,6 +190,155 @@ class RebuildFlowTest {
             store.trash(setOf(imported.id)); store.deleteForever(setOf(imported.id))
         } finally { listOf(full, small, one, longImage, word).forEach { it.delete() } }
         store.trash(setOf(book.id)); store.deleteForever(setOf(book.id))
+    }
+
+    @Test fun smartEraseTextBrushWatermarkNumbersMergeAndRetake(): Unit = runBlocking {
+        val store = (compose.activity.application as ScanApplication).store
+        val book = store.create("Erase ${System.nanoTime()}")
+        val page = store.captured(book.id, fixture("erase-1.jpg"))
+        // The white sheet of the fixture: x 180-1620 and y 220-2180 of 1800 x 2400.
+        val base = EditRecipe(frame = Frame(listOf(Vertex(.1f, .0917f), Vertex(.9f, .0917f), Vertex(.9f, .9083f), Vertex(.1f, .9083f))))
+        store.save(page, base)
+        fun pixels(b: Bitmap) = IntArray(b.width * b.height).also { b.getPixels(it, 0, b.width, 0, 0, b.width, b.height) }
+        fun lum(p: Int) = (Color.red(p) * 299 + Color.green(p) * 587 + Color.blue(p) * 114) / 1000
+        fun dark(b: Bitmap, px: IntArray, x0: Float, y0: Float, x1: Float, y1: Float): Int {
+            var n = 0
+            for (y in (y0 * b.height).toInt() until (y1 * b.height).toInt()) for (x in (x0 * b.width).toInt() until (x1 * b.width).toInt()) if (lum(px[y * b.width + x]) < 128) n++
+            return n
+        }
+        val plain = ImagePipeline.render(store.source(page), base, 1200)
+        // Smart erase: a rectangle over the first lines becomes paper; nothing outside it changes.
+        // Lines 1-5 of the fixture; line 6 starts below the rectangle.
+        val box = EraseMark(EraseKind.RECT, listOf(Vertex(.03f, .03f), Vertex(.6f, .166f)))
+        val erased = ImagePipeline.render(store.source(page), base.copy(erase = listOf(box)), 1200)
+        // Tapping a word erases that word: the line it is on gets lighter, the next line does not.
+        val tapped = ImagePipeline.render(store.source(page), base.copy(erase = listOf(EraseMark(EraseKind.SHAPE, listOf(Vertex(.069f, .292f)), .12f))), 1200)
+        try {
+            val a = pixels(plain); val b = pixels(erased); val c = pixels(tapped)
+            assertEquals(plain.width, erased.width); assertEquals(plain.height, erased.height)
+            assertTrue("Text was there", dark(plain, a, .06f, .05f, .55f, .155f) > 500)
+            assertEquals("Erased to paper", 0, dark(erased, b, .06f, .05f, .55f, .155f))
+            val from = (.2f * plain.height).toInt() * plain.width
+            assertEquals("Nothing else changes", 0, (from until a.size).count { a[it] != b[it] })
+            val line = dark(plain, a, .03f, .28f, .4f, .3f); val after = dark(tapped, c, .03f, .28f, .4f, .3f)
+            android.util.Log.i("DocScanEraseTest", "tapped line dark $line -> $after")
+            assertTrue("Tapped word erased ($line -> $after)", after < line * .97 && after > line * .15)
+            assertEquals("Other lines stay", dark(plain, a, .03f, .33f, .4f, .36f), dark(tapped, c, .03f, .33f, .4f, .36f))
+        } finally { plain.recycle(); erased.recycle(); tapped.recycle() }
+        // Edit text reads the words of the unsaved edit: the erased lines are gone from it.
+        val words = OfflineOcr(store).layout(store.dao.page(page.id)!!, base.copy(erase = listOf(box)), "eng").boxes()
+        android.util.Log.i("DocScanEraseTest", "words ${words.size}: ${readingOrder(words).take(120)}")
+        assertTrue("Words found: ${words.size}", words.size > 40)
+        assertTrue(words.all { it.left >= 0f && it.right <= 1.01f && it.top >= 0f && it.bottom <= 1.01f && it.left < it.right })
+        assertTrue("Nothing read where the text was erased", words.none { it.bottom < .165f && it.right < .55f })
+        assertTrue(readingOrder(words).lines().first().contains("source"))
+        // Brush, text and a free watermark are drawn where they were placed, after the filter, in their colours.
+        val marked = base.copy(treatment = Treatment.GRAY, ink = listOf(InkStroke(listOf(Vertex(.1f, .5f), Vertex(.9f, .5f)), .01f, 0xD32F2F)),
+            texts = listOf(TextMark("שלום DocScan", .5f, .85f, .05f, 0x1E50C8, MarkFont.BOLD)),
+            watermark = "סודי", watermarkPlace = MarkPlace.FREE, watermarkSpot = MarkSpot(.25f, .25f, -30f), watermarkStyle = MarkStyle(MarkFont.BOLD, 0xC8281E, 200, 1f))
+        assertEquals(marked, RecipeCodec.decode(RecipeCodec.encode(marked)))
+        store.save(page, marked)
+        val drawn = ImagePipeline.render(store.source(page), store.dao.page(page.id)!!.edit(), 1200)
+        try {
+            val px = pixels(drawn); val w = drawn.width; val h = drawn.height
+            fun count(x0: Float, y0: Float, x1: Float, y1: Float, test: (Int) -> Boolean): Int {
+                var n = 0; for (y in (y0 * h).toInt() until (y1 * h).toInt()) for (x in (x0 * w).toInt() until (x1 * w).toInt()) if (test(px[y * w + x])) n++; return n
+            }
+            val ink = px[(h / 2) * w + w / 2]
+            assertTrue("Red brush on a grey page", Color.red(ink) > 150 && Color.green(ink) < 110)
+            assertTrue("Blue text", count(.2f, .8f, .8f, .9f) { Color.blue(it) > Color.red(it) + 40 } > 100)
+            assertTrue("Red watermark at its spot", count(.08f, .17f, .42f, .33f) { Color.red(it) > Color.green(it) + 50 } > 100)
+            assertEquals("Nothing red far from it", 0, count(.6f, .6f, .95f, .75f) { Color.red(it) > Color.green(it) + 50 })
+        } finally { drawn.recycle() }
+        // Tiled watermark covers the page.
+        val tiled = ImagePipeline.render(store.source(page), marked.copy(watermarkPlace = MarkPlace.TILE, ink = emptyList(), texts = emptyList()), 800)
+        try {
+            val px = pixels(tiled); val w = tiled.width; val h = tiled.height
+            val quarters = listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1).map { (qx, qy) ->
+                var n = 0; for (y in qy * h / 2 until (qy + 1) * h / 2) for (x in qx * w / 2 until (qx + 1) * w / 2) if (Color.red(px[y * w + x]) > Color.green(px[y * w + x]) + 50) n++; n
+            }
+            assertTrue("Every quarter has the watermark: $quarters", quarters.all { it > 50 })
+        } finally { tiled.recycle() }
+        // Page numbers follow the pages: added, deleted, merged and retaken pages are numbered again.
+        val second = store.captured(book.id, fixture("erase-2.jpg")); val third = store.captured(book.id, fixture("erase-3.jpg"))
+        store.numberPages(book.id, NumberFormat.SLASH, StampPlace.BOTTOM_CENTER, MarkColor.BLACK)
+        assertEquals(listOf("1 / 3", "2 / 3", "3 / 3"), store.dao.snapshot(book.id).map { it.edit().numberText })
+        val fourth = store.captured(book.id, fixture("erase-4.jpg"))
+        assertEquals(listOf("1 / 4", "2 / 4", "3 / 4", "4 / 4"), store.dao.snapshot(book.id).map { it.edit().numberText })
+        val secondSource = store.source(second)
+        store.deletePage(store.dao.page(second.id)!!)
+        assertEquals(listOf(page.id, third.id, fourth.id), store.dao.snapshot(book.id).map { it.id })
+        assertEquals(listOf(0, 1, 2), store.dao.snapshot(book.id).map { it.position })
+        assertEquals(listOf("1 / 3", "2 / 3", "3 / 3"), store.dao.snapshot(book.id).map { it.edit().numberText })
+        assertFalse("A deleted page's own original is removed", secondSource.exists())
+        val other = store.create("Other ${System.nanoTime()}"); val extra = store.captured(other.id, fixture("erase-5.jpg"))
+        val merged = store.merge(listOf(book.id, other.id), "Merged ${System.nanoTime()}")
+        val mergedPages = store.dao.snapshot(merged.id)
+        assertEquals(listOf(page.source, third.source, fourth.source, extra.source), mergedPages.map { it.source })
+        assertEquals("4 / 4", mergedPages.last().edit().numberText)
+        assertEquals(3, store.dao.snapshot(book.id).size); assertEquals(1, store.dao.snapshot(other.id).size)
+        // Retake: the new photo takes the old page's place and keeps the document's marks.
+        store.save(store.dao.page(third.id)!!, store.dao.page(third.id)!!.edit().copy(watermark = "עותק", footer = "צולם בבית"))
+        val fresh = store.captured(book.id, fixture("erase-6.jpg"))
+        val replaced = store.replace(store.dao.page(third.id)!!, fresh)
+        assertEquals(listOf(page.id, fresh.id, fourth.id), store.dao.snapshot(book.id).map { it.id })
+        assertEquals("עותק", replaced.edit().watermark); assertEquals("צולם בבית", replaced.edit().footer); assertEquals("2 / 3", replaced.edit().numberText)
+        assertTrue("An original shared with the merged document stays", store.source(third).exists())
+        store.trash(setOf(book.id, other.id, merged.id)); store.deleteForever(setOf(book.id, other.id, merged.id))
+        assertFalse(store.source(third).exists())
+    }
+
+    @Test fun pageViewOpensTheEditorToolsAndTheMarkingAndEraseTools() {
+        val store = (compose.activity.application as ScanApplication).store
+        val title = "Viewer ${System.nanoTime()}"
+        val page = runBlocking { val b = store.create(title); store.captured(b.id, fixture("viewer.jpg")) }
+        try {
+            compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(title).performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("page-image-${page.id}", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            // Tapping the page shows it with what can be done to it; nothing is edited yet.
+            compose.onNodeWithTag("page-image-${page.id}", useUnmergedTree = true).performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("viewer-actions").fetchSemanticsNodes().isNotEmpty() }
+            listOf("viewer-edit", "viewer-ocr", "viewer-sign", "viewer-share", "viewer-delete").forEach { compose.onNodeWithTag(it).assertIsDisplayed() }
+            assertTrue(compose.onAllNodesWithTag("page-editor").fetchSemanticsNodes().isEmpty())
+            screenshot("page-view")
+            compose.onNodeWithTag("viewer-edit").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("editor-toolbar").fetchSemanticsNodes().isNotEmpty() }
+            assertTrue("No filters until chosen", compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("edit-crop").assertIsDisplayed(); compose.onNodeWithTag("edit-filters").assertIsDisplayed()
+            screenshot("editor-tabs")
+            compose.onNodeWithTag("editor-tab-pages").performClick()
+            compose.onNodeWithTag("edit-delete").assertIsDisplayed()
+            // Marking: a watermark is written, moved and kept.
+            compose.onNodeWithTag("editor-tab-marks").performClick()
+            compose.onNodeWithTag("edit-watermark").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("tool-text-field").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("tool-text-field").performTextInput("סודי")
+            compose.onNodeWithTag("tool-text-ok").performClick()
+            compose.waitUntil(60000) { compose.onAllNodesWithTag("tool-page").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("watermark-tile").performClick(); compose.onNodeWithTag("watermark-single").performClick()
+            compose.onNodeWithTag("watermark-canvas").performTouchInput { swipe(center, center + androidx.compose.ui.geometry.Offset(-90f, -140f), 500) }
+            compose.waitForIdle(); screenshot("watermark-tool")
+            compose.onNodeWithTag("tool-done").performClick()
+            // Smart erase: a rectangle, undone and redone.
+            compose.onNodeWithTag("editor-tab-image").performClick()
+            compose.onNodeWithTag("editor-toolbar").performScrollToNode(hasTestTag("edit-erase"))
+            compose.onNodeWithTag("edit-erase").performClick()
+            compose.waitUntil(60000) { compose.onAllNodesWithTag("tool-page").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("erase-rect").performClick()
+            compose.onNodeWithTag("erase-canvas").performTouchInput { swipe(androidx.compose.ui.geometry.Offset(width * .3f, height * .3f), androidx.compose.ui.geometry.Offset(width * .65f, height * .42f), 500) }
+            compose.waitForIdle()
+            compose.onNodeWithTag("erase-undo").assertIsEnabled().performClick()
+            compose.onNodeWithTag("erase-redo").assertIsEnabled().performClick()
+            compose.waitForIdle(); screenshot("smart-erase")
+            compose.onNodeWithTag("tool-done").performClick()
+            compose.onNodeWithTag("save-edit").performClick()
+            compose.waitUntil(20000) { runBlocking { store.dao.page(page.id)!!.edit().let { it.erase.size == 1 && it.watermark == "סודי" } } }
+            val saved = runBlocking { store.dao.page(page.id)!!.edit() }
+            assertEquals(MarkPlace.FREE, saved.watermarkPlace)
+            assertTrue("Dragged up and to the left: ${saved.watermarkSpot}", saved.watermarkSpot.x < .5f && saved.watermarkSpot.y < .5f)
+            assertEquals(EraseKind.RECT, saved.erase.single().kind)
+        } finally { runBlocking { store.trash(setOf(page.notebookId)); store.deleteForever(setOf(page.notebookId)) } }
     }
 
     @Test fun qrIdCardSignatureAndPasswordPdf(): Unit = runBlocking {
@@ -967,7 +1119,7 @@ class RebuildFlowTest {
         val hashes = pages.map { hash(store.source(it)) }
         compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(title).performClick()
-        compose.onNodeWithText(compose.activity.getString(R.string.add_pages)).performClick()
+        compose.onNodeWithTag("doc-add").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("capture-batch").fetchSemanticsNodes().isNotEmpty() }
         // Existing pages are sufficient: do not capture another emulated photo.
         compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
@@ -1013,7 +1165,7 @@ class RebuildFlowTest {
         try {
             compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(title).performClick()
-            compose.onNodeWithText(compose.activity.getString(R.string.add_pages)).performClick()
+            compose.onNodeWithTag("doc-add").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithTag("capture-batch").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isNotEmpty() }
@@ -1065,7 +1217,12 @@ class RebuildFlowTest {
         screenshot("library")
         compose.onNodeWithText(title).performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText(compose.activity.getString(R.string.edit)).performClick()
+        // A saved page opens the editor's tools without choosing one; the filters are one of them.
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("edit-page-${page.id}").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("edit-page-${page.id}").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("edit-filters").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithTag("edit-filters").performClick()
         compose.onNodeWithTag("filter-strip").assertIsDisplayed()
         compose.waitUntil(60000) {
             compose.onAllNodes(hasTestTag("rendered-page-image") and hasAnyAncestor(hasTestTag("page-preview"))).fetchSemanticsNodes().isNotEmpty()

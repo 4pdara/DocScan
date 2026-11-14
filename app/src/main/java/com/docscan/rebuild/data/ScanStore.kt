@@ -99,6 +99,9 @@ object SignatureCodec {
 class UserMessage(val text: Int) : Exception()
 
 object RecipeCodec {
+    private fun r4(v: Float) = Math.round(v * 10000) / 10000.0
+    private fun points(list: List<Vertex>) = JSONArray(list.flatMap { listOf(r4(it.x), r4(it.y)) })
+    private fun points(a: JSONArray?): List<Vertex> = if (a == null) emptyList() else (0 until minOf(a.length() / 2, 5000)).map { Vertex(a.optDouble(it * 2).toFloat(), a.optDouble(it * 2 + 1).toFloat()) }
     fun encode(r: EditRecipe): String = JSONObject().put("turns", r.turns).put("filter", r.treatment.name)
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
         .put("outputAspect", r.outputAspect?.toDouble() ?: JSONObject.NULL)
@@ -107,33 +110,57 @@ object RecipeCodec {
         .apply {
             r.watermark?.let {
                 put("watermark", it); put("watermarkPlace", r.watermarkPlace.name)
-                put("markFont", r.watermarkStyle.font.name); put("markColor", r.watermarkStyle.color.name)
-                put("markStrength", r.watermarkStyle.strength.name); put("markSize", r.watermarkStyle.size.name)
+                put("markFont", r.watermarkStyle.font.name); put("markRgb", r.watermarkStyle.rgb)
+                put("markAlpha", r.watermarkStyle.alpha); put("markScale", r.watermarkStyle.scale.toDouble())
+                if (r.watermarkPlace == MarkPlace.FREE || r.watermarkPlace == MarkPlace.TILE) {
+                    put("spotX", r4(r.watermarkSpot.x)); put("spotY", r4(r.watermarkSpot.y)); put("spotAngle", r.watermarkSpot.angle.toDouble())
+                }
             }
             r.stamp?.let { put("stamp", it); put("stampPlace", r.stampPlace.name) }
             r.footer?.let { put("footer", it); put("footerPlace", r.footerPlace.name) }
-            if (r.stamp != null || r.footer != null) put("noteColor", r.noteColor.name)
+            r.numbers?.let { put("numbers", it.name); put("numberPlace", r.numberPlace.name); r.numberText?.let { t -> put("numberText", t) } }
+            if (r.stamp != null || r.footer != null || r.numbers != null) put("noteColor", r.noteColor.name)
             if (r.signatures.isNotEmpty()) put("signatures", JSONArray(r.signatures.map { SignatureCodec.encode(it) }))
             if (r.flatten.isNotEmpty()) put("flatten", JSONArray(r.flatten.map { it.toDouble() }))
             if (r.eraseColor) put("eraseColor", true)
+            if (r.erase.isNotEmpty()) put("erase", JSONArray(r.erase.map { JSONObject().put("k", it.kind.name).put("w", r4(it.width)).put("p", points(it.points)) }))
+            if (r.ink.isNotEmpty()) put("ink", JSONArray(r.ink.map { JSONObject().put("w", r4(it.width)).put("c", it.rgb).put("a", it.alpha).put("p", points(it.points)) }))
+            if (r.texts.isNotEmpty()) put("texts", JSONArray(r.texts.map { JSONObject().put("t", it.text).put("x", r4(it.x)).put("y", r4(it.y)).put("s", r4(it.size)).put("c", it.rgb).put("f", it.font.name) }))
         }.toString()
     fun decode(text: String): EditRecipe = runCatching {
         val o = JSONObject(text); val q = o.optJSONArray("frame")
         val frame = if (q != null && q.length() == 4) Frame((0..3).map { val p = q.getJSONArray(it); Vertex(p.getDouble(0).toFloat(), p.getDouble(1).toFloat()) }) else Frame.FULL
-        EditRecipe(frame.takeIf { it.valid() } ?: Frame.FULL, o.optInt("turns").mod(4),
-            runCatching { Treatment.valueOf(o.optString("filter", "ORIGINAL")) }.getOrDefault(Treatment.ORIGINAL),
-            o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
-            o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
-            o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f },
-            BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve(),
-            o.optString("watermark").trim().take(80).ifBlank { null }, o.optString("stamp").trim().take(80).ifBlank { null },
-            runCatching { MarkPlace.valueOf(o.optString("watermarkPlace", "DIAGONAL")) }.getOrDefault(MarkPlace.DIAGONAL),
-            runCatching { StampPlace.valueOf(o.optString("stampPlace", "BOTTOM_RIGHT")) }.getOrDefault(StampPlace.BOTTOM_RIGHT),
-            MarkStyle(option(o, "markFont", MarkFont.BOLD), option(o, "markColor", MarkColor.GREY), option(o, "markStrength", MarkStrength.MEDIUM), option(o, "markSize", MarkSize.MEDIUM)),
-            o.optString("footer").trim().take(80).ifBlank { null }, option(o, "footerPlace", StampPlace.BOTTOM_CENTER), option(o, "noteColor", MarkColor.RED),
-            o.optJSONArray("signatures")?.let { list -> (0 until minOf(list.length(), 20)).mapNotNull { SignatureCodec.decode(list.optJSONObject(it)) } }.orEmpty(),
-            o.optJSONArray("flatten")?.let { a -> (0 until a.length()).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { f -> f.size == 9 && f.all { it.isFinite() && it in -1f..1f } }.orEmpty(),
-            o.optBoolean("eraseColor", false))
+        // Watermark colour, opacity and size: stored as values; recipes from before 1.1.0 name a preset.
+        val style = MarkStyle(option(o, "markFont", MarkFont.BOLD),
+            if (o.has("markRgb")) o.optInt("markRgb") and 0xFFFFFF else option(o, "markColor", MarkColor.GREY).rgb,
+            if (o.has("markAlpha")) o.optInt("markAlpha").coerceIn(10, 255) else option(o, "markStrength", MarkStrength.MEDIUM).alpha,
+            if (o.has("markScale")) o.optDouble("markScale", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.2f, 4f) ?: 1f else option(o, "markSize", MarkSize.MEDIUM).scale)
+        fun list(key: String, limit: Int) = o.optJSONArray(key)?.let { a -> (0 until minOf(a.length(), limit)).mapNotNull { a.optJSONObject(it) } }.orEmpty()
+        EditRecipe(frame = frame.takeIf { it.valid() } ?: Frame.FULL, turns = o.optInt("turns").mod(4),
+            treatment = runCatching { Treatment.valueOf(o.optString("filter", "ORIGINAL")) }.getOrDefault(Treatment.ORIGINAL),
+            brightness = o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
+            contrast = o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
+            outputAspect = o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f },
+            curvature = BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve(),
+            watermark = o.optString("watermark").trim().take(80).ifBlank { null }, stamp = o.optString("stamp").trim().take(80).ifBlank { null },
+            watermarkPlace = option(o, "watermarkPlace", MarkPlace.DIAGONAL), stampPlace = option(o, "stampPlace", StampPlace.BOTTOM_RIGHT),
+            watermarkStyle = style,
+            footer = o.optString("footer").trim().take(80).ifBlank { null }, footerPlace = option(o, "footerPlace", StampPlace.BOTTOM_CENTER), noteColor = option(o, "noteColor", MarkColor.RED),
+            signatures = list("signatures", 20).mapNotNull { SignatureCodec.decode(it) },
+            flatten = o.optJSONArray("flatten")?.let { a -> (0 until a.length()).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { f -> f.size == 9 && f.all { it.isFinite() && it in -1f..1f } }.orEmpty(),
+            eraseColor = o.optBoolean("eraseColor", false),
+            erase = list("erase", 500).mapNotNull { m ->
+                val kind = m.optString("k").let { k -> EraseKind.values().firstOrNull { it.name == k } } ?: return@mapNotNull null
+                EraseMark(kind, points(m.optJSONArray("p")), m.optDouble("w", .03).toFloat()).takeIf { it.valid() }
+            },
+            ink = list("ink", 500).mapNotNull { m -> InkStroke(points(m.optJSONArray("p")), m.optDouble("w", .01).toFloat(), m.optInt("c") and 0xFFFFFF, m.optInt("a", 255)).takeIf { it.valid() } },
+            texts = list("texts", 100).mapNotNull { m ->
+                TextMark(m.optString("t").take(500), m.optDouble("x", .5).toFloat(), m.optDouble("y", .5).toFloat(), m.optDouble("s", .04).toFloat(), m.optInt("c", 0x1A1A1A) and 0xFFFFFF, option(m, "f", MarkFont.PLAIN)).takeIf { it.valid() }
+            },
+            watermarkSpot = MarkSpot(o.optDouble("spotX", .5).toFloat(), o.optDouble("spotY", .5).toFloat(), o.optDouble("spotAngle", -45.0).toFloat()).takeIf { it.valid() } ?: MarkSpot(),
+            numbers = o.optString("numbers").takeIf { it.isNotEmpty() }?.let { n -> NumberFormat.values().firstOrNull { it.name == n } },
+            numberPlace = option(o, "numberPlace", StampPlace.BOTTOM_CENTER),
+            numberText = o.optString("numberText").trim().take(40).ifBlank { null })
     }.getOrDefault(EditRecipe())
     private inline fun <reified T : Enum<T>> option(o: JSONObject, key: String, default: T): T =
         o.optString(key).takeIf { it.isNotEmpty() }?.let { name -> enumValues<T>().firstOrNull { it.name == name } } ?: default
@@ -206,19 +233,19 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             val position = (dao.snapshot(bookId).maxOfOrNull { it.position } ?: -1) + 1
             val page = Sheet(id, bookId, position, final.name, if (swap) bounds.outHeight else bounds.outWidth, if (swap) bounds.outWidth else bounds.outHeight, bounds.outMimeType ?: "image/jpeg")
             try { dao.insert(page) } catch (e: Exception) { final.delete(); throw e }
-            page
+            renumber(bookId)
+            requireNotNull(dao.page(id))
         } finally { temporary.delete() }
     }
     suspend fun save(page: Sheet, edit: EditRecipe) = withContext(Dispatchers.IO) {
-        require(edit.frame.valid() && edit.curvature.valid() && edit.signatures.all { it.valid() })
-        require(edit.flatten.isEmpty() || edit.flatten.size == 9 && edit.flatten.all { it.isFinite() && it in -1f..1f })
-        require(edit.outputAspect == null || edit.outputAspect.isFinite() && edit.outputAspect in .1f..10f)
+        require(edit.valid())
         dao.recipe(page.id, RecipeCodec.encode(edit))
     }
     suspend fun move(bookId: String, id: String, direction: Int) = withContext(Dispatchers.IO) {
         lock.withLock { database.withTransaction {
             val pages = dao.snapshot(bookId); val i = pages.indexOfFirst { it.id == id }; val j = i + direction
             if (i >= 0 && j in pages.indices) { dao.position(pages[i].id, pages[j].position); dao.position(pages[j].id, pages[i].position) }
+            renumber(bookId)
         } }
     }
     /** Two recipes reference the same immutable full source; the split never recompresses it. */
@@ -233,6 +260,7 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             dao.recipe(current.id,RecipeCodec.encode(base.copy(frame=crops[0])))
             val second = current.copy(id=UUID.randomUUID().toString(),position=current.position+1,recipe=RecipeCodec.encode(base.copy(frame=crops[1])),ocrText=null,ocrRecipe=null)
             dao.insert(second)
+            renumber(current.notebookId)
             requireNotNull(dao.page(current.id))
         } }
     }
@@ -257,11 +285,98 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
                 database.withTransaction {
                     sides.forEach { dao.deletePage(it.id) }
                     dao.position(card.id, sides.minOf { it.position })
+                    renumber(bookId)
                 }
                 sides.map { it.source }.distinct().filter { dao.sourceUses(it) == 0 }.forEach { File(masters, it).delete() }
             }
             requireNotNull(dao.page(card.id))
         } finally { file.delete() }
+    }
+
+    /**
+     * Page numbers follow the pages: when any page of the document carries numbers, every page gets the same
+     * format and place with its current number. Runs inside the store lock after pages are added, moved or removed.
+     */
+    private suspend fun renumber(bookId: String) {
+        val pages = dao.snapshot(bookId)
+        val numbered = pages.map { it.edit() }.firstOrNull { it.numbers != null } ?: return
+        val format = numbered.numbers ?: return
+        pages.forEachIndexed { i, page ->
+            val recipe = page.edit()
+            val text = when (format) {
+                NumberFormat.PLAIN -> "${i + 1}"
+                NumberFormat.SLASH -> "${i + 1} / ${pages.size}"
+                NumberFormat.WORDS -> context.getString(com.docscan.rebuild.R.string.page_number_words, i + 1, pages.size)
+            }
+            val next = recipe.copy(numbers = format, numberPlace = numbered.numberPlace, numberText = text,
+                noteColor = if (recipe.footer != null || recipe.stamp != null) recipe.noteColor else numbered.noteColor)
+            if (next != recipe) dao.recipe(page.id, RecipeCodec.encode(next))
+        }
+    }
+
+    /** Numbers every page of the document in [format] at [place] (null removes the numbers). */
+    suspend fun numberPages(bookId: String, format: NumberFormat?, place: StampPlace, colour: MarkColor) = withContext(Dispatchers.IO) {
+        lock.withLock { database.withTransaction {
+            dao.snapshot(bookId).forEach { page ->
+                val recipe = page.edit()
+                val next = if (format == null) recipe.copy(numbers = null, numberText = null)
+                    else recipe.copy(numbers = format, numberPlace = place, noteColor = colour)
+                if (next != recipe) dao.recipe(page.id, RecipeCodec.encode(next))
+            }
+            renumber(bookId)
+        } }
+    }
+
+    /** Removes one page; its original goes too unless another page still uses it. The pages after it move up. */
+    suspend fun deletePage(page: Sheet) = withContext(Dispatchers.IO) {
+        lock.withLock {
+            database.withTransaction {
+                dao.deletePage(page.id)
+                dao.snapshot(page.notebookId).forEachIndexed { i, p -> if (p.position != i) dao.position(p.id, i) }
+                renumber(page.notebookId)
+            }
+            if (dao.sourceUses(page.source) == 0) File(masters, page.source).delete()
+        }
+    }
+
+    /**
+     * Retake: the newly captured page [fresh] takes the place of [old], keeping the document-wide marks of the old
+     * page (watermark, footer line, time, numbers). The old page and its original (unless shared) are removed.
+     */
+    suspend fun replace(old: Sheet, fresh: Sheet): Sheet = withContext(Dispatchers.IO) {
+        lock.withLock {
+            database.withTransaction {
+                val before = old.edit(); val recipe = requireNotNull(dao.page(fresh.id)).edit()
+                val kept = recipe.copy(watermark = before.watermark ?: recipe.watermark, watermarkPlace = if (before.watermark != null) before.watermarkPlace else recipe.watermarkPlace,
+                    watermarkStyle = if (before.watermark != null) before.watermarkStyle else recipe.watermarkStyle, watermarkSpot = if (before.watermark != null) before.watermarkSpot else recipe.watermarkSpot,
+                    footer = before.footer ?: recipe.footer, footerPlace = if (before.footer != null) before.footerPlace else recipe.footerPlace,
+                    stamp = before.stamp ?: recipe.stamp, stampPlace = if (before.stamp != null) before.stampPlace else recipe.stampPlace,
+                    noteColor = if (before.footer != null || before.stamp != null) before.noteColor else recipe.noteColor)
+                dao.recipe(fresh.id, RecipeCodec.encode(kept))
+                dao.deletePage(old.id)
+                dao.position(fresh.id, old.position)
+                dao.snapshot(old.notebookId).forEachIndexed { i, p -> if (p.position != i) dao.position(p.id, i) }
+                renumber(old.notebookId)
+            }
+            if (dao.sourceUses(old.source) == 0) File(masters, old.source).delete()
+            requireNotNull(dao.page(fresh.id))
+        }
+    }
+
+    /**
+     * A new document with the pages of [ids] in that order. The pages share the originals (nothing is copied or
+     * recompressed); the merged documents stay as they are.
+     */
+    suspend fun merge(ids: List<String>, title: String): Notebook = withContext(Dispatchers.IO) {
+        lock.withLock {
+            database.withTransaction {
+                val book = Notebook(UUID.randomUUID().toString(), title, System.currentTimeMillis()).also { dao.insert(it) }
+                var position = 0
+                for (id in ids) for (page in dao.snapshot(id)) dao.insert(page.copy(id = UUID.randomUUID().toString(), notebookId = book.id, position = position++))
+                renumber(book.id)
+                book
+            }
+        }
     }
 
     /**

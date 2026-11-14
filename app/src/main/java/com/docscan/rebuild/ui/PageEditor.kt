@@ -25,7 +25,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -70,20 +72,37 @@ private fun Treatment.label(): Int = when (this) {
     Treatment.NATIVE_INVERT_BOARD -> R.string.native_invert_board
 }
 
+/** A tool button of the editor's bottom row. */
+private data class EditorAction(val id: String, val label: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector, val selected: Boolean = false, val enabled: Boolean = true, val run: () -> Unit)
+
+/**
+ * The page editor, laid out like a scanner app's edit screen: the page, and below it three tabs of tools —
+ * Image (crop, filters, adjust, rotate, edit text, smart erase, colour marks, curved page, text recognition,
+ * retake), Marking (signature, text, brush, watermark, header and numbers) and Pages (add, split, delete, save).
+ * Opening a saved page shows the tools without choosing one; a new scan opens with the filters ([startTool]).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHostState, onBack: () -> Unit, onSave: (EditRecipe) -> Unit, onExportImage: (EditRecipe) -> Unit, onGallery: (EditRecipe) -> Unit, onOriginal: () -> Unit,
     title: String? = null, pageIndex: Int = 0, pageCount: Int = 1, saveOnBack: Boolean = false,
     onNavigate: ((Int, EditRecipe) -> Unit)? = null, onRename: ((String) -> Unit)? = null,
-    onAddPages: ((EditRecipe) -> Unit)? = null, onSplit: ((EditRecipe, Float, Boolean) -> Unit)? = null, onOcr: ((EditRecipe) -> Unit)? = null) {
+    onAddPages: ((EditRecipe) -> Unit)? = null, onSplit: ((EditRecipe, Float, Boolean) -> Unit)? = null, onOcr: ((EditRecipe) -> Unit)? = null,
+    startTool: String? = null, language: String = "heb+eng", onDelete: (() -> Unit)? = null, onRetake: ((EditRecipe) -> Unit)? = null,
+    onWatermarkAll: ((EditRecipe) -> Unit)? = null, onHeader: ((HeaderChoice) -> Unit)? = null) {
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
-    var tool by rememberSaveable { mutableStateOf("filters") }
+    val fullTools = setOf("erase", "text", "brush", "addtext", "watermark")
+    var tool by rememberSaveable(page.id) { mutableStateOf(startTool?.takeIf { it !in fullTools }) }
+    var full by rememberSaveable(page.id) { mutableStateOf(startTool?.takeIf { it in fullTools }) }
+    var tab by rememberSaveable { mutableStateOf(when (startTool) { "brush", "addtext", "watermark" -> "marks"; else -> "image" }) }
     var original by rememberSaveable { mutableStateOf(false) }
     var export by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
-    var more by remember { mutableStateOf(false) }
+    var signing by remember { mutableStateOf(false) }
+    var placing by remember { mutableStateOf<SignatureMark?>(null) }
+    var header by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     var split by remember(page.id) { mutableFloatStateOf(.5f) }
     var rightFirst by rememberSaveable { mutableStateOf(true) }
     var draftTitle by remember(title) { mutableStateOf(title.orEmpty()) }
@@ -93,11 +112,34 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     val currentEdit by rememberUpdatedState(edit)
     val scope = rememberCoroutineScope(); val context = LocalContext.current
     var flattening by remember(page.id) { mutableStateOf(false) }
-    BackHandler(!busy) { if (saveOnBack) onSave(edit) else onBack() }
+    val numberWords = stringResource(R.string.page_number_words, pageIndex + 1, pageCount.coerceAtLeast(1))
+    BackHandler(!busy) { if (tool != null && startTool == null) tool = null else if (saveOnBack) onSave(edit) else onBack() }
     if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) },
         text = { OutlinedTextField(draftTitle, { draftTitle = it.take(100) }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
         confirmButton = { TextButton(onClick = { onRename?.invoke(draftTitle.trim()); rename = false }, enabled = draftTitle.isNotBlank()) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text(stringResource(R.string.delete_page_title)) },
+        text = { Text(stringResource(R.string.delete_page_message)) },
+        confirmButton = { TextButton({ confirmDelete = false; onDelete?.invoke() }, modifier = Modifier.testTag("confirm-delete-page")) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDelete = false }) { Text(stringResource(R.string.cancel)) } })
+    if (signing) SignatureChooser(onChosen = { signing = false; placing = it }, onDismiss = { signing = false })
+    placing?.let { mark ->
+        SignaturePlacer(store, listOf(page), mark, onApply = { _, placed -> placing = null; change(currentEdit.copy(signatures = currentEdit.signatures + placed)) },
+            onRemoveAll = { placing = null; change(currentEdit.copy(signatures = emptyList())) }, onDismiss = { placing = null }, recipe = edit)
+    }
+    if (header) {
+        val unmarked by produceState<android.graphics.Bitmap?>(null, page.id, edit.copy(footer = null, stamp = null, numberText = null)) {
+            value = withContext(Dispatchers.IO) { runCatching { ImagePipeline.render(store.source(page), currentEdit.copy(footer = null, stamp = null, numberText = null), 700) }.getOrNull() }
+        }
+        HeaderDialog(unmarked, edit, pageCount, onDismiss = { header = false }, onApply = { choice ->
+            header = false
+            val now = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date())
+            val label = when (choice.numbers) { null -> null; NumberFormat.PLAIN -> "${pageIndex + 1}"; NumberFormat.SLASH -> "${pageIndex + 1} / $pageCount"; NumberFormat.WORDS -> numberWords }
+            change(currentEdit.copy(footer = choice.footer, footerPlace = choice.footerPlace, numbers = choice.numbers, numberPlace = choice.numberPlace, numberText = label,
+                stamp = if (choice.stamp) currentEdit.stamp ?: now else null, stampPlace = choice.stampPlace, noteColor = choice.colour))
+            onHeader?.invoke(choice)
+        })
+    }
     val nativeAvailable = ImagePipeline.referenceEngineAvailable
     // All 14 filters in every build: the research engine when present, otherwise DocScan's original filters.
     val treatments = listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD)
@@ -110,7 +152,46 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             TextButton(onClick = { export = false; onOriginal() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.source_export)) }
         }
     }
-    Scaffold(modifier = Modifier.testTag("page-editor"), snackbarHost = { SnackbarHost(snack) }, topBar = {
+    fun open(next: String) { tool = if (tool == next) null else next; original = false; zoom = 1f; pan = Offset.Zero }
+    // Turning the page carries everything placed on it along.
+    fun rotate() {
+        val aspect = CropGeometry.dimensions(edit.frame, page.width, page.height, edit.outputAspect).rotated(edit.turns).aspect
+        original = false; change(edit.turnedBy(3, aspect))
+    }
+    val actions = when (tab) {
+        "marks" -> listOf(
+            EditorAction("sign", R.string.signature, Icons.Outlined.Draw) { signing = true },
+            EditorAction("addtext", R.string.add_text, Icons.Outlined.Title) { full = "addtext" },
+            EditorAction("brush", R.string.brush, Icons.Outlined.Brush) { full = "brush" },
+            EditorAction("watermark", R.string.watermark, Icons.Outlined.WaterDrop) { full = "watermark" },
+            EditorAction("header", R.string.header_short, Icons.Outlined.FormatListNumbered) { header = true })
+        "pages" -> listOfNotNull(
+            if (onAddPages != null) EditorAction("add", R.string.add_pages, Icons.Outlined.AddAPhoto) { onAddPages(edit) } else null,
+            EditorAction("split", R.string.split_book, Icons.Outlined.VerticalSplit, tool == "split", onSplit != null) { open("split") },
+            if (onDelete != null) EditorAction("delete", R.string.delete_page, Icons.Outlined.Delete) { confirmDelete = true } else null,
+            EditorAction("gallery", R.string.save_gallery, Icons.Outlined.PhotoLibrary) { onGallery(edit) },
+            EditorAction("jpeg", R.string.save_jpeg, Icons.Outlined.Image) { onExportImage(edit) },
+            EditorAction("original", R.string.source_export, Icons.Outlined.SaveAlt) { onOriginal() })
+        else -> listOfNotNull(
+            EditorAction("crop", R.string.crop, Icons.Outlined.Crop, tool == "crop") { open("crop") },
+            EditorAction("filters", R.string.filters, Icons.Outlined.PhotoFilter, tool == "filters") { open("filters") },
+            EditorAction("adjust", R.string.adjust, Icons.Outlined.Tune, tool == "adjust") { open("adjust") },
+            EditorAction("rotate", R.string.rotate, Icons.Outlined.RotateLeft) { rotate() },
+            EditorAction("text", R.string.edit_text, Icons.Outlined.TextFields) { full = "text" },
+            EditorAction("erase", R.string.smart_erase, Icons.Outlined.AutoFixHigh) { full = "erase" },
+            EditorAction("colour", R.string.erase_color_marks, Icons.Outlined.FormatColorReset, edit.eraseColor) { change(edit.copy(eraseColor = !edit.eraseColor)) },
+            EditorAction("curve", R.string.book_curve, Icons.Outlined.AutoStories, tool == "curve") { open("curve") },
+            if (onOcr != null) EditorAction("ocr", R.string.ocr, Icons.Outlined.FindInPage) { onOcr(edit) } else null,
+            if (onRetake != null) EditorAction("retake", R.string.retake, Icons.Outlined.CameraAlt) { onRetake(edit) } else null)
+    }
+    when (full) {
+        "erase" -> EraseTool(store, page, edit, language, onDone = { change(it); full = null }, onCancel = { full = null })
+        "text" -> TextEditTool(store, page, edit, language, onDone = { change(it); full = null }, onCancel = { full = null })
+        "brush" -> BrushTool(store, page, edit, onDone = { change(it); full = null }, onCancel = { full = null })
+        "addtext" -> TextMarkTool(store, page, edit, onDone = { change(it); full = null }, onCancel = { full = null })
+        "watermark" -> WatermarkTool(store, page, edit, offerAllPages = pageCount > 1 && onWatermarkAll != null, onDone = { recipe, all ->
+            change(recipe); full = null; if (all) onWatermarkAll?.invoke(recipe) }, onCancel = { full = null })
+        else -> Scaffold(modifier = Modifier.testTag("page-editor"), snackbarHost = { SnackbarHost(snack) }, topBar = {
         TopAppBar(title = {
             if (title != null && onRename != null) TextButton(onClick = { draftTitle = title; rename = true }, enabled = !busy) {
                 Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -122,19 +203,13 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back))
             }
         }, actions = {
-            Box {
-                IconButton(onClick = { more = true }, enabled = !busy, modifier = Modifier.testTag("page-tools")) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.more_actions)) }
-                DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.split_book)) }, enabled = onSplit != null, onClick = { more=false; tool="split"; original=false;zoom=1f;pan=Offset.Zero })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.book_curve)) }, onClick = { more=false; tool="curve"; original=false;zoom=1f;pan=Offset.Zero })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.ocr)) }, enabled = onOcr != null, onClick = { more=false;onOcr?.invoke(edit) })
-                    // Removes pen and highlighter colour (blue, red, green, yellow); black print stays.
-                    DropdownMenuItem(text = { Text(stringResource(R.string.erase_color_marks)) }, onClick = { more=false; change(edit.copy(eraseColor = !edit.eraseColor)) },
-                        leadingIcon = { Checkbox(edit.eraseColor, null) }, modifier = Modifier.testTag("erase-color"))
-                }
-            }
             IconButton(onClick = { export = true }, enabled = !busy, modifier = Modifier.testTag("editor-export")) {
                 Icon(Icons.Outlined.Download, stringResource(R.string.export_scan))
+            }
+            Button(onClick = { onSave(edit) }, enabled = !busy, shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(contentColor = Color.White),
+                contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.padding(end = 6.dp).testTag("save-edit")) {
+                Icon(Icons.Outlined.Check, null, Modifier.size(22.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.done))
             }
         })
     },
@@ -150,7 +225,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             Row(verticalAlignment=Alignment.CenterVertically) {
                                 Checkbox(rightFirst,{rightFirst=it});Text(stringResource(R.string.right_page_first),Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
                                 TextButton(onClick={onSplit?.invoke(edit,split,rightFirst)},enabled=!busy && runCatching { edit.frame.split(split) }.isSuccess){Text(stringResource(R.string.split_apply))}
-                                TextButton(onClick={tool="filters"}){Text(stringResource(R.string.cancel))}
+                                TextButton(onClick={tool=null}){Text(stringResource(R.string.cancel))}
                             }
                         }
                         "curve" -> Column(Modifier.padding(horizontal=16.dp)) {
@@ -174,13 +249,13 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             Slider(edit.curvature.top,{change(edit.copy(curvature=edit.curvature.copy(top=it)))},valueRange=-.2f.. .2f,modifier=Modifier.testTag("curve-top"))
                             Text(stringResource(R.string.curve_bottom),style=MaterialTheme.typography.labelSmall)
                             Slider(edit.curvature.bottom,{change(edit.copy(curvature=edit.curvature.copy(bottom=it)))},valueRange=-.2f.. .2f,modifier=Modifier.testTag("curve-bottom"))
-                            Row { TextButton(onClick={change(edit.copy(curvature=BookCurve()))}){Text(stringResource(R.string.reset_curve))};TextButton(onClick={tool="filters"}){Text(stringResource(R.string.done))} }
+                            Row { TextButton(onClick={change(edit.copy(curvature=BookCurve()))}){Text(stringResource(R.string.reset_curve))};TextButton(onClick={tool=null}){Text(stringResource(R.string.done))} }
                         }
                         "filters" -> LazyRow(Modifier.fillMaxWidth().testTag("filter-strip"), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(treatments, key = { it.name }) { treatment ->
                                 val selected = edit.treatment == treatment
                                 Column(Modifier.width(82.dp).testTag("filter-${treatment.name}").selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).background(if (selected) ScanTeal else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    PagePicture(store, page, Modifier.size(72.dp, 82.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment), edge = 160)
+                                    PagePicture(store, page, Modifier.size(72.dp, 82.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment).withoutMarks(), edge = 160)
                                     Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp, bottom = 3.dp), color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                 }
                             }
@@ -208,15 +283,19 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 5.dp).testTag("editor-toolbar"), verticalAlignment = Alignment.CenterVertically) {
-                        if (onAddPages != null) EditorTool(R.string.add_pages, Icons.Outlined.AddAPhoto, false, Modifier.weight(1f)) { onAddPages(edit) }
-                        EditorTool(R.string.rotate, Icons.Outlined.RotateLeft, false, Modifier.weight(1f)) { tool = "filters"; original = false; change(edit.copy(turns = (edit.turns + 3).mod(4))) }
-                        EditorTool(R.string.crop, Icons.Outlined.Crop, tool == "crop", Modifier.weight(1f)) { tool = "crop"; original = false; zoom = 1f; pan = Offset.Zero }
-                        EditorTool(if (tool == "adjust") R.string.filters else R.string.adjust, Icons.Outlined.Tune, tool == "adjust", Modifier.weight(1f)) { tool = if (tool == "adjust") "filters" else "adjust"; original = false }
-                        Button(onClick = { onSave(edit) }, enabled = !busy, shape = RoundedCornerShape(6.dp),
-                            colors = ButtonDefaults.buttonColors(contentColor = Color.White),
-                            contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.height(50.dp).testTag("save-edit")) {
-                            Icon(Icons.Outlined.Check, stringResource(R.string.save), Modifier.size(28.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
+                        listOf("image" to R.string.tab_image, "marks" to R.string.tab_marks, "pages" to R.string.tab_pages).forEach { (id, label) ->
+                            val on = tab == id
+                            Column(Modifier.clip(RoundedCornerShape(8.dp)).clickable { tab = id }.padding(horizontal = 18.dp, vertical = 4.dp).testTag("editor-tab-$id"),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(stringResource(label), color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleSmall)
+                                Box(Modifier.padding(top = 3.dp).size(28.dp, 3.dp).background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(2.dp)))
+                            }
+                        }
+                    }
+                    LazyRow(Modifier.fillMaxWidth().testTag("editor-toolbar"), contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)) {
+                        items(actions, key = { it.id }) { action ->
+                            EditorTool(action.label, action.icon, action.selected, Modifier.width(80.dp).testTag("edit-${action.id}"), enabled = action.enabled && !busy, onClick = action.run)
                         }
                     }
                 }
@@ -275,13 +354,16 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             }
         }
     }
+    }
 }
 
 @Composable
-private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    TextButton(onClick, modifier = modifier, contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(label), color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun EditorTool(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    TextButton(onClick, modifier = modifier, enabled = enabled, contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, tint = if (enabled) tint else tint.copy(alpha = .4f))
+        Text(stringResource(label), color = if (enabled) tint else tint.copy(alpha = .4f), style = MaterialTheme.typography.labelSmall, maxLines = 2, minLines = 2,
+            overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     } }
 }
 

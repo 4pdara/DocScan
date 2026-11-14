@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -260,15 +261,21 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
     val blue = Color(0xFF4480E8); val red = Color(0xFFFF715D)
     val groups = listOf(
         R.string.tools_scan to listOf(Tool(R.string.smart_scan, Icons.Outlined.DocumentScanner, HomeGreen) { onTool("scan") }, Tool(R.string.extract_text, Icons.Outlined.TextFields, HomeGreen) { onTool("ocr") },
-            Tool(R.string.id_card, Icons.Outlined.Badge, HomeGreen) { onTool("idcard") }, Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, blue) { onTool("qr") }),
+            Tool(R.string.id_card, Icons.Outlined.Badge, HomeGreen) { onTool("idcard") }, Tool(R.string.tool_book, Icons.Outlined.AutoStories, blue) { onTool("book") },
+            Tool(R.string.tool_whiteboard, Icons.Outlined.Dashboard, HomeGreen) { onTool("board") }, Tool(R.string.tool_slides, Icons.Outlined.Slideshow, red) { onTool("slides") },
+            Tool(R.string.timestamp_camera, Icons.Outlined.Schedule, blue) { onTool("stampscan") }),
         R.string.tools_import to listOf(Tool(R.string.import_images, Icons.Outlined.Image, blue) { onTool("import") }, Tool(R.string.import_pdf, Icons.Outlined.FileOpen, blue) { onTool("import") }),
         R.string.tools_convert to listOf(Tool(R.string.to_word, Icons.Outlined.Description, blue) { onTool("word") }, Tool(R.string.to_excel, Icons.Outlined.TableChart, HomeGreen) { onTool("excel") },
             Tool(R.string.to_powerpoint, Icons.Outlined.Slideshow, red) { onTool("powerpoint") }, Tool(R.string.pdf_to_images, Icons.Outlined.PhotoLibrary, HomeGreen) { onTool("images") },
             Tool(R.string.long_image, Icons.Outlined.ViewDay, HomeGreen) { onTool("long") }),
-        R.string.tools_edit to listOf(Tool(R.string.watermark, Icons.Outlined.WaterDrop, blue) { onTool("watermark") }, Tool(R.string.footer, Icons.Outlined.Title, blue) { onTool("footer") },
-            Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") }, Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") },
-            Tool(R.string.protected_pdf, Icons.Outlined.Lock, red) { onTool("protect") }, Tool(R.string.signature, Icons.Outlined.Draw, blue) { onTool("signature") }),
-        R.string.tools_utilities to listOf(Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
+        R.string.tools_edit to listOf(Tool(R.string.signature, Icons.Outlined.Draw, blue) { onTool("signature") }, Tool(R.string.watermark, Icons.Outlined.WaterDrop, blue) { onTool("watermark") },
+            Tool(R.string.smart_erase, Icons.Outlined.AutoFixHigh, HomeGreen) { onTool("erase") }, Tool(R.string.erase_color_marks, Icons.Outlined.FormatColorReset, blue) { onTool("erasecolor") },
+            Tool(R.string.edit_text, Icons.Outlined.TextFields, HomeGreen) { onTool("text") }, Tool(R.string.header_short, Icons.Outlined.FormatListNumbered, blue) { onTool("footer") },
+            Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") }, Tool(R.string.merge_documents, Icons.Outlined.MergeType, red) { onTool("merge") },
+            Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.reorder_pages, Icons.Outlined.SwapVert, blue) { onTool("reorder") },
+            Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") }, Tool(R.string.protected_pdf, Icons.Outlined.Lock, HomeGreen) { onTool("protect") }),
+        R.string.tools_utilities to listOf(Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, HomeGreen) { onTool("qr") }, Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") },
+            Tool(R.string.email, Icons.Outlined.Email, blue) { onTool("email") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
             Tool(R.string.select_documents, Icons.Outlined.Checklist, HomeGreen, onSelect), Tool(R.string.trash, Icons.Outlined.RestoreFromTrash, HomeGreen, onTrash),
             Tool(R.string.mark_settings, Icons.Outlined.Settings, HomeMuted) { onTool("settings") }))
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp).testTag("tools-sections")) {
@@ -277,7 +284,7 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
             tools.chunked(4).forEach { row ->
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { tool ->
-                        Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = tool.action).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = tool.action).padding(vertical = 8.dp).testTag("tools-${tool.label}"), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(Modifier.size(52.dp).background(tool.tint.copy(alpha = .1f), CircleShape), contentAlignment = Alignment.Center) { Icon(tool.icon, null, Modifier.size(26.dp), tint = tool.tint) }
                             Spacer(Modifier.height(6.dp))
                             Text(stringResource(tool.label), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 2, minLines = 2, modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp))
@@ -288,4 +295,30 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
             }
         }
     }
+}
+
+/** Choose documents to merge; the order of the taps is the order of their pages in the new document. */
+@Composable
+fun MergeDialog(choices: List<LibraryEntry>, onDismiss: () -> Unit, onMerge: (List<String>) -> Unit) {
+    var order by remember { mutableStateOf(listOf<String>()) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.merge_documents)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(if (choices.size < 2) R.string.merge_need_two else R.string.merge_hint), style = MaterialTheme.typography.bodySmall)
+            LazyColumn(Modifier.heightIn(max = 360.dp).testTag("merge-list")) {
+                items(choices, key = { it.book.id }) { entry ->
+                    val at = order.indexOf(entry.book.id)
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { order = if (at >= 0) order - entry.book.id else order + entry.book.id }
+                        .padding(vertical = 8.dp, horizontal = 4.dp).testTag("merge-${entry.book.id}"), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(28.dp).background(if (at >= 0) HomeGreen else HomeTile, CircleShape), contentAlignment = Alignment.Center) {
+                            if (at >= 0) Text("${at + 1}", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(entry.book.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(pluralStringResource(R.plurals.pages, entry.pageCount, entry.pageCount), style = MaterialTheme.typography.labelSmall, color = HomeMuted)
+                    }
+                }
+            }
+        } },
+        confirmButton = { TextButton({ onMerge(order) }, enabled = order.size >= 2, modifier = Modifier.testTag("merge-confirm")) { Text(stringResource(R.string.merge)) } },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } })
 }

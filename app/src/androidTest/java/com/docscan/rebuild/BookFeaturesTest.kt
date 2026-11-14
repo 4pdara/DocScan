@@ -187,12 +187,12 @@ class BookFeaturesTest {
             val document=hasText(title) and !hasSetTextAction()
             compose.waitUntil(15000){compose.onAllNodes(document).fetchSemanticsNodes().isNotEmpty()}
             fun openEditor() {
-                val label=compose.activity.getString(R.string.edit)
-                compose.waitUntil(15000){compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()}
-                compose.onNodeWithText(label).performClick()
+                compose.waitUntil(15000){compose.onAllNodesWithTag("edit-page-${page.id}").fetchSemanticsNodes().isNotEmpty()}
+                compose.onNodeWithTag("edit-page-${page.id}").performClick()
+                compose.waitUntil(15000){compose.onAllNodesWithTag("editor-toolbar").fetchSemanticsNodes().isNotEmpty()}
             }
             compose.onNode(document).performClick();openEditor()
-            compose.onNodeWithText(compose.activity.getString(R.string.crop)).performClick()
+            compose.onNodeWithTag("edit-crop").performClick()
             for(i in 0..7)compose.onNodeWithTag("crop-handle-$i").assertIsDisplayed()
             compose.waitForIdle()
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { screenshot ->
@@ -211,13 +211,13 @@ class BookFeaturesTest {
             assertEquals(points[0].y,points[1].y,.001f);assertEquals(.85f,points[2].y,.001f);assertEquals(.85f,points[3].y,.001f)
             assertEquals(hash(input),hash(store.source(page)))
             openEditor()
-            compose.onNodeWithTag("page-tools").performClick()
-            compose.onNodeWithText(compose.activity.getString(R.string.book_curve)).performClick()
+            compose.onNodeWithTag("editor-toolbar").performScrollToNode(hasTestTag("edit-curve"))
+            compose.onNodeWithTag("edit-curve").performClick()
             compose.onNodeWithTag("curve-top").assertIsDisplayed()
             compose.onNodeWithTag("curve-bottom").assertIsDisplayed()
             compose.onNodeWithText(compose.activity.getString(R.string.reset_curve)).performClick()
-            compose.onNodeWithTag("page-tools").performClick()
-            compose.onNodeWithText(compose.activity.getString(R.string.split_book)).performClick()
+            compose.onNodeWithTag("editor-tab-pages").performClick()
+            compose.onNodeWithTag("edit-split").performClick()
             compose.onNodeWithTag("split-preview").assertIsDisplayed()
             compose.onNodeWithText(compose.activity.getString(R.string.split_apply)).performClick()
             compose.waitUntil(15000){runBlocking{store.dao.snapshot(page.notebookId).size==2}}
