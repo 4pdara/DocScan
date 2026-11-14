@@ -160,6 +160,34 @@ object MarkPalette {
     val ink = listOf(0xFFE600, 0xFFF59D, 0x1E88E5, 0xFF6B6B, 0xFF9800, 0x1DB9A0, 0xFFFFFF, 0x000000, 0xD32F2F, 0x2E7D32)
 }
 
+/**
+ * A drawn signature: strokes as points within its own box (0..1 on both axes; the box is [aspect] times as wide as
+ * tall), placed with its top-left corner at ([x], [y]) of the page and [width] of the page width wide.
+ */
+data class SignatureMark(val strokes: List<List<Vertex>>, val aspect: Float, val x: Float = .55f, val y: Float = .8f, val width: Float = .35f, val color: MarkColor = MarkColor.BLACK) {
+    fun valid() = strokes.isNotEmpty() && strokes.all { it.isNotEmpty() } && aspect.isFinite() && aspect in .2f..20f &&
+        x.isFinite() && y.isFinite() && width.isFinite() && width in .03f..1f && x in -.5f..1f && y in -.5f..1f
+}
+
+/**
+ * Where a watermark is drawn: corner to corner, across the middle, along the top or bottom, up the side; [FREE]
+ * where the user placed it ([EditRecipe.watermarkSpot]), or [TILE] repeated over the whole page at the spot's angle.
+ */
+enum class MarkPlace { DIAGONAL, CENTER, TOP, BOTTOM, SIDE, FREE, TILE }
+/** Where the timestamp, page number or footer line is drawn: a corner, or centred at the bottom or top edge. */
+enum class StampPlace { BOTTOM_RIGHT, BOTTOM_LEFT, TOP_RIGHT, TOP_LEFT, BOTTOM_CENTER, TOP_CENTER }
+/** Bundled Hebrew fonts (SIL OFL 1.1, see assets/licenses). */
+enum class MarkFont { BOLD, PLAIN, CLASSIC, DAVID, HEADLINE, FESTIVE, HANDWRITING, SERIF }
+enum class MarkColor(val rgb: Int) { GREY(0x787878), BLACK(0x1A1A1A), RED(0xC8281E), BLUE(0x1E50C8), GREEN(0x1E8C3C), ORANGE(0xE07814) }
+/** Opacity of the watermark ink, 0-255. */
+enum class MarkStrength(val alpha: Int) { LIGHT(40), MEDIUM(70), STRONG(130) }
+enum class MarkSize(val scale: Float) { SMALL(.7f), MEDIUM(1f), LARGE(1.35f) }
+/** Watermark look: font, colour ([rgb]), opacity ([alpha], 0-255) and size ([scale], 1 = normal). The enums are the preset choices. */
+data class MarkStyle(val font: MarkFont = MarkFont.BOLD, val rgb: Int = MarkColor.GREY.rgb, val alpha: Int = MarkStrength.MEDIUM.alpha, val scale: Float = MarkSize.MEDIUM.scale) {
+    constructor(font: MarkFont, color: MarkColor, strength: MarkStrength = MarkStrength.MEDIUM, size: MarkSize = MarkSize.MEDIUM) : this(font, color.rgb, strength.alpha, size.scale)
+    fun valid() = alpha in 10..255 && scale.isFinite() && scale in .2f..4f
+}
+
 /** Vertical page warp after perspective correction, before rotation. Values are image-height fractions. */
 data class BookCurve(val top: Float = 0f, val bottom: Float = 0f) {
     fun valid() = top.isFinite() && bottom.isFinite() && top in -.2f.. .2f && bottom in -.2f.. .2f
