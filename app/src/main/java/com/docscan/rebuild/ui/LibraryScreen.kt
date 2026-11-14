@@ -357,7 +357,6 @@ fun MergeDialog(choices: List<LibraryEntry>, onDismiss: () -> Unit, onMerge: (Li
                         Spacer(Modifier.width(10.dp))
                         Text(entry.book.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(pluralStringResource(R.plurals.pages, entry.pageCount, entry.pageCount), style = MaterialTheme.typography.labelSmall, color = HomeMuted)
-            if (tags.isNotEmpty()) Text(tags.joinToString("  ") { "#$it" }, style = MaterialTheme.typography.labelSmall, color = HomeGreen, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
