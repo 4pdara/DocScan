@@ -160,6 +160,8 @@ fun ScanApp(store: ScanStore) {
     val pages by remember(bookId) { bookId?.let { store.dao.pages(it) } ?: flowOf(emptyList()) }.collectAsState(emptyList())
     val currentTitle = books.firstOrNull { it.book.id == bookId }?.book?.title ?: stringResource(R.string.document)
     val snack = remember { SnackbarHostState() }
+    // Book mode puts the right-hand page first in a right-to-left language.
+    val rightToLeft = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val defaultTitle = { context.getString(R.string.title_scan, DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date())) }
     LaunchedEffect(vm) { for (message in vm.notices) snack.showSnackbar(context.getString(message)) }
     LaunchedEffect(Unit) {
@@ -350,7 +352,7 @@ fun ScanApp(store: ScanStore) {
             "book" -> {
                 if (recipe.frame == Frame.FULL) page else {
                     val gutter = withContext(Dispatchers.Default) { runCatching { com.docscan.rebuild.imaging.BookGutter.find(store.source(page), recipe) }.getOrDefault(.5f) }
-                    val rightFirst = context.resources.configuration.layoutDirection == android.view.View.LAYOUT_DIRECTION_RTL
+                    val rightFirst = rightToLeft
                     val first = runCatching { store.split(page, recipe.copy(flatten = emptyList()), gutter, rightFirst) }.getOrNull() ?: return page
                     // Each page straightens on its own crop.
                     store.dao.snapshot(page.notebookId).filter { it.source == page.source }.forEach { half ->
