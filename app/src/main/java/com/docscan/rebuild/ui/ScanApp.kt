@@ -84,8 +84,10 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
                 // a flat page or one without enough text keeps no correction. The editor can turn it off.
                 val cropped = if (frame != null) page.edit().copy(frame = frame) else page.edit()
                 val flatten = if (frame == null) null else withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), cropped) }.getOrNull() }
-                // Marks chosen in Settings (off by default) go on new pages only.
+                // Marks chosen in Settings (off by default) go on new pages only, and so does the filter for new scans
+                // (Magic Color unless changed); the photo itself is kept as taken.
                 val recipe = MarkSettings(store.context).applyTo(if (flatten != null) cropped.copy(flatten = flatten.toList()) else cropped)
+                    .copy(treatment = ScanSettings(store.context).treatment)
                 if (recipe != page.edit()) store.save(page, recipe)
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
@@ -97,18 +99,24 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
 
 internal object PreviewCache {
     val slots = Semaphore(2)
-    val memory = object : LruCache<String, Bitmap>(16 * 1024) { override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount / 1024 }
+    // An eighth of the app's memory (at least 32 MB) for rendered pages, so sharp previews stay cached.
+    val memory = object : LruCache<String, Bitmap>(maxOf(32 * 1024, (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt())) { override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount / 1024 }
 }
 
 @Composable
-fun PagePicture(store: ScanStore, page: Sheet, modifier: Modifier = Modifier, recipe: EditRecipe = page.edit(), edge: Int = 1200, description: String? = null, naturalHeight: Boolean = false) {
+fun PagePicture(store: ScanStore, page: Sheet, modifier: Modifier = Modifier, recipe: EditRecipe = page.edit(), edge: Int = 1800, description: String? = null, naturalHeight: Boolean = false) {
     val key = "${page.id}:$recipe:$edge"
     var failure by remember(key) { mutableIntStateOf(0) }
+    var shownPage by remember { mutableStateOf<String?>(null) }
     val bitmap by produceState<Bitmap?>(null, key) {
-        value = PreviewCache.memory.get(key)
-        if (value == null) {
+        // While a new edit or a sharper version is drawn, the same page keeps showing; another page starts empty.
+        val cached = PreviewCache.memory.get(key)
+        if (cached != null) { value = cached; shownPage = page.id; return@produceState }
+        if (shownPage != page.id) value = null
+        run {
             try {
                 value = PreviewCache.slots.withPermit { withContext(Dispatchers.IO) { ImagePipeline.render(store.source(page), recipe, edge).also { PreviewCache.memory.put(key, it) } } }
+                shownPage = page.id
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { failure = R.string.error_memory }
             catch (e: Exception) { failure = R.string.processing_error }

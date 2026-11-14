@@ -5,7 +5,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -79,10 +86,29 @@ fun PageViewer(store: ScanStore, pages: List<Sheet>, startId: String?, title: St
             }
         }
     }) { padding ->
-        HorizontalPager(pager, Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceVariant).testTag("viewer-pages"), key = { pages[it].id }) { index ->
-            Box(Modifier.fillMaxSize().padding(14.dp), contentAlignment = Alignment.Center) {
-                PagePicture(store, pages[index], Modifier.fillMaxSize().testTag("viewer-page-${pages[index].id}"), edge = 1600,
-                    description = stringResource(R.string.page_number, index + 1))
+        // Two fingers zoom into the shown page (drawn from the full-resolution photo when zoomed); swiping
+        // between pages works again at normal size.
+        var zoom by remember { mutableFloatStateOf(1f) }; var pan by remember { mutableStateOf(Offset.Zero) }
+        LaunchedEffect(pager.currentPage) { zoom = 1f; pan = Offset.Zero }
+        HorizontalPager(pager, Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceVariant).testTag("viewer-pages"),
+            key = { pages[it].id }, userScrollEnabled = zoom <= 1f) { index ->
+            val shown = index == pager.currentPage
+            Box(Modifier.fillMaxSize().padding(14.dp).pointerInput(index) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.count { it.pressed } > 1 || zoom > 1f) {
+                            zoom = (zoom * event.calculateZoom()).coerceIn(1f, 5f)
+                            pan = if (zoom == 1f) Offset.Zero else pan + event.calculatePan()
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }, contentAlignment = Alignment.Center) {
+                PagePicture(store, pages[index], Modifier.fillMaxSize().testTag("viewer-page-${pages[index].id}")
+                    .graphicsLayer { if (shown) { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y } },
+                    edge = if (shown && zoom > 1.25f) 4096 else 1800, description = stringResource(R.string.page_number, index + 1))
             }
         }
     }

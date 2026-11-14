@@ -433,6 +433,8 @@
     <string name="tags">תגיות</string>
     <string name="tags_all">הכול</string>
     <string name="tags_none">עדיין אין תגיות.</string>
+    <string name="new_scan_filter">מסנן לסריקות חדשות</string>
+    <string name="new_scan_filter_hint">כל צילום חדש מתחיל עם המסנן הזה. אפשר לבחור מסנן אחר בעורך, והצילום המקורי תמיד נשמר.</string>
 </resources>
 
 

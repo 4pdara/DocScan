@@ -59,7 +59,7 @@ fun fitImageRect(size: Size, aspect: Float): Rect {
     return Rect((size.width - width) / 2, (size.height - height) / 2, (size.width + width) / 2, (size.height + height) / 2)
 }
 
-private fun Treatment.label(): Int = when (this) {
+fun Treatment.label(): Int = when (this) {
     Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (ImagePipeline.referenceEngineAvailable) R.string.native_paper else R.string.clean_paper
     Treatment.NATIVE_MAGIC_COLOR -> R.string.native_magic_color
     Treatment.NATIVE_NO_SHADOW -> R.string.native_no_shadow
@@ -333,7 +333,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                                 if (next in 0 until pageCount) latestNavigate?.invoke(next, currentEdit)
                             }
                         }
-                    }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, if (original) EditRecipe() else edit)
+                    }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, if (original) EditRecipe() else edit,
+                        // Zoomed in, the page is drawn from the full-resolution photo so small print stays sharp.
+                        edge = if (zoom > 1.25f) 4096 else 1800)
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {

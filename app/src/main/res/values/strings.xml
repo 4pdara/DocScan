@@ -433,6 +433,8 @@
     <string name="tags">Tags</string>
     <string name="tags_all">All</string>
     <string name="tags_none">No tags yet.</string>
+    <string name="new_scan_filter">Filter for new scans</string>
+    <string name="new_scan_filter_hint">Every new photo starts with this filter. Another filter can be chosen in the editor, and the original photo is always kept.</string>
 </resources>
 
 

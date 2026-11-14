@@ -375,6 +375,8 @@ class RebuildFlowTest {
             fun dark(r: android.graphics.RectF): Int { var n = 0; for (y in r.top.toInt() until r.bottom.toInt() step 4) for (x in r.left.toInt() until r.right.toInt() step 4) if (Color.red(sheet.getPixel(x, y)) < 100) n++; return n }
             assertTrue("First cell holds a page", dark(cells[0]) > 500); assertTrue(dark(cells[2]) > 500); assertEquals("Fourth cell is empty", 0, dark(cells[3]))
         } finally { sheet.recycle() }
+        // New photos start enhanced (Magic Color) unless the user picks another filter.
+        assertEquals(Treatment.NATIVE_MAGIC_COLOR, ScanSettings(context).treatment)
         // Tags: cleaned, without duplicates, and offered for other documents.
         val tags = DocumentTags(context)
         tags.set(book.id, listOf(" קבלות ", "בית   ספר", "קבלות", ""))

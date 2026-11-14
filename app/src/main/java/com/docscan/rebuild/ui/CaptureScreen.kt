@@ -81,12 +81,25 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         taking = true; gate.markCaptured(observation.signature)
         val cropCaptured = detectBounds; val batchCaptured = batch; val seen = observation.frame
         val file = File(context.cacheDir, "capture-${UUID.randomUUID()}.jpg")
-        imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
+        fun takeNow() = imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                 latestCaptured(file, cropCaptured, batchCaptured, seen) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
             }
             override fun onError(exception: ImageCaptureException) { file.delete(); taking = false; capturing.set(false); gate.failed(); error = true }
         })
+        // Focus and exposure on the page first (the middle of the view, or the detected page's centre), so the text
+        // is sharp; the photo is taken when focus settles, or after a second at most.
+        val control = camera?.cameraControl
+        if (control == null || preview.width == 0) { takeNow(); return }
+        val centre = seen?.points?.let { p -> Offset(p.sumOf { it.x.toDouble() }.toFloat() / 4, p.sumOf { it.y.toDouble() }.toFloat() / 4) } ?: Offset(.5f, .5f)
+        val point = preview.meteringPointFactory.createPoint(preview.width * centre.x.coerceIn(.2f, .8f), preview.height * centre.y.coerceIn(.2f, .8f))
+        val fired = AtomicBoolean(false)
+        val fire = { if (fired.compareAndSet(false, true)) takeNow() }
+        runCatching {
+            control.startFocusAndMetering(FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
+                .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS).build()).addListener({ fire() }, main)
+        }.onFailure { fire() }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ fire() }, 1000)
     }
     val latestShoot by rememberUpdatedState({ shoot() })
     BackHandler { if (!taking && !busy) onDone() }
@@ -103,7 +116,12 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                     provider = future.get()
                     val rotation = preview.display?.rotation ?: Surface.ROTATION_0
                     val view = Preview.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).setTargetRotation(rotation).build().also { it.surfaceProvider = preview.surfaceProvider }
-                    val photo = ImageCapture.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).setTargetRotation(rotation).setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+                    // The camera's full resolution for the photo (4:3), at the best JPEG quality; the preview and the
+                    // detection frames stay small.
+                    val highest = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(androidx.camera.core.resolutionselector.AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .setResolutionStrategy(androidx.camera.core.resolutionselector.ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build()
+                    val photo = ImageCapture.Builder().setResolutionSelector(highest).setTargetRotation(rotation).setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setJpegQuality(100).build()
                     val analysis = ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).setTargetRotation(rotation).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                     previewUseCase = view; photoUseCase = photo; analysisUseCase = analysis
                     var lastAnalysis = 0L

@@ -114,8 +114,8 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
     }
 
     /**
-     * A PDF that opens only with [password] (AES-256, PDF standard security revision 6). Pages are the same as in
-     * [pdf]: 595 points wide, each page's image stored as JPEG at quality 90.
+     * A PDF that opens only with [password] (AES-256, PDF standard security revision 6). Pages are laid out as in
+     * [pdf], each page's image stored as JPEG at quality 95.
      */
     suspend fun protectedPdf(bookId: String, password: String, size: PdfSize = PdfSize.ORIGINAL, pageIds: Set<String>? = null, layout: PdfLayout = com.docscan.rebuild.data.PdfSettings(context).layout): File = withContext(Dispatchers.IO) {
         val pages = store.dao.snapshot(bookId).filter { pageIds == null || it.id in pageIds }; require(pages.isNotEmpty())
@@ -129,7 +129,7 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
                         scope.ensureActive()
                         val bitmap = pdfBitmap(pages[index], size)
                         try {
-                            val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)) }.toByteArray()
+                            val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }.toByteArray()
                             val at = layout.place(bitmap.width, bitmap.height)
                             return ProtectedPdf.Page(jpeg, bitmap.width, bitmap.height, at.pageWidth, at.pageHeight, at.x, at.y, at.width, at.height)
                         } finally { bitmap.recycle() }
@@ -154,7 +154,7 @@ class DocumentOutput(private val context: Context, private val store: ScanStore)
                         scope.ensureActive()
                         val bitmap = pdfBitmap(pages[index], PdfSize.BALANCED)
                         try {
-                            val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)) }.toByteArray()
+                            val jpeg = java.io.ByteArrayOutputStream().also { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }.toByteArray()
                             return OfficeFiles.Slide(jpeg, bitmap.width, bitmap.height)
                         } finally { bitmap.recycle() }
                     }

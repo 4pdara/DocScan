@@ -267,6 +267,19 @@ private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () 
         TextButton(onBackup,modifier=Modifier.testTag("backup-library")) { Icon(Icons.Outlined.Archive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.backup_library)) }
         TextButton(onRestoreBackup,modifier=Modifier.testTag("restore-library")) { Icon(Icons.Outlined.Unarchive,null);Spacer(Modifier.width(8.dp));Text(stringResource(R.string.restore_backup)) }
         HorizontalDivider(Modifier.padding(vertical=12.dp))
+        // The filter new photos start with (Magic Color unless changed); the original photo is always kept.
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val scanSettings = remember { ScanSettings(context) }
+        var newFilter by remember { mutableStateOf(scanSettings.treatment) }
+        Text(stringResource(R.string.new_scan_filter), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.new_scan_filter_hint), style = MaterialTheme.typography.bodySmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(com.docscan.rebuild.model.Treatment.NATIVE_MAGIC_COLOR, com.docscan.rebuild.model.Treatment.PAPER, com.docscan.rebuild.model.Treatment.NATIVE_NO_SHADOW,
+                com.docscan.rebuild.model.Treatment.ORIGINAL, com.docscan.rebuild.model.Treatment.GRAY, com.docscan.rebuild.model.Treatment.INK).forEach { t ->
+                FilterChip(newFilter == t, { newFilter = t; scanSettings.treatment = t }, label = { Text(stringResource(t.label())) }, modifier = Modifier.testTag("new-filter-${t.name}"))
+            }
+        }
+        HorizontalDivider(Modifier.padding(vertical=12.dp))
         UpdateCard()
         HorizontalDivider(Modifier.padding(vertical=12.dp))
         var pdfSettings by remember { mutableStateOf(false) }
