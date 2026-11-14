@@ -3,7 +3,6 @@ package com.docscan.rebuild
 import android.Manifest
 import android.graphics.*
 import android.os.SystemClock
-import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,8 +12,6 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
-import androidx.test.uiautomator.UiScrollable
-import androidx.test.uiautomator.UiSelector
 import com.docscan.rebuild.data.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -111,10 +108,19 @@ class LegacySystemUiTest {
             val input=requireNotNull(ui.wait(Until.findObject(By.clazz("android.widget.EditText")),15000))
             assertTrue(input.visibleBounds.height()<ui.displayHeight*.08)
             tap(text(R.string.tools_tab))
-            for(group in listOf(R.string.group_scan,R.string.group_import,R.string.group_convert,R.string.group_edit,R.string.group_help)) {
-                val scroller=UiScrollable(UiSelector().scrollable(true))
-                assertTrue("Missing tool group: ${text(group)}",scroller.scrollIntoView(UiSelector().text(text(group))))
-            };screenshot("tool-groups")
+            val missing=listOf(R.string.group_scan,R.string.group_import,R.string.group_convert,R.string.group_edit,R.string.group_help).map(::text).toMutableSet()
+            // Small overlapping vertical gestures keep every heading in the viewport.
+            // UiScrollable.scrollIntoView can skip LazyColumn items while accessibility refreshes.
+            try {
+                repeat(30) {
+                    ui.waitForIdle(1000)
+                    missing.removeAll { heading -> ui.findObject(By.text(heading))?.visibleBounds?.let { it.height()>0 && it.bottom>0 && it.top<ui.displayHeight }==true }
+                    if(missing.isEmpty())return@use
+                    ui.swipe(ui.displayWidth/2,ui.displayHeight*3/4,ui.displayWidth/2,ui.displayHeight/2,25)
+                    SystemClock.sleep(200)
+                }
+                assertTrue("Missing tool groups: $missing",missing.isEmpty())
+            } finally { screenshot("tool-groups") }
         }
     }
 }
