@@ -94,7 +94,7 @@ private fun ViewerAction(label: Int, icon: ImageVector, tag: String, modifier: M
         horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, null, tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
         Spacer(Modifier.height(3.dp))
-        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
     }
 }

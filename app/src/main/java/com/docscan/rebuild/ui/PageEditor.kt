@@ -169,8 +169,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             if (onAddPages != null) EditorAction("add", R.string.add_pages, Icons.Outlined.AddAPhoto) { onAddPages(edit) } else null,
             EditorAction("split", R.string.split_book, Icons.Outlined.VerticalSplit, tool == "split", onSplit != null) { open("split") },
             if (onDelete != null) EditorAction("delete", R.string.delete_page, Icons.Outlined.Delete) { confirmDelete = true } else null,
-            EditorAction("gallery", R.string.save_gallery, Icons.Outlined.PhotoLibrary) { onGallery(edit) },
-            EditorAction("jpeg", R.string.save_jpeg, Icons.Outlined.Image) { onExportImage(edit) },
+            EditorAction("gallery", R.string.to_gallery, Icons.Outlined.PhotoLibrary) { onGallery(edit) },
+            EditorAction("jpeg", R.string.as_image, Icons.Outlined.Image) { onExportImage(edit) },
             EditorAction("original", R.string.source_export, Icons.Outlined.SaveAlt) { onOriginal() })
         else -> listOfNotNull(
             EditorAction("crop", R.string.crop, Icons.Outlined.Crop, tool == "crop") { open("crop") },
@@ -179,9 +179,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             EditorAction("rotate", R.string.rotate, Icons.Outlined.RotateLeft) { rotate() },
             EditorAction("text", R.string.edit_text, Icons.Outlined.TextFields) { full = "text" },
             EditorAction("erase", R.string.smart_erase, Icons.Outlined.AutoFixHigh) { full = "erase" },
-            EditorAction("colour", R.string.erase_color_marks, Icons.Outlined.FormatColorReset, edit.eraseColor) { change(edit.copy(eraseColor = !edit.eraseColor)) },
+            EditorAction("colour", R.string.colour_marks_short, Icons.Outlined.FormatColorReset, edit.eraseColor) { change(edit.copy(eraseColor = !edit.eraseColor)) },
             EditorAction("curve", R.string.book_curve, Icons.Outlined.AutoStories, tool == "curve") { open("curve") },
-            if (onOcr != null) EditorAction("ocr", R.string.ocr, Icons.Outlined.FindInPage) { onOcr(edit) } else null,
+            if (onOcr != null) EditorAction("ocr", R.string.read_text, Icons.Outlined.FindInPage) { onOcr(edit) } else null,
             if (onRetake != null) EditorAction("retake", R.string.retake, Icons.Outlined.CameraAlt) { onRetake(edit) } else null)
     }
     when (full) {
@@ -194,9 +194,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         else -> Scaffold(modifier = Modifier.testTag("page-editor"), snackbarHost = { SnackbarHost(snack) }, topBar = {
         TopAppBar(title = {
             if (title != null && onRename != null) TextButton(onClick = { draftTitle = title; rename = true }, enabled = !busy) {
-                Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.width(6.dp)); Icon(Icons.Outlined.Edit, stringResource(R.string.rename), Modifier.size(18.dp))
+                // The whole title is tappable to rename; it keeps the room a pencil would take.
+                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
             } else Text(stringResource(R.string.edit_page), style = MaterialTheme.typography.titleMedium)
         }, navigationIcon = {
             IconButton(onClick = { if (saveOnBack) onSave(edit) else onBack() }, enabled = !busy) {
@@ -256,7 +256,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                                 val selected = edit.treatment == treatment
                                 Column(Modifier.width(82.dp).testTag("filter-${treatment.name}").selectable(selected, role = Role.RadioButton, onClick = { original = false; change(edit.copy(treatment = treatment)) }).background(if (selected) ScanTeal else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     PagePicture(store, page, Modifier.size(72.dp, 82.dp).border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.LightGray, RoundedCornerShape(6.dp)).padding(4.dp), recipe = edit.copy(treatment = treatment).withoutMarks(), edge = 160)
-                                    Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp, bottom = 3.dp), color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp, bottom = 3.dp), color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                 }
                             }
                         }
@@ -295,7 +295,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                     }
                     LazyRow(Modifier.fillMaxWidth().testTag("editor-toolbar"), contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)) {
                         items(actions, key = { it.id }) { action ->
-                            EditorTool(action.label, action.icon, action.selected, Modifier.width(80.dp).testTag("edit-${action.id}"), enabled = action.enabled && !busy, onClick = action.run)
+                            EditorTool(action.label, action.icon, action.selected, Modifier.width(76.dp).testTag("edit-${action.id}"), enabled = action.enabled && !busy, onClick = action.run)
                         }
                     }
                 }

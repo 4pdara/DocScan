@@ -1,5 +1,6 @@
 package com.docscan.rebuild.update
 
+import android.app.DownloadManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -8,7 +9,9 @@ import android.content.IntentFilter
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -81,34 +84,78 @@ object AppUpdater {
 
     suspend fun check(current: String): Release? = withContext(Dispatchers.IO) { latest(text(RELEASES), current) }
 
-    /** Downloads the release APK, checks its SHA-256 and its signing certificate, and returns the verified file. */
-    suspend fun download(context: Context, release: Release, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+    /**
+     * A download handed to Android's download manager, so it goes on when the user leaves the page or the app;
+     * the expected SHA-256 is kept with it until the file is verified.
+     */
+    data class Pending(val id: Long, val version: String, val apkName: String, val expected: String)
+
+    /** Where a download stands: one of the [DownloadManager] STATUS_ values, bytes so far and in all (-1 when unknown). */
+    data class Progress(val status: Int, val done: Long, val total: Long, val reason: Int)
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("updater", Context.MODE_PRIVATE)
+    private fun folder(context: Context) = File(context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: File(context.filesDir, "updates"), "updates")
+
+    fun pending(context: Context): Pending? {
+        val p = prefs(context); val id = p.getLong("id", -1L)
+        if (id < 0) return null
+        return Pending(id, p.getString("version", null) ?: return null, p.getString("apk", null) ?: return null, p.getString("sha256", null) ?: return null)
+    }
+
+    /** Fetches the release's checksum and asks Android to download the APK; returns at once. */
+    suspend fun start(context: Context, release: Release): Pending = withContext(Dispatchers.IO) {
         val expected = requireNotNull(checksum(text(release.sumsUrl), release.apkName)) { "No checksum for ${release.apkName}" }
-        val folder = File(context.cacheDir, "updates").apply { mkdirs() }
-        folder.listFiles()?.forEach { it.delete() }
-        val target = File(folder, release.apkName)
-        val connection = open(release.apkUrl)
+        cancel(context)
+        folder(context).mkdirs()
+        val request = DownloadManager.Request(Uri.parse(release.apkUrl))
+            .setTitle("DocScan ${release.version}")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+            .setDestinationInExternalFilesDir(context.applicationContext, Environment.DIRECTORY_DOWNLOADS, "updates/${release.apkName}")
+            .addRequestHeader("User-Agent", "DocScan-updater")
+            .setAllowedOverMetered(true).setAllowedOverRoaming(true)
+        val id = manager(context).enqueue(request)
+        prefs(context).edit().putLong("id", id).putString("version", release.version).putString("apk", release.apkName).putString("sha256", expected).apply()
+        Pending(id, release.version, release.apkName, expected)
+    }
+
+    private fun manager(context: Context) = context.applicationContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+
+    /** The pending download's state, or null when Android no longer knows it (removed by the user). */
+    fun progress(context: Context): Progress? {
+        val pending = pending(context) ?: return null
+        manager(context).query(DownloadManager.Query().setFilterById(pending.id))?.use { c ->
+            if (!c.moveToFirst()) return null
+            return Progress(c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)), c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)), c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)))
+        }
+        return null
+    }
+
+    /** The finished download, checked against the release's SHA-256 and the installed app's signing certificate. */
+    suspend fun verify(context: Context): File = withContext(Dispatchers.IO) {
+        val pending = requireNotNull(pending(context)) { "No download" }
+        val file = File(folder(context), pending.apkName)
         try {
-            check(connection.responseCode == 200) { "HTTP ${connection.responseCode}" }
-            val total = connection.contentLengthLong.takeIf { it > 0 } ?: release.size
+            check(file.isFile) { "Downloaded file missing" }
             val digest = MessageDigest.getInstance("SHA-256")
-            connection.inputStream.use { input ->
-                FileOutputStream(target).use { out ->
-                    val buffer = ByteArray(128 * 1024); var done = 0L
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val n = input.read(buffer); if (n < 0) break
-                        out.write(buffer, 0, n); digest.update(buffer, 0, n); done += n
-                        if (total > 0) progress((done.toDouble() / total).toFloat().coerceIn(0f, 1f))
-                    }
-                    out.fd.sync()
-                }
-            }
-            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
-            check(actual == expected) { "SHA-256 mismatch" }
-            check(sameSigner(context, target)) { "Different signing certificate" }
-            target
-        } catch (failure: Throwable) { target.delete(); throw failure } finally { connection.disconnect() }
+            file.inputStream().use { input -> val buffer = ByteArray(256 * 1024); while (true) { coroutineContext.ensureActive(); val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) } }
+            check(digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) } == pending.expected) { "SHA-256 mismatch" }
+            check(sameSigner(context, file)) { "Different signing certificate" }
+            file
+        } catch (failure: Throwable) { if (failure !is kotlinx.coroutines.CancellationException) cancel(context); throw failure }
+    }
+
+    /** Stops and forgets the pending download and removes downloaded files. */
+    fun cancel(context: Context) {
+        pending(context)?.let { runCatching { manager(context).remove(it.id) } }
+        prefs(context).edit().clear().apply()
+        folder(context).listFiles()?.forEach { it.delete() }
+    }
+
+    /** After the app was updated, the finished download is no longer needed. */
+    fun cleanUp(context: Context, installed: String) {
+        val pending = pending(context) ?: return
+        if (!newer(pending.version, installed)) cancel(context)
     }
 
     @Suppress("DEPRECATION")

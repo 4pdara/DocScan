@@ -290,7 +290,7 @@
     <string name="update_current">This is the latest version</string>
     <string name="update_available">Version %1$s is available (%2$s MB)</string>
     <string name="update_install">Download and install %1$s</string>
-    <string name="update_downloading">Downloading and checking the file…</string>
+    <string name="update_downloading">Downloading version %1$s…</string>
     <string name="update_installing">Android asks to confirm the installation…</string>
     <string name="update_failed">The update did not finish: %1$s</string>
     <string name="update_permission_hint">To update from inside the app, Android needs a one-time permission to install apps from it.</string>
@@ -358,6 +358,17 @@
     <string name="watermark_tile">Whole page</string>
     <string name="watermark_tile_hint">The text repeats over the whole page at the chosen angle.</string>
     <plurals name="delete_pages_title"><item quantity="one">Delete %1$d page?</item><item quantity="other">Delete %1$d pages?</item></plurals>
+    <string name="settings_tab">Settings</string>
+    <string name="colour_marks_short">Erase marks</string>
+    <string name="to_gallery">To gallery</string>
+    <string name="as_image">As image</string>
+    <string name="read_text">Read text</string>
+    <string name="update_background_hint">You can leave this page or the app: the download goes on, and the app offers to install it when it is done.</string>
+    <string name="update_cancel">Cancel download</string>
+    <string name="update_verifying">Checking the downloaded file…</string>
+    <string name="update_ready">Version %1$s is downloaded and checked, ready to install.</string>
+    <string name="update_install_now">Install now</string>
+    <string name="update_later">Later</string>
 </resources>
 
 

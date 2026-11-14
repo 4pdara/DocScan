@@ -105,7 +105,7 @@ fun LibraryScreen(
         bottomBar = {
             NavigationBar(containerColor = Color.White, tonalElevation = 0.dp, modifier = Modifier.testTag("home-navigation")) {
                 listOf(Triple("home", R.string.home_tab, Icons.Outlined.Home), Triple("files", R.string.files_tab, Icons.Outlined.Description),
-                    Triple("tools", R.string.tools_tab, Icons.Outlined.GridView), Triple("me", R.string.me_tab, Icons.Outlined.PersonOutline)).forEach { (id, label, icon) ->
+                    Triple("tools", R.string.tools_tab, Icons.Outlined.GridView), Triple("me", R.string.settings_tab, Icons.Outlined.Settings)).forEach { (id, label, icon) ->
                     NavigationBarItem(selected = section == id && !inTrash, onClick = { section = id; inTrash = false; clear() },
                         icon = { Icon(icon, null) }, label = { Text(stringResource(label), maxLines = 1) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = HomeGreen, selectedTextColor = HomeGreen,
@@ -116,7 +116,8 @@ fun LibraryScreen(
         },
         floatingActionButtonPosition = if (rtl) FabPosition.End else FabPosition.Start,
         floatingActionButton = {
-            if (!selection && !inTrash) FloatingActionButton(onScan, shape = CircleShape, containerColor = HomeGreen,
+            // Scanning starts from the home and files pages; Tools and Settings have their own entries.
+            if (!selection && !inTrash && (section == "home" || section == "files")) FloatingActionButton(onScan, shape = CircleShape, containerColor = HomeGreen,
                 contentColor = Color.White, modifier = Modifier.size(64.dp).testTag("new-scan")) {
                 Icon(Icons.Outlined.CameraAlt, stringResource(R.string.new_scan), Modifier.size(30.dp))
             }
@@ -234,10 +235,14 @@ private fun HomeShortcuts(onScan: () -> Unit, onExtractText: () -> Unit, onImpor
 
 @Composable
 private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () -> Unit, onRestoreBackup: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
-        Icon(Icons.Outlined.DocumentScanner, null, Modifier.size(60.dp), tint = HomeGreen)
-        Spacer(Modifier.height(16.dp)); Text("DocScan", style = MaterialTheme.typography.headlineMedium)
-        Text(BuildConfig.VERSION_NAME, color = HomeMuted)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).testTag("settings-page")) {
+        Text(stringResource(R.string.settings_tab), style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.DocumentScanner, null, Modifier.size(44.dp), tint = HomeGreen)
+            Spacer(Modifier.width(12.dp))
+            Column { Text("DocScan", style = MaterialTheme.typography.titleLarge); Text(BuildConfig.VERSION_NAME, color = HomeMuted) }
+        }
         Spacer(Modifier.height(24.dp)); Text(stringResource(R.string.local_profile), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(10.dp)); Text(stringResource(R.string.local_profile_hint))
         Spacer(Modifier.height(18.dp)); Text(stringResource(R.string.quality), color = HomeGreen)
@@ -269,7 +274,7 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
             Tool(R.string.to_powerpoint, Icons.Outlined.Slideshow, red) { onTool("powerpoint") }, Tool(R.string.pdf_to_images, Icons.Outlined.PhotoLibrary, HomeGreen) { onTool("images") },
             Tool(R.string.long_image, Icons.Outlined.ViewDay, HomeGreen) { onTool("long") }),
         R.string.tools_edit to listOf(Tool(R.string.signature, Icons.Outlined.Draw, blue) { onTool("signature") }, Tool(R.string.watermark, Icons.Outlined.WaterDrop, blue) { onTool("watermark") },
-            Tool(R.string.smart_erase, Icons.Outlined.AutoFixHigh, HomeGreen) { onTool("erase") }, Tool(R.string.erase_color_marks, Icons.Outlined.FormatColorReset, blue) { onTool("erasecolor") },
+            Tool(R.string.smart_erase, Icons.Outlined.AutoFixHigh, HomeGreen) { onTool("erase") }, Tool(R.string.colour_marks_short, Icons.Outlined.FormatColorReset, blue) { onTool("erasecolor") },
             Tool(R.string.edit_text, Icons.Outlined.TextFields, HomeGreen) { onTool("text") }, Tool(R.string.header_short, Icons.Outlined.FormatListNumbered, blue) { onTool("footer") },
             Tool(R.string.timestamp, Icons.Outlined.Schedule, HomeGreen) { onTool("timestamp") }, Tool(R.string.merge_documents, Icons.Outlined.MergeType, red) { onTool("merge") },
             Tool(R.string.extract_pages, Icons.Outlined.ContentCut, red) { onTool("extract") }, Tool(R.string.reorder_pages, Icons.Outlined.SwapVert, blue) { onTool("reorder") },
@@ -277,7 +282,7 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
         R.string.tools_utilities to listOf(Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, HomeGreen) { onTool("qr") }, Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") },
             Tool(R.string.email, Icons.Outlined.Email, blue) { onTool("email") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
             Tool(R.string.select_documents, Icons.Outlined.Checklist, HomeGreen, onSelect), Tool(R.string.trash, Icons.Outlined.RestoreFromTrash, HomeGreen, onTrash),
-            Tool(R.string.mark_settings, Icons.Outlined.Settings, HomeMuted) { onTool("settings") }))
+            Tool(R.string.settings_tab, Icons.Outlined.Settings, HomeMuted) { onTool("settings") }))
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp).testTag("tools-sections")) {
         groups.forEach { (title, tools) ->
             Text(stringResource(title), Modifier.padding(start = 10.dp, top = 14.dp, bottom = 6.dp), style = MaterialTheme.typography.titleMedium)

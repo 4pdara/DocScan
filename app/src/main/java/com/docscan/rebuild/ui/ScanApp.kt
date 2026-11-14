@@ -543,6 +543,8 @@ fun ScanApp(store: ScanStore) {
                     pdfSaver.launch("${title.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")}.pdf")
                 }, onTrash = { ids, restore -> vm.perform(if (restore) R.string.restored else R.string.moved_to_trash) { store.trash(ids, restore) } }, snack = snack, onDeleteForever = { ids -> vm.perform(R.string.deleted_forever) { store.deleteForever(ids) } }, onBackup={backupSaver.launch("DocScan-backup.zip")},onRestoreBackup={backupLoader.launch(arrayOf("application/zip","application/octet-stream"))})
         }
+        // A downloaded update asks to be installed on whatever screen is open.
+        UpdateReadyDialog()
         if (vm.busy) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .12f)).clickable(enabled = true, onClick = {}), contentAlignment = Alignment.Center) {
                 Surface(shape = RoundedCornerShape(20.dp), shadowElevation = 4.dp) {

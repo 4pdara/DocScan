@@ -92,10 +92,10 @@
     <string name="restored">המסמכים שוחזרו</string>
     <string name="empty_trash">סל המחזור ריק</string>
     <string name="trash_hint">בחרו מסמכים לשחזור או למחיקה לצמיתות. המקורות והעריכות נשמרים בסל עד שתמחקו אותם; אין מחיקה אוטומטית.</string>
-    <string name="native_magic_color">Magic Color</string>
+    <string name="native_magic_color">צבע קסם</string>
     <string name="native_no_shadow">ללא צללים</string>
     <string name="native_invert">היפוך צבעים</string>
-    <string name="native_pro_local">Pro</string>
+    <string name="native_pro_local">מקצועי</string>
     <string name="lighten">הבהרה</string>
     <string name="eco">חיסכון בדיו</string>
     <string name="native_board">לוח</string>
@@ -290,7 +290,7 @@
     <string name="update_current">זו הגרסה העדכנית</string>
     <string name="update_available">גרסה %1$s זמינה (%2$s MB)</string>
     <string name="update_install">הורדה והתקנה של %1$s</string>
-    <string name="update_downloading">מוריד ובודק את הקובץ…</string>
+    <string name="update_downloading">מוריד את גרסה %1$s…</string>
     <string name="update_installing">Android מבקש אישור להתקנה…</string>
     <string name="update_failed">העדכון לא הושלם: %1$s</string>
     <string name="update_permission_hint">כדי לעדכן מתוך האפליקציה, Android צריך אישור חד־פעמי להתקנת אפליקציות ממנה.</string>
@@ -358,6 +358,17 @@
     <string name="watermark_tile">על כל הדף</string>
     <string name="watermark_tile_hint">הטקסט חוזר על כל הדף בזווית שנבחרה.</string>
     <plurals name="delete_pages_title"><item quantity="one">למחוק עמוד אחד?</item><item quantity="two">למחוק %1$d עמודים?</item><item quantity="many">למחוק %1$d עמודים?</item><item quantity="other">למחוק %1$d עמודים?</item></plurals>
+    <string name="settings_tab">הגדרות</string>
+    <string name="colour_marks_short">מחיקת סימונים</string>
+    <string name="to_gallery">לגלריה</string>
+    <string name="as_image">כתמונה</string>
+    <string name="read_text">זיהוי טקסט</string>
+    <string name="update_background_hint">אפשר לצאת מהמסך או מהאפליקציה: ההורדה ממשיכה, וכשהיא מסתיימת האפליקציה מציעה להתקין.</string>
+    <string name="update_cancel">ביטול ההורדה</string>
+    <string name="update_verifying">בודק את הקובץ שירד…</string>
+    <string name="update_ready">גרסה %1$s ירדה ונבדקה, ומוכנה להתקנה.</string>
+    <string name="update_install_now">התקנה עכשיו</string>
+    <string name="update_later">אחר כך</string>
 </resources>
 
 

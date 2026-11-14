@@ -138,7 +138,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.smart_erase, Icons.Outlined.AutoFixHigh, Modifier.weight(1f).testTag("tool-erase"), pages.isNotEmpty()) { actions = false; onPageTool("erase") }
                 DocumentAction(R.string.edit_text, Icons.Outlined.TextFields, Modifier.weight(1f).testTag("tool-edit-text"), pages.isNotEmpty()) { actions = false; onPageTool("text") }
-                DocumentAction(R.string.erase_color_marks, Icons.Outlined.FormatColorReset, Modifier.weight(1f).testTag("tool-erase-colour"), pages.isNotEmpty()) { actions = false; onEraseColor() }
+                DocumentAction(R.string.colour_marks_short, Icons.Outlined.FormatColorReset, Modifier.weight(1f).testTag("tool-erase-colour"), pages.isNotEmpty()) { actions = false; onEraseColor() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DocumentAction(R.string.signature, Icons.Outlined.Draw, Modifier.weight(1f).testTag("tool-signature"), pages.isNotEmpty()) { actions = false; choosingSignature = true }
