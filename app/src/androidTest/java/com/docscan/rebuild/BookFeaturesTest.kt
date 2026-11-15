@@ -117,6 +117,37 @@ class BookFeaturesTest {
             assertTrue("Cut page: $clipped",clipped.motion(frame(*cut.toTypedArray()))<.06f)
         } finally { cover.delete();open.delete();corner.delete() }
     }
+    @Test fun findsTheLeftPageOfAnOpenBookInsideItsPageEdgesOnALightChair() {
+        // Owner's 1.2.2 report (with a CamScanner screen recording): the left page of an open book on a light chair.
+        // Its top bows down, the chair's back rest draws a sharp line above it, the book block shows layered page
+        // edges and a dark cover line, and the page shades into the spine. CamScanner outlines the page alone.
+        // Mirrors the desktop measurement in docs/DETECTION_1.2.3_HE.md.
+        val w=900;val h=1200
+        fun path(points:List<Pair<Float,Float>>)=Path().apply {points.forEachIndexed {i,(x,y)->if(i==0)moveTo(Math.round(x*w).toFloat(),Math.round(y*h).toFloat())else lineTo(Math.round(x*w).toFloat(),Math.round(y*h).toFloat())};close()}
+        fun Canvas.poly(points:List<Pair<Float,Float>>,colour:Int)=drawPath(path(points),Paint().apply {color=colour})
+        fun Canvas.shade(points:List<Pair<Float,Float>>,x0:Float,x1:Float,from:Int,to:Int)=drawPath(path(points),Paint().apply {shader=LinearGradient(x0*w,0f,x1*w,0f,from,to,Shader.TileMode.CLAMP)})
+        fun Canvas.rows(l:Float,t:Float,r:Float,b:Float,colour:Int){var y=t;while(y<b){drawRect(Math.round(l*w).toFloat(),Math.round(y*h).toFloat(),Math.round(r*w).toFloat(),Math.round((y+.006f)*h).toFloat(),Paint().apply {color=colour});y+=.025f}}
+        val page=listOf(.14f to .16f,.68f to .11f,.68f to .885f,.09f to .895f)
+        val orange=Color.rgb(226,160,96)
+        val file=fixture("open-book-chair",w,h) { c ->
+            c.drawColor(Color.rgb(204,200,190));c.poly(listOf(0f to 0f,1f to 0f,1f to .06f,0f to .1f),Color.rgb(214,212,206))
+            c.poly(listOf(.05f to .175f,.69f to .12f,.72f to .91f,.01f to .93f),Color.rgb(44,42,46))
+            c.poly(listOf(.07f to .17f,.67f to .11f,.7f to .895f,.03f to .915f),Color.rgb(222,212,192))
+            for(k in 0 until 4){val x=.078f+k*.016f;c.poly(listOf(x to .169f-k*.0012f,x+.007f to .169f-k*.0012f,x-.033f to .91f-k*.003f,x-.04f to .91f-k*.003f),orange)}
+            for(k in 0 until 3){val y=.899f+k*.006f;c.poly(listOf(.06f to y,.69f to y-.012f,.69f to y-.009f,.06f to y+.003f),orange)}
+            // The page's top bows down between its corner and the spine.
+            val top=(0..12).map {val t=it/12f;.14f+.54f*t to .16f-.05f*t+.03f*(1-(2*t-1)*(2*t-1))}
+            c.poly(top+listOf(.68f to .885f,.09f to .895f),Color.rgb(240,234,218))
+            c.shade(listOf(.56f to .1215f,.68f to .11f,.68f to .885f,.56f to .8867f),.6f,.68f,Color.rgb(240,234,218),Color.rgb(150,144,134))
+            c.poly(listOf(.68f to .11f,1f to .125f,1f to .9f,.68f to .885f),Color.rgb(232,226,210))
+            c.shade(listOf(.68f to .11f,.78f to .115f,.78f to .89f,.68f to .885f),.68f,.71f,Color.rgb(150,144,134),Color.rgb(232,226,210))
+            c.rows(.18f,.22f,.56f,.85f,Color.rgb(40,40,40));c.rows(.78f,.2f,.97f,.85f,Color.rgb(40,40,40))
+        }
+        try {
+            val found=requireNotNull(ImagePipeline.detect(file)) {"Page not found"}
+            assertTrue("Left page: $found",found.motion(Frame(page.map {Vertex(it.first,it.second)}))<.05f)
+        } finally { file.delete() }
+    }
     @Test fun colourOnlyBoundariesRemainEligibleForSharpAutomaticCapture() {
         ImagePipeline.ensureAvailable()
         val bitmap=Bitmap.createBitmap(500,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap)

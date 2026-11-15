@@ -7,17 +7,22 @@ import org.opencv.imgproc.Imgproc
 import kotlin.math.*
 
 /**
- * Shared camera/still detector (1.2.1). All coordinates are normalized to the unrotated input.
+ * Shared camera/still detector (1.2.3). All coordinates are normalized to the unrotated input.
  *
  * The photo is first made print-free (two median passes erase text, embossing and thin gold lines, so only
  * page, cover and table boundaries remain). A side of a candidate quad is backed where the colour steps across
  * it with a sharp edge, or where it runs along a dark valley (the spine of an open book). Candidates come from
- * contours, Otsu regions and combinations of long lines (the frame border included); the best ones are snapped
- * to the strongest nearby edge. Corners may lie outside the frame (a page cut by the frame): only the part of a
- * side in view is measured, and a side on the frame border counts only where the document visibly continues.
- * Then: an open book whose facing page runs off the frame is cut at the spine, and a strip of another material
- * along a side (page edges, a cloth spine, a band of table) is cut off. Measured on owner photographs and
- * CamScanner reference screenshots; see docs/DETECTION_1.2.1_HE.md.
+ * contours, Otsu regions and combinations of long lines (the frame border included), and from regions of one
+ * surface colour grown from seed points near the middle and stopped at edges (the paper of a page apart from the
+ * layered page edges of the book block, its cover and a chair or table of almost the same brightness); the best
+ * ones are snapped to the strongest nearby edge, a region's side looking further out where the page shades into
+ * the spine. Corners may lie outside the frame (a page cut by the frame): only the part of a side in view is
+ * measured, and a side on the frame border counts only where the document visibly continues. A spine side (a
+ * valley with paper on both sides) does not count against the page's even rim colour. Then: an open book whose
+ * facing page runs off the frame is cut at the spine, and a strip of another material along a side (page edges,
+ * a cloth spine, a band of table) is cut off; along a dark line on a page's long side only a strip of another
+ * colour is, at the innermost clear edge. Measured on owner photographs and CamScanner reference screenshots and
+ * screen recordings; see docs/DETECTION_1.2.1_HE.md and docs/DETECTION_1.2.3_HE.md.
  */
 object BoundaryDetector {
     private const val EDGE = 640
@@ -79,7 +84,7 @@ private fun median(values: DoubleArray, n: Int): Double {
 /** Evidence sampled along one side. The outward normal points away from the quad for clockwise corners. */
 private class Samples(val m: Int) {
     val px = DoubleArray(m); val py = DoubleArray(m)
-    val step = DoubleArray(m); val valley = DoubleArray(m); val evidence = DoubleArray(m)
+    val step = DoubleArray(m); val valley = DoubleArray(m); val dip = DoubleArray(m); val evidence = DoubleArray(m)
     val inner = FloatArray(m * 3); val outer = FloatArray(m * 3); val deep = FloatArray(m * 3)
     val insideOk = BooleanArray(m); val outsideOk = BooleanArray(m)
 }
@@ -87,6 +92,7 @@ private class Samples(val m: Int) {
 private class Scored(
     val q: List<Pt>, val full: List<Pt>, val support: DoubleArray, val ends: DoubleArray, val border: BooleanArray,
     val valleyish: BooleanArray, val nb: Int, val colour: FloatArray, val score: Double, val rim: Double = 0.0, var spine: Set<Int> = emptySet(),
+    val hollow: BooleanArray = BooleanArray(4),
 )
 
 private class Scene(
@@ -188,6 +194,8 @@ private class Scene(
             var low = Double.MAX_VALUE
             for (d in -3..3) low = min(low, lum[index(px + nx * d, py + ny * d)].toDouble())
             out.valley[k] = (out.inner[k * 3] + out.outer[k * 3]) / 2.0 - low
+            // Below both sides, not just below their mean: a step between two surfaces is no valley.
+            out.dip[k] = min(out.inner[k * 3], out.outer[k * 3]) - low
             val edge = min(clip01(out.step[k] / 16), clip01(g / 5))
             val fold = clip01((out.valley[k] - 4) / 14) * clip01(g / 3)
             out.evidence[k] = max(edge, fold)
@@ -239,7 +247,7 @@ private class Scene(
         if (pool.size < 8) return null
         val values = DoubleArray(pool.size)
         val rimColour = FloatArray(3) { c -> pool.forEachIndexed { j, key -> values[j] = sides[key / 1000].deep[(key % 1000) * 3 + c].toDouble() }; median(values, pool.size).toFloat() }
-        val support = DoubleArray(4); val ends = DoubleArray(4) { 1.0 }; val valleyish = BooleanArray(4); val deviation = DoubleArray(4)
+        val support = DoubleArray(4); val ends = DoubleArray(4) { 1.0 }; val valleyish = BooleanArray(4); val deviation = DoubleArray(4); val hollow = BooleanArray(4)
         for (i in 0..3) {
             if (border[i]) {
                 val (ca, cb) = clamped[i]
@@ -261,8 +269,16 @@ private class Scene(
                 val buffer = DoubleArray(measured.size)
                 measured.forEachIndexed { j, k -> buffer[j] = sm.valley[k] }; val valley = median(buffer, measured.size)
                 measured.forEachIndexed { j, k -> buffer[j] = sm.step[k] }; val step = median(buffer, measured.size)
+                measured.forEachIndexed { j, k -> buffer[j] = sm.dip[k] }; val dip = median(buffer, measured.size)
                 valleyish[i] = valley > 8 && step < 30
-                if (!valleyish[i]) medianColour(sm.deep, { it in measured }, sm.m)?.let { deviation[i] = gap(it, rimColour) }
+                hollow[i] = valleyish[i] && dip > 3
+                // The spine of an open book: a dark valley with paper beyond it. The page shades towards it, so its rim
+                // is darker than elsewhere without being another material.
+                val inside = medianColour(sm.deep, { it in measured }, sm.m)
+                val beyond = medianColour(sm.outer, { it in measured }, sm.m)
+                val spine = valley > 8 && inside != null && beyond != null && gap(beyond, rimColour) < 25 &&
+                    hypot(inside[1] - rimColour[1].toDouble(), inside[2] - rimColour[2].toDouble()) < 12 && abs(inside[0] - rimColour[0]) < 60
+                if (!valleyish[i] && !spine) medianColour(sm.deep, { it in measured }, sm.m)?.let { deviation[i] = gap(it, rimColour) }
             }
         }
         val nb = border.count { it }
@@ -274,7 +290,7 @@ private class Scene(
         val overshoot = ends.sumOf { max(0.0, .5 - it) }
         val total = .55 * support.average() + .3 * sqrt(share) + .15 * real.minOf { support[it] } - .25 * ((rim - 22) / 40).coerceIn(0.0, 1.0) -
             .1 * nb - .2 * overshoot - .1 * unseen
-        return Scored(cq, q, support, ends, border, valleyish, nb, rimColour, total, rim)
+        return Scored(cq, q, support, ends, border, valleyish, nb, rimColour, total, rim, hollow = hollow)
     }
 
     /** A cheap estimate of [score]: side evidence at a few points, sides on the frame border counted as half. */
@@ -293,11 +309,13 @@ private class Scene(
 
     // ------------------------------------------------------------------------------------------------ candidates
 
-    private fun contourQuads(image: Mat, mode: Int, out: MutableList<List<Pt>>) {
+    /** Quadrilaterals around large contours; [scale] maps the image's pixels to the scene's (for a smaller mask). */
+    private fun contourQuads(image: Mat, mode: Int, out: MutableList<List<Pt>>, scale: Double = 1.0) {
         val found = ArrayList<MatOfPoint>(); val hierarchy = Mat()
+        fun at(x: Double, y: Double) = if (scale == 1.0) Pt(x, y) else Pt((x + .5) * scale - .5, (y + .5) * scale - .5)
         try {
             Imgproc.findContours(image, found, hierarchy, mode, Imgproc.CHAIN_APPROX_SIMPLE)
-            found.map { it to abs(Imgproc.contourArea(it)) }.filter { it.second >= w * h * .045 }.sortedByDescending { it.second }.take(25).forEach { (contour, _) ->
+            found.map { it to abs(Imgproc.contourArea(it)) }.filter { it.second >= image.cols() * image.rows() * .045 }.sortedByDescending { it.second }.take(25).forEach { (contour, _) ->
                 val indices = MatOfInt(); val hull = MatOfPoint2f(); val approximation = MatOfPoint2f()
                 try {
                     Imgproc.convexHull(contour, indices)
@@ -306,10 +324,10 @@ private class Scene(
                     val perimeter = Imgproc.arcLength(hull, true)
                     for (epsilon in doubleArrayOf(.015, .03, .05, .08)) {
                         Imgproc.approxPolyDP(hull, approximation, perimeter * epsilon, true)
-                        if (approximation.total() == 4L) out += order(approximation.toList().map { Pt(it.x, it.y) })
+                        if (approximation.total() == 4L) out += order(approximation.toList().map { at(it.x, it.y) })
                     }
                     // The hull's four extreme directions survive curved or bulging sides.
-                    out += order(listOf(hullPoints.minBy { it.x + it.y }, hullPoints.maxBy { it.x - it.y }, hullPoints.maxBy { it.x + it.y }, hullPoints.minBy { it.x - it.y }).map { Pt(it.x, it.y) })
+                    out += order(listOf(hullPoints.minBy { it.x + it.y }, hullPoints.maxBy { it.x - it.y }, hullPoints.maxBy { it.x + it.y }, hullPoints.minBy { it.x - it.y }).map { at(it.x, it.y) })
                 } finally { indices.release(); hull.release(); approximation.release() }
             }
         } finally { found.forEach { it.release() }; hierarchy.release() }
@@ -363,8 +381,96 @@ private class Scene(
         }
     }
 
-    private fun candidates(): List<List<Pt>> {
-        val out = ArrayList<List<Pt>>()
+    /** Squared colour distance with lightness counted at half weight (shading changes lightness first). */
+    private fun near(colours: FloatArray, i: Int, c: FloatArray): Float {
+        val dl = (colours[i * 3] - c[0]) * .5f; val da = colours[i * 3 + 1] - c[1]; val db = colours[i * 3 + 2] - c[2]
+        return dl * dl + da * da + db * db
+    }
+
+    /**
+     * Grows a region from the seed patch through neighbours of nearly the same colour: slow shading (towards the
+     * spine of a book) is followed, a step to another surface is not.
+     */
+    private fun grow(gw: Int, gh: Int, colours: FloatArray, sx: Int, sy: Int, r: Int, seed: FloatArray, blocked: ByteArray, region: ByteArray, queue: IntArray) {
+        java.util.Arrays.fill(region, 0)
+        var head = 0; var tail = 0
+        val total = 34f * 34f
+        for (y in max(0, sy - r)..min(gh - 1, sy + r)) for (x in max(0, sx - r)..min(gw - 1, sx + r)) {
+            val i = y * gw + x
+            if (blocked[i].toInt() == 0 && near(colours, i, seed) < total) { region[i] = -1; queue[tail++] = i }
+        }
+        val here = FloatArray(3)
+        while (head < tail) {
+            val p = queue[head++]; val px = p % gw; val py = p / gw
+            here[0] = colours[p * 3]; here[1] = colours[p * 3 + 1]; here[2] = colours[p * 3 + 2]
+            for (d in 0..3) {
+                val nx = px + (if (d == 0) 1 else if (d == 1) -1 else 0); val ny = py + (if (d == 2) 1 else if (d == 3) -1 else 0)
+                if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue
+                val n = ny * gw + nx
+                if (region[n].toInt() != 0 || blocked[n].toInt() != 0) continue
+                if (near(colours, n, here) < 3f * 3f && near(colours, n, seed) < total) { region[n] = -1; queue[tail++] = n }
+            }
+        }
+    }
+
+    /**
+     * Regions of one surface colour, grown from a few seed points and stopped at edges: the paper of a page stays
+     * apart from the page edges of the book block, a cover and a table or chair of almost the same brightness.
+     * Worked out at half resolution (the region's outline is refined against the full-size evidence afterwards).
+     */
+    private fun surfaceQuads(edges: Mat, out: MutableList<List<Pt>>) {
+        val gw = (w + 1) / 2; val gh = (h + 1) / 2
+        val barrier = Mat(); val mask = Mat(gh, gw, CvType.CV_8UC1); val labels = Mat(); val thicken = Mat.ones(3, 3, CvType.CV_8U)
+        val k = max(3, (s * .01).toInt() or 1).toDouble()
+        val opening = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(k, k))
+        val full = ByteArray(w * h); val blocked = ByteArray(gw * gh); val bytes = ByteArray(gw * gh); val queue = IntArray(gw * gh)
+        val colours = FloatArray(gw * gh * 3); val counts = IntArray(gw * gh)
+        try {
+            Imgproc.dilate(edges, barrier, thicken)
+            barrier.get(0, 0, full)
+            for (y in 0 until h) for (x in 0 until w) {
+                val g = (y / 2) * gw + x / 2; val i = y * w + x
+                colours[g * 3] += lab[i * 3]; colours[g * 3 + 1] += lab[i * 3 + 1]; colours[g * 3 + 2] += lab[i * 3 + 2]; counts[g]++
+                if (full[i].toInt() != 0) blocked[g] = 1
+            }
+            for (g in 0 until gw * gh) { val n = counts[g].toFloat(); colours[g * 3] /= n; colours[g * 3 + 1] /= n; colours[g * 3 + 2] /= n }
+            val r = max(2, (s * .03).toInt())
+            val seeds = listOf(.5 to .5, .35 to .5, .65 to .5, .5 to .35, .5 to .65).map { (fx, fy) -> (fx * (gw - 1)).roundToInt() to (fy * (gh - 1)).roundToInt() }
+            val values = DoubleArray((2 * r + 1) * (2 * r + 1))
+            val done = ArrayList<FloatArray>()
+            val one = IntArray(1)
+            for ((sx, sy) in seeds) {
+                val seed = FloatArray(3) { c ->
+                    var n = 0
+                    for (y in max(0, sy - r)..min(gh - 1, sy + r)) for (x in max(0, sx - r)..min(gw - 1, sx + r)) values[n++] = colours[(y * gw + x) * 3 + c].toDouble()
+                    median(values, n).toFloat()
+                }
+                if (done.any { gap(it, seed) < 6 }) continue
+                done += seed
+                for (threshold in doubleArrayOf(14.0, 20.0, 0.0)) {
+                    if (threshold > 0) {
+                        val limit = (threshold * threshold).toFloat()
+                        for (i in 0 until gw * gh) bytes[i] = if (blocked[i].toInt() == 0 && near(colours, i, seed) < limit) -1 else 0
+                    } else grow(gw, gh, colours, sx, sy, r, seed, blocked, bytes, queue)
+                    mask.put(0, 0, bytes)
+                    Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, opening)
+                    Imgproc.connectedComponents(mask, labels, 4, CvType.CV_32S)
+                    // The region the seed patch falls in (most of the patch, text and edges aside).
+                    val votes = HashMap<Int, Int>()
+                    for (y in max(0, sy - r)..min(gh - 1, sy + r) step 2) for (x in max(0, sx - r)..min(gw - 1, sx + r) step 2) {
+                        labels.get(y, x, one); if (one[0] > 0) votes[one[0]] = (votes[one[0]] ?: 0) + 1
+                    }
+                    val label = votes.maxByOrNull { it.value }?.key ?: continue
+                    Core.compare(labels, Scalar(label.toDouble()), mask, Core.CMP_EQ)
+                    contourQuads(mask, Imgproc.RETR_EXTERNAL, out, 2.0)
+                }
+            }
+        } finally { barrier.release(); mask.release(); labels.release(); opening.release(); thicken.release() }
+    }
+
+    /** Shapes from contours, regions and lines; surface regions kept apart (they are always measured). */
+    private fun candidates(): Pair<List<List<Pt>>, List<List<Pt>>> {
+        val out = ArrayList<List<Pt>>(); val regions = ArrayList<List<Pt>>()
         val lab8 = Mat(); val channel = Mat(); val edges = Mat.zeros(h, w, CvType.CV_8UC1); val canny = Mat(); val valleys = Mat(); val closed = Mat(); val gray = Mat(); val mask = Mat()
         val darkMat = Mat(h, w, CvType.CV_32FC1); val small = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
         try {
@@ -390,19 +496,20 @@ private class Scene(
                 contourQuads(mask, Imgproc.RETR_EXTERNAL, out)
             }
             lineQuads(lines(edges, valleys), out)
+            surfaceQuads(edges, regions)
         } finally {
             lab8.release(); channel.release(); edges.release(); canny.release(); valleys.release(); closed.release(); gray.release(); mask.release(); darkMat.release(); small.release()
         }
-        return out
+        return out to regions
     }
 
     // ------------------------------------------------------------------------------------------------ refinement
 
     /** Each side's two ends move along its normal to where the evidence is best; the corners follow. */
-    private fun refine(q: List<Pt>): List<Pt> {
+    private fun refine(q: List<Pt>, wide: Boolean = false): List<Pt> {
         val lines = (0..3).map { arrayOf(q[it], q[(it + 1) % 4]) }.toMutableList()
         val step = max(1.5, s * .006)
-        repeat(2) {
+        repeat(2) { pass ->
             for (i in 0..3) {
                 val a = lines[i][0]; val b = lines[i][1]
                 if (onBorder(clamp(a), clamp(b))) continue
@@ -419,11 +526,15 @@ private class Scene(
                     return value - .004 * (abs(da) + abs(db)) to arrayOf(a2, b2)
                 }
                 // A coarse grid, then the neighbours of the best.
+                // A region's side may stop short of the edge where the page shades into the spine: a side without
+                // support looks further out (and a little in) on the first pass.
+                val far = wide && pass == 0 && (trial(0, 0)?.first ?: 0.0) < .5
+                val range = if (far) -6..38 else -4..4; val stride = if (far) 4 else 2; val near = stride / 2
                 var best: Triple<Double, Array<Pt>, Pair<Int, Int>>? = null
-                for (da in -4..4 step 2) for (db in -4..4 step 2) trial(da, db)?.let { if (best == null || it.first > best!!.first) best = Triple(it.first, it.second, da to db) }
+                for (da in range step stride) for (db in range step stride) trial(da, db)?.let { if (best == null || it.first > best!!.first) best = Triple(it.first, it.second, da to db) }
                 val coarse = best ?: continue
                 val (ba, bb) = coarse.third
-                for (da in ba - 1..ba + 1) for (db in bb - 1..bb + 1) {
+                for (da in ba - near..ba + near) for (db in bb - near..bb + near) {
                     if (da == ba && db == bb) continue
                     trial(da, db)?.let { if (it.first > best!!.first) best = Triple(it.first, it.second, da to db) }
                 }
@@ -480,7 +591,7 @@ private class Scene(
     private class Cut(val score: Double, val evidence: Double, val cornerA: Double, val cornerB: Double, val a: Pt, val b: Pt, val samples: Samples)
 
     /** The best line across the quad roughly parallel to side [j], its ends on the neighbouring sides at [from]..[to] of their length. */
-    private fun bestCut(q: List<Pt>, j: Int, from: Double, to: Double, maxTurn: Double, spine: Boolean, deepest: Double = 1.0): Cut? {
+    private fun bestCut(q: List<Pt>, j: Int, from: Double, to: Double, maxTurn: Double, spine: Boolean, deepest: Double = 1.0, innermost: Boolean = false): Cut? {
         val a0 = q[(j + 3) % 4]; val a1 = q[j]
         val b0 = q[(j + 2) % 4]; val b1 = q[(j + 1) % 4]
         // Roughly parallel to side j, or to the opposite side (a page seen from the side converges towards one end).
@@ -496,7 +607,9 @@ private class Scene(
                 if (turn(a, b) > Math.toRadians(maxTurn) || (u + v) / 2 > deepest) return@forEachIndexed
                 val (ev, sm) = lineEvidence(a, b, spine)
                 val cb = cornersB[vi]
-                val score = ev + .35 * (ca + cb)
+                // Innermost: the edge nearest the middle that is clearly an edge (the page itself, inside the
+                // layered page edges of a book block).
+                val score = if (innermost) (if (ev >= .6) 2 - (u + v) / 2 + .1 * ev else ev - 1) else ev + .35 * (ca + cb)
                 if (best == null || score > best!!.score) best = Cut(score, ev, ca, cb, a, b, sm)
             }
         }
@@ -549,8 +662,10 @@ private class Scene(
                 // is cut only across the page's short way (a band of table above a book): a spine runs along a page's
                 // long side, and its shadow is not cut away.
                 if (r.border[j] || j in r.spine) continue
-                if (r.valleyish[j] && dist(q[j], q[(j + 1) % 4]) >= dist(q[(j + 1) % 4], q[(j + 2) % 4])) continue
-                val cut = bestCut(q, j, .66, .97, 12.0, false, if (r.valleyish[j]) .88 else 1.0) ?: continue
+                // A side in a real dark valley (darker than both of its sides; a plain step between two surfaces is not).
+                val inValley = r.hollow[j]
+                val alongValley = inValley && dist(q[j], q[(j + 1) % 4]) >= dist(q[(j + 1) % 4], q[(j + 2) % 4])
+                val cut = bestCut(q, j, .66, .97, 12.0, false, if (inValley && !alongValley) .88 else 1.0, alongValley) ?: continue
                 val sm = cut.samples
                 val ok = (0 until sm.m).filter { sm.outsideOk[it] && sm.insideOk[it] }
                 if (ok.size < 6) continue
@@ -560,6 +675,17 @@ private class Scene(
                 for (k in 0 until 16) { val p = lerp(m0, m1, .1 + .8 * k / 15); colour(stripSamples, k, p.x, p.y) }
                 val strip = medianColour(stripSamples, { true }, 16) ?: continue
                 val inner = medianColour(sm.deep, { it in ok }, sm.m) ?: continue
+                // Along a dark valley on the page's long side only another material is cut (the page edges of the
+                // book block, a cover); a strip of the page's own colour, only darker, is the shade of its spine.
+                if (alongValley) {
+                    val depths = doubleArrayOf(.25, .5, .75).map { f ->
+                        val d0 = lerp(p0, cut.a, f); val d1 = lerp(p1, cut.b, f)
+                        val at = FloatArray(16 * 3)
+                        for (k in 0 until 16) { val p = lerp(d0, d1, .1 + .8 * k / 15); colour(at, k, p.x, p.y) }
+                        medianColour(at, { true }, 16)!!
+                    }
+                    if (depths.all { hypot(it[1] - inner[1].toDouble(), it[2] - inner[2].toDouble()) < 10 }) continue
+                }
                 val buffer = DoubleArray(ok.size)
                 ok.forEachIndexed { n, k -> buffer[n] = sm.valley[k] }; val valley = median(buffer, ok.size)
                 ok.forEachIndexed { n, k -> buffer[n] = sm.step[k] }; val step = median(buffer, ok.size)
@@ -595,19 +721,24 @@ private class Scene(
         val scored = ArrayList<Scored>()
         var clock = System.nanoTime()
         fun lap(name: String) { trace?.invoke("$name %.0f ms".format((System.nanoTime() - clock) / 1e6)); clock = System.nanoTime() }
-        val raw = candidates()
+        val (shapes, surfaces) = candidates()
         lap("candidates")
+        fun key(q: List<Pt>) = q.flatMap { listOf((it.x / 6).roundToInt(), (it.y / 6).roundToInt()) }
         // A quick look (fewer samples, no colours) keeps the most promising candidates for the full measurement.
         val quick = ArrayList<Pair<List<Pt>, Double>>()
-        for (q in raw) {
+        for (q in shapes + surfaces) {
             if (!plausible(q)) continue
-            if (!seen.add(q.flatMap { listOf((it.x / 6).roundToInt(), (it.y / 6).roundToInt()) })) continue
+            if (!seen.add(key(q))) continue
             quick += q to glance(q)
         }
         quick.sortedByDescending { it.second }.take(120).forEach { (q, _) -> score(q)?.let { scored += it } }
+        // Surface regions are few and always measured: a side may stop short of its edge (where the page shades
+        // into the spine) until refinement looks further out.
+        val distinct = HashSet<List<Int>>()
+        val regions = surfaces.filter { plausible(it) && distinct.add(key(it)) }.mapNotNull { score(it) }.sortedByDescending { it.score }.take(2)
         lap("score")
         // Each of the best candidates is snapped to the strongest edges near its sides.
-        val refined = scored.sortedByDescending { it.score }.take(12).mapNotNull { score(refine(it.full)) }
+        val refined = scored.sortedByDescending { it.score }.take(12).mapNotNull { score(refine(it.full)) } + regions.mapNotNull { score(refine(it.full, true)) }
         lap("refine")
         var best = refined.maxByOrNull { it.score } ?: return null
         trace?.let { t -> t("${scored.size} candidates"); refined.sortedByDescending { it.score }.take(5).forEach { t("  " + describe(it)) } }
