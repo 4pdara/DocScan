@@ -1,7 +1,7 @@
 name: Build, verify and publish DocScan 1.2.2
 on:
   push:
-    branches: [feature/original-filters]
+    branches: [main]
     paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_1.2.2_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
   workflow_dispatch:
 permissions:

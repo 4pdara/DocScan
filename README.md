@@ -1,3 +1,14 @@
+# DocScan Scanner
+
+אפליקציית סריקת מסמכים ל־Android (`com.docscan.rebuild.scanner`), שנבנתה מאפס עם Kotlin, ‏Compose, ‏CameraX, ‏Room ו־OpenCV. הענף הראשי `main` הוא ענף הפיתוח שלה.
+
+**הגרסה האחרונה:** [Releases](https://github.com/4pdara/DocScan/releases), התגיות `scanner-v*`. בתוך האפליקציה: "הגדרות" ← "עדכון האפליקציה". הערות לכל גרסה נמצאות ב־`docs/RELEASE_*_HE.md`.
+
+**מחקר:**
+- **גרסאות ה־Native וכלי המחקר על CamScanner:** בענף `rebuild/camscanner-reference`, ובגרסאות `native-v*`.
+- **ניתוח החבילה ובדיקת הפערים מהקו הישן:** ב־[`docs/research/`](docs/research/README_HE.md).
+
+## היסטוריה
 # DocScan חדש — בנייה עצמאית
 אפליקציית Android חדשה מאפס בענף `rebuild/camscanner-reference`, עם Kotlin, Compose, CameraX, Room ו־OpenCV. אין תלות או העתקת קוד, מסננים, משאבים או תשתית מה־DocScan הישן. הפרופיל הרגיל משתמש בעיבוד העצמאי. נוסף פרופיל Native מחקרי שמפעיל את רכיב הסרת הצללים MagicEnhancer מהחבילה שסופקה; אין כאן העברה מלאה של מנוע CamScanner.
 

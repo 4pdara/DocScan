@@ -3,7 +3,7 @@ name: Diagnose the published 0.1.8 installation failure
 # Android 15 phone does (ARM64 libraries, update over 0.1.7.1) and records the package manager's answer.
 on:
   push:
-    branches: [feature/original-filters]
+    branches: [main]
     paths: [.github/workflows/diagnose-0.1.8-install.yml, .github/diagnose-0.1.8.sh]
   workflow_dispatch:
 permissions:
