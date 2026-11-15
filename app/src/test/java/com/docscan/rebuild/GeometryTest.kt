@@ -29,6 +29,25 @@ class GeometryTest {
         gate.sample(Frame.FULL, content, 4200)
         assertTrue(gate.sample(Frame.FULL, content, 4500).capture)
     }
+    @Test fun savedStraighteningKeepsBothModels() {
+        val legacy = List(9) { .01f * it - .04f }
+        assertTrue(Flattening.valid(legacy))
+        val surface = listOf(16f, 6f) + List(96) { .002f * (it % 7) - .006f }
+        assertTrue(Flattening.valid(surface))
+        assertTrue(EditRecipe(flatten = surface).valid())
+        assertFalse(Flattening.valid(surface.dropLast(1)))
+        assertFalse(Flattening.valid(listOf(16.5f, 6f) + List(99) { 0f }))
+        assertFalse(Flattening.valid(listOf(40f, 6f) + List(240) { 0f }))
+        assertFalse(Flattening.valid(listOf(16f, 6f) + List(95) { 0f } + 2f))
+        assertFalse(Flattening.valid(legacy.dropLast(1) + Float.NaN))
+    }
+    @Test fun outlineJitterBelowTwoAndAHalfPercentKeepsAutomaticCaptureSteady() {
+        val gate = CaptureStability(); val content = List(64) { 100f }
+        val frame = Frame(listOf(Vertex(.2f, .2f), Vertex(.7f, .2f), Vertex(.7f, .8f), Vertex(.2f, .8f)))
+        assertFalse(gate.sample(frame, content, 0).capture)
+        assertFalse(gate.sample(Frame(frame.points.map { Vertex(it.x + .02f, it.y) }), content, 400).capture)
+        assertTrue(gate.sample(Frame(frame.points.map { Vertex(it.x - .01f, it.y) }), content, 800).capture)
+    }
     @Test fun exposureChangeDoesNotUnlockButNewContentDoes() {
         val original = List(64) { if (it < 32) 100f else 170f }
         assertFalse(CaptureStability.contentChanged(original, original.map { it + 15 }))

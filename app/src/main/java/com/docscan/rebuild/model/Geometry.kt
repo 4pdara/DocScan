@@ -79,6 +79,20 @@ data class Frame(val points: List<Vertex>) {
     }
 }
 
+/**
+ * A saved automatic straightening: nine numbers of the first (polynomial) model, or the B-spline surface saved as
+ * [across, down, across x down coefficients]. Coefficients are shares of the page height.
+ */
+object Flattening {
+    fun valid(f: List<Float>): Boolean {
+        if (f.size == 9) return f.all { it.isFinite() && it in -1f..1f }
+        if (f.size < 2 || !f[0].isFinite() || !f[1].isFinite()) return false
+        val across = f[0].toInt(); val down = f[1].toInt()
+        if (across.toFloat() != f[0] || down.toFloat() != f[1] || across !in 4..32 || down !in 4..16) return false
+        return f.size == 2 + across * down && f.drop(2).all { it.isFinite() && it in -1f..1f }
+    }
+}
+
 /** [referenceEngineVariant]: the private research profile can route this filter to its engine; every build has an original implementation. */
 enum class Treatment(val referenceEngineVariant: Boolean = false) {
     ORIGINAL, COLOR, GRAY, INK, PAPER,
@@ -103,7 +117,7 @@ data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val tre
     fun withoutMarks() = copy(watermark = null, stamp = null, footer = null, signatures = emptyList(), ink = emptyList(), texts = emptyList(), numberText = null)
     val marked: Boolean get() = watermark != null || stamp != null || footer != null || numberText != null || signatures.isNotEmpty() || ink.isNotEmpty() || texts.isNotEmpty()
     fun valid() = frame.valid() && curvature.valid() && signatures.all { it.valid() } && erase.all { it.valid() } && ink.all { it.valid() } && texts.all { it.valid() } &&
-        watermarkSpot.valid() && watermarkStyle.valid() && (flatten.isEmpty() || flatten.size == 9 && flatten.all { it.isFinite() && it in -1f..1f }) &&
+        watermarkSpot.valid() && watermarkStyle.valid() && (flatten.isEmpty() || Flattening.valid(flatten)) &&
         (outputAspect == null || outputAspect.isFinite() && outputAspect in .1f..10f)
 
     /**
@@ -215,7 +229,9 @@ class CaptureStability {
         val previous = captured
         if (previous != null && !contentChanged(previous, signature)) return Decision(1f, false)
         val origin = anchor
-        if (origin == null || origin.motion(frame) > .018f || stableSignature?.let { contentChanged(it, signature) } == true) {
+        // The outline found in the camera wanders a little from frame to frame even when the phone is still (an open
+        // book's page edges and spine); a steadier hold than 2.5% of the frame would hardly ever be reached.
+        if (origin == null || origin.motion(frame) > .025f || stableSignature?.let { contentChanged(it, signature) } == true) {
             anchor = frame; stableSince = now; stableSamples = 1; stableSignature = signature.toList()
             return Decision(0f, false)
         }

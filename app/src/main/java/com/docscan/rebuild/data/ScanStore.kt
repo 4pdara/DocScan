@@ -147,7 +147,7 @@ object RecipeCodec {
             watermarkStyle = style,
             footer = o.optString("footer").trim().take(80).ifBlank { null }, footerPlace = option(o, "footerPlace", StampPlace.BOTTOM_CENTER), noteColor = option(o, "noteColor", MarkColor.RED),
             signatures = list("signatures", 20).mapNotNull { SignatureCodec.decode(it) },
-            flatten = o.optJSONArray("flatten")?.let { a -> (0 until a.length()).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { f -> f.size == 9 && f.all { it.isFinite() && it in -1f..1f } }.orEmpty(),
+            flatten = o.optJSONArray("flatten")?.let { a -> (0 until a.length()).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { Flattening.valid(it) }.orEmpty(),
             eraseColor = o.optBoolean("eraseColor", false),
             erase = list("erase", 500).mapNotNull { m ->
                 val kind = m.optString("k").let { k -> EraseKind.values().firstOrNull { it.name == k } } ?: return@mapNotNull null

@@ -229,6 +229,57 @@ class BookFeaturesTest {
             assertEquals(BookCurve(),RecipeCodec.decode("{}").curvature)
         }finally{bitmap.recycle();result.recycle()}
     }
+    @Test fun automaticStraighteningFollowsASharpCurlAtTheSpine() {
+        // Owner's 1.2.3 photograph: next to the spine the last words of every line rise steeply. Text runs up to the
+        // spine, which curls the last fifth of the page, more at the top. Mirrors docs/FLATTEN_1.2.4_HE.md.
+        ImagePipeline.ensureAvailable()
+        val w=1200;val h=1600
+        val text="שורה של טקסט לבדיקת יישור הדף ליד השדרה 0123456789 abc def ghi jk"
+        val ink=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=Color.BLACK;textSize=36f}
+        ink.textSize=min(38f,36f*(w-70)/ink.measureText(text));val step=ink.textSize*1.17f
+        val flat=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
+        Canvas(flat).apply {drawColor(Color.WHITE);var y=120f;while(y<h-80){drawText(text,30f,y,ink);y+=step}}
+        fun gray(bitmap:Bitmap)=org.opencv.core.Mat().also {m->val rgba=org.opencv.core.Mat();org.opencv.android.Utils.bitmapToMat(bitmap,rgba);org.opencv.imgproc.Imgproc.cvtColor(rgba,m,org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY);rgba.release()}
+        /** Mean over lines of the largest distance from the line's own straight fit, in pixels. */
+        fun bend(bitmap:Bitmap):Double {
+            val g=gray(bitmap);val lines=try{PageFlattener.lines(g)}finally{g.release()}
+            return lines.map {line->
+                val n=line.size;val mx=line.sumOf {it[0]}/n;val my=line.sumOf {it[1]}/n
+                val slope=line.sumOf {(it[0]-mx)*(it[1]-my)}/line.sumOf {(it[0]-mx)*(it[0]-mx)}.coerceAtLeast(1e-9)
+                line.map {(it[1]-my-slope*(it[0]-mx))*h}.let {r->r.max()-r.min()}
+            }.average()
+        }
+        val bent=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
+        val src=org.opencv.core.Mat();val dst=org.opencv.core.Mat();val mapX=org.opencv.core.Mat(h,w,org.opencv.core.CvType.CV_32FC1);val mapY=org.opencv.core.Mat(h,w,org.opencv.core.CvType.CV_32FC1)
+        try {
+            org.opencv.android.Utils.bitmapToMat(flat,src)
+            val xs=FloatArray(w*h);val ys=FloatArray(w*h)
+            for(y in 0 until h)for(x in 0 until w){
+                val u=x/(w-1.0);val v=y/(h-1.0);val t=((u-.8)/.2).coerceIn(0.0,1.0);val d=.035*t*t*(1.2-v)
+                xs[y*w+x]=x.toFloat();ys[y*w+x]=((v-d)*(h-1)).toFloat()
+            }
+            mapX.put(0,0,xs);mapY.put(0,0,ys)
+            org.opencv.imgproc.Imgproc.remap(src,dst,mapX,mapY,org.opencv.imgproc.Imgproc.INTER_LINEAR,org.opencv.core.Core.BORDER_REPLICATE)
+            org.opencv.android.Utils.matToBitmap(dst,bent)
+        }finally{src.release();dst.release();mapX.release();mapY.release()}
+        try {
+            val bentGray=gray(bent)
+            val estimate=try{PageFlattener.estimate(bentGray)}finally{bentGray.release()}
+            val coefficients=requireNotNull(estimate.coefficients){"Curled page: $estimate"}.toList()
+            assertEquals(2+PageFlattener.ACROSS*PageFlattener.DOWN,coefficients.size);assertTrue(Flattening.valid(coefficients))
+            val straightened=ImagePipeline.transform(bent,EditRecipe(flatten=coefficients))
+            try {
+                assertEquals(w,straightened.width);assertEquals(h,straightened.height)
+                val before=bend(bent);val after=bend(straightened)
+                assertTrue("Curl at the spine straightened: $before px -> $after px",after<before*.5&&before>3)
+                assertEquals(EditRecipe(flatten=coefficients),RecipeCodec.decode(RecipeCodec.encode(EditRecipe(flatten=coefficients))))
+            }finally{straightened.recycle()}
+            // A page straightened by an earlier version keeps its nine numbers and renders with the first model.
+            val legacy=listOf(.001f,.0098f,.0012f,.0074f,-.0124f,-.0023f,.0157f,-.018f,-.0026f)
+            assertEquals(EditRecipe(flatten=legacy),RecipeCodec.decode(RecipeCodec.encode(EditRecipe(flatten=legacy))))
+            ImagePipeline.transform(bent,EditRecipe(flatten=legacy)).let {assertEquals(w,it.width);it.recycle()}
+        }finally{flat.recycle();bent.recycle()}
+    }
     @Test fun offlineHebrewAndEnglishRecognitionSurvivesReopenAndEditInvalidatesIt():Unit=runBlocking {
         val name="ocr-persistence-${System.nanoTime()}.db"
         var db=Room.databaseBuilder(context,ScanDatabase::class.java,name).build();var store=ScanStore(context,db);val book=store.create("OCR")
