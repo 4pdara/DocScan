@@ -110,7 +110,9 @@ fun UpdateReadyDialog() {
             if (!mayInstall) Text(stringResource(R.string.update_permission_hint), style = MaterialTheme.typography.bodySmall)
         } },
         confirmButton = {
-            if (mayInstall) TextButton({ UpdateController.install(context) }) { Text(stringResource(R.string.update_install_now)) }
+            // Asked once: after "install now" the question does not come back while the app stays open (a declined
+            // install can be retried from Settings, "Update the app").
+            if (mayInstall) TextButton({ later = ready.version; UpdateController.install(context) }) { Text(stringResource(R.string.update_install_now)) }
             else TextButton({ context.startActivity(AppUpdater.installPermissionIntent(context)) }) { Text(stringResource(R.string.update_allow)) }
         },
         dismissButton = { TextButton({ later = ready.version }) { Text(stringResource(R.string.update_later)) } })

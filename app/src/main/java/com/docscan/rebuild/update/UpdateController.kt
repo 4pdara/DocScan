@@ -45,7 +45,10 @@ object UpdateController {
     fun resume(context: Context) {
         val app = context.applicationContext
         AppUpdater.cleanUp(app, BuildConfig.VERSION_NAME)
-        if (AppUpdater.pending(app) != null) watch(app)
+        val pending = AppUpdater.pending(app) ?: return
+        // A verified update, or one already handed to Android's installer, is not checked again: doing so on every
+        // return to the app (Android's install screen pauses it) put "install now?" back on screen in a loop.
+        if (!settled(mutable.value, pending.version)) watch(app)
     }
 
     fun check(context: Context) {
@@ -109,4 +112,12 @@ object UpdateController {
     fun cancel(context: Context) {
         watching?.cancel(); AppUpdater.cancel(context.applicationContext); mutable.value = State.Idle
     }
+}
+
+/** Whether the update of [version] is already verified, being verified or being installed, so nothing is redone. */
+internal fun settled(current: UpdateController.State, version: String) = when (current) {
+    is UpdateController.State.Verifying -> current.version == version
+    is UpdateController.State.Ready -> current.version == version
+    is UpdateController.State.Installing -> current.version == version
+    else -> false
 }
