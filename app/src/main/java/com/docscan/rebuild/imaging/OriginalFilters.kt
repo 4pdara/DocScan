@@ -17,6 +17,13 @@ internal object OriginalFilters {
     /** Board colour used by the Board filter, a dark green chalkboard. */
     val BOARD_GREEN = doubleArrayOf(40.0, 74.0, 70.0)
     private const val BACKGROUND_EDGE = 900.0
+    /**
+     * Lightness of a document's brighter parts (its 90th percentile) at or below which it is treated as dark (a
+     * leather or cloth cover), and at or above which as paper. Measured: paper pages photographed in shade 150..214,
+     * dark covers 57..94 (docs/FILTERS_1.2.5_HE.md).
+     */
+    private const val DARK_DOCUMENT = 110.0
+    private const val LIGHT_PAPER = 140.0
 
     fun apply(current: Mat, treatment: Treatment, result: Mat) {
         val rgb = Mat()
@@ -61,29 +68,74 @@ internal object OriginalFilters {
     }
 
     /** Bright white page, deeper text and livelier colour for colour documents. */
-    private fun magicColor(rgb: Mat, out: Mat) {
+    private fun magicColor(rgb: Mat, out: Mat) = byDocumentTone(rgb, out) { paperLike ->
         val paper = paperBackground(rgb)
         try {
-            divide(rgb, paper.background, out, 255.0)
-            levels(out, black = blackPoint(out) * .8, white = 232.0, gamma = 1.1)
-            saturate(out, 1.4)
-            sCurve(out, .35)
-            sharpen(out, sigma = 1.2, amount = .55)
+            divide(rgb, paper.background, paperLike, 255.0)
+            levels(paperLike, black = blackPoint(paperLike) * .8, white = 232.0, gamma = 1.1)
+            saturate(paperLike, 1.4)
+            sCurve(paperLike, .35)
+            sharpen(paperLike, sigma = 1.2, amount = .55)
         } finally { paper.release() }
     }
 
     /** Strongest cleanup: denoise, uniform white background, crisp ink, moderate colour. */
-    private fun pro(rgb: Mat, out: Mat) {
+    private fun pro(rgb: Mat, out: Mat) = byDocumentTone(rgb, out) { paperLike ->
         val paper = paperBackground(rgb)
         val denoised = Mat()
         try {
             Imgproc.medianBlur(rgb, denoised, 3)
-            divide(denoised, paper.background, out, 255.0)
-            levels(out, black = blackPoint(out), white = 226.0, gamma = 1.2)
-            saturate(out, 1.2)
-            whitenPaper(out)
-            sharpen(out, sigma = 1.0, amount = .7)
+            divide(denoised, paper.background, paperLike, 255.0)
+            levels(paperLike, black = blackPoint(paperLike), white = 226.0, gamma = 1.2)
+            saturate(paperLike, 1.2)
+            whitenPaper(paperLike)
+            sharpen(paperLike, sigma = 1.0, amount = .7)
         } finally { paper.release(); denoised.release() }
+    }
+
+    /**
+     * Light paper is evened out to white by [paperFilter]; a dark or deeply coloured document (a leather or cloth
+     * book cover) is not paper, and dividing by its own surface would bleach it. Its colours are kept and only made
+     * clearer: its own range stretched, a little more colour and contrast, sharper detail. The lightness of the
+     * document's brighter parts decides (paper is light even in shade), with a blend between the two in the middle.
+     */
+    private fun byDocumentTone(rgb: Mat, out: Mat, paperFilter: (Mat) -> Unit) {
+        val lightness = documentLightness(rgb)
+        val weight = ((lightness - DARK_DOCUMENT) / (LIGHT_PAPER - DARK_DOCUMENT)).coerceIn(0.0, 1.0)
+        if (weight >= 1.0) { paperFilter(out); return }
+        if (weight <= 0.0) { richColour(rgb, out); return }
+        val paperLike = Mat()
+        try {
+            paperFilter(paperLike); richColour(rgb, out)
+            Core.addWeighted(paperLike, weight, out, 1 - weight, 0.0, out)
+        } finally { paperLike.release() }
+    }
+
+    /** Lightness (0..255) of the document's brighter parts: the 90th percentile, from a small copy. */
+    private fun documentLightness(rgb: Mat): Double {
+        val small = Mat(); val gray = Mat()
+        try {
+            val scale = min(1.0, 400.0 / max(rgb.cols(), rgb.rows()))
+            Imgproc.resize(rgb, small, Size(max(1.0, rgb.cols() * scale), max(1.0, rgb.rows() * scale)), 0.0, 0.0, Imgproc.INTER_AREA)
+            Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
+            return percentile(gray, .9)
+        } finally { small.release(); gray.release() }
+    }
+
+    /** A document's own colours, clearer: its darkest and brightest half percent stretched, livelier colour, sharper. */
+    private fun richColour(rgb: Mat, out: Mat) {
+        rgb.copyTo(out)
+        val small = Mat(); val gray = Mat()
+        val (low, high) = try {
+            val scale = min(1.0, 600.0 / max(rgb.cols(), rgb.rows()))
+            Imgproc.resize(rgb, small, Size(max(1.0, rgb.cols() * scale), max(1.0, rgb.rows() * scale)), 0.0, 0.0, Imgproc.INTER_AREA)
+            Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
+            percentile(gray, .005) to percentile(gray, .995)
+        } finally { small.release(); gray.release() }
+        levels(out, black = low * .7, white = max(high, low + 60.0), gamma = 1.0)
+        saturate(out, 1.15)
+        sCurve(out, .2)
+        sharpen(out, sigma = 1.2, amount = .5)
     }
 
     /**

@@ -100,12 +100,15 @@ class GeometryTest {
     }
     @Test fun boundaryConsensusRejectsAnIsolatedJumpAndSmoothsSmallJitter() {
         val tracker=BoundaryTracker();val f=Frame(listOf(Vertex(.2f,.2f),Vertex(.7f,.2f),Vertex(.7f,.7f),Vertex(.2f,.7f)))
-        assertNull(tracker.sample(f));assertEquals(f,tracker.sample(f))
+        // The first outline shows at once; later looks smooth it.
+        assertEquals(f,tracker.sample(f));assertEquals(f,tracker.sample(f))
         val jitter=Frame(f.points.map {Vertex(it.x+.01f,it.y)})
         val smoothed=tracker.sample(jitter)!!;assertTrue(smoothed.motion(f)<jitter.motion(f))
+        // A single jump is not followed; two agreeing looks at the new place are.
         val jump=Frame(f.points.map {Vertex(it.x+.15f,it.y)})
         assertNull(tracker.sample(jump));assertNotNull(tracker.sample(f))
-        assertNull(tracker.sample(null));assertNull(tracker.sample(f))
+        assertNull(tracker.sample(jump));assertEquals(jump,tracker.sample(jump))
+        assertNull(tracker.sample(null));assertEquals(f,tracker.sample(f))
     }
     @Test fun twoObservationsOrChangingContentCannotTriggerAutomaticCapture() {
         val gate=CaptureStability();val a=List(64){if(it<32)40f else 180f}

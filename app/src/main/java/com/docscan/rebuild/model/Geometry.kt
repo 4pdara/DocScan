@@ -262,7 +262,10 @@ class BoundaryTracker {
     fun sample(candidate: Frame?): Frame? {
         if (candidate == null) { tracked = null; pending = null; return null }
         val previous = tracked
-        if (previous == null || previous.motion(candidate) > .065f) {
+        // Nothing shown yet: the first outline appears at once (a phone may need most of a second for each look);
+        // the next look smooths it, or replaces it only when two looks agree on the new place.
+        if (previous == null) { tracked = candidate; pending = null; return candidate }
+        if (previous.motion(candidate) > .065f) {
             val proposal = pending
             pending = candidate
             if (proposal == null || proposal.motion(candidate) > .025f) return null
