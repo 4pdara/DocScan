@@ -242,15 +242,20 @@ private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: Bou
         colours[index * 4 + 2] = (yy + 1.772 * uu).toInt().coerceIn(0,255).toByte()
         colours[index * 4 + 3] = 255.toByte()
     }
-    val gray = Mat(height, width, CvType.CV_8UC1); gray.put(0, 0, pixels)
-    val rgba = Mat(height, width, CvType.CV_8UC4); rgba.put(0, 0, colours)
+    val sensorGray = Mat(height, width, CvType.CV_8UC1); sensorGray.put(0, 0, pixels)
+    val sensorRgba = Mat(height, width, CvType.CV_8UC4); sensorRgba.put(0, 0, colours)
+    // Detection sees the view upright, as in the photo that is taken, so the outline shown here and the one found
+    // on the photo agree.
+    val rotation = image.imageInfo.rotationDegrees
+    val turn = when ((rotation % 360 + 360) % 360) { 90 -> Core.ROTATE_90_CLOCKWISE; 180 -> Core.ROTATE_180; 270 -> Core.ROTATE_90_COUNTERCLOCKWISE; else -> null }
+    val gray = if (turn == null) sensorGray else Mat().also { Core.rotate(sensorGray, it, turn); sensorGray.release() }
+    val rgba = if (turn == null) sensorRgba else Mat().also { Core.rotate(sensorRgba, it, turn); sensorRgba.release() }
     try {
         val frame = tracker.sample(ImagePipeline.detectGray(gray, rgba))
         val sharp = frame != null && CaptureQuality.sharp(gray, rgba)
         val signature = if (frame == null) emptyList() else CaptureQuality.signature(rgba, frame)
         val decision = if (automatic && (sharp || frame == null)) gate.sample(frame, signature, now) else { gate.unstable(); CaptureStability.Decision(0f, false) }
-        val rotation = image.imageInfo.rotationDegrees
-        return CameraObservation(frame?.turned(rotation), if (rotation % 180 == 0) width.toFloat() / height else height.toFloat() / width, decision.progress, signature, decision.capture)
+        return CameraObservation(frame, gray.cols().toFloat() / gray.rows(), decision.progress, signature, decision.capture)
     } finally { gray.release(); rgba.release() }
 }
 

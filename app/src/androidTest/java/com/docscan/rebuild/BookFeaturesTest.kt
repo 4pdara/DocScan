@@ -80,6 +80,43 @@ class BookFeaturesTest {
         for((expected,file) in scenes) try {val frame=requireNotNull(ImagePipeline.detect(file)) {"No boundary in ${file.name}"};assertTrue("${file.name}: $frame",frame.motion(expected)<.05f)} finally {file.delete()}
     }
 
+    @Test fun detectsAngledCoversOpenRightPagesAndPagesCutByTheFrame() {
+        // Owner's 1.2.0 report: a cover seen from an angle on a table of nearly its colour (with a cloth spine), the
+        // right page of an open book whose facing page runs off the frame (page edges on its other side), and a
+        // page whose corner lies outside the frame. Mirrors the desktop measurement in docs/DETECTION_1.2.1_HE.md.
+        val w=900;val h=1200
+        fun Canvas.poly(points:List<Pair<Float,Float>>,colour:Int)=drawPath(Path().apply {points.forEachIndexed {i,(x,y)->if(i==0)moveTo(Math.round(x*w).toFloat(),Math.round(y*h).toFloat())else lineTo(Math.round(x*w).toFloat(),Math.round(y*h).toFloat())};close()},Paint().apply {color=colour})
+        fun Canvas.box(l:Float,t:Float,r:Float,b:Float,colour:Int)=drawRect(Math.round(l*w).toFloat(),Math.round(t*h).toFloat(),Math.round(r*w).toFloat(),Math.round(b*h).toFloat(),Paint().apply {color=colour})
+        fun Canvas.rows(l:Float,t:Float,r:Float,b:Float,colour:Int,gap:Float=.025f,thick:Float=.006f){var y=t;while(y<b){box(l,y,r,y+thick,colour);y+=gap}}
+        fun frame(vararg p:Pair<Float,Float>)=Frame(p.map {Vertex(it.first.coerceIn(0f,1f),it.second.coerceIn(0f,1f))})
+        val board=listOf(.28f to .2f,.7f to .21f,.82f to .84f,.1f to .82f)
+        val wholeBook=frame(.28f to .2f,.77f to .215f,.9f to .845f,.1f to .82f)
+        val page=listOf(.2f to .05f,.8f to .08f,.82f to .9f,.18f to .93f)
+        val cut=listOf(-.08f to .12f,.86f to .05f,.92f to .9f,.04f to .95f)
+        val cover=fixture("angled-cover",w,h) { c ->
+            c.drawColor(Color.rgb(196,198,192));c.poly(listOf(0f to .3f,1f to .26f,1f to 1f,0f to 1f),Color.rgb(92,64,46))
+            c.poly(listOf(.1f to .82f,.9f to .845f,.9f to .875f,.1f to .85f),Color.rgb(222,216,200))
+            c.poly(board,Color.rgb(58,60,56));c.poly(listOf(.7f to .21f,.77f to .215f,.9f to .845f,.82f to .84f),Color.rgb(104,108,114))
+            c.poly(listOf(.38f to .3f,.62f to .3f,.66f to .42f,.36f to .42f),Color.rgb(176,146,88));c.rows(.3f,.5f,.68f,.7f,Color.rgb(84,86,80),.04f,.01f)
+        }
+        val open=fixture("open-right-page",w,h) { c ->
+            c.drawColor(Color.rgb(52,50,54));c.poly(listOf(0f to .04f,.2f to .05f,.18f to .93f,0f to .92f),Color.rgb(226,222,214))
+            c.poly(page,Color.rgb(236,232,224));c.poly(listOf(.8f to .08f,.88f to .1f,.9f to .88f,.82f to .9f),Color.rgb(232,205,205))
+            for(k in 0 until 8){val x=.8f+k*.01f;c.poly(listOf(x to .08f+k*.0025f,x+.004f to .081f+k*.0025f,x+.024f to .9f-k*.0025f,x+.02f to .9f-k*.0025f),Color.rgb(200,150,160))}
+            c.poly(listOf(.185f to .05f,.215f to .05f,.195f to .93f,.165f to .93f),Color.rgb(150,146,140))
+            c.rows(.26f,.14f,.76f,.85f,Color.rgb(40,40,40));c.rows(.02f,.12f,.15f,.85f,Color.rgb(40,40,40))
+        }
+        val corner=fixture("corner-outside",w,h) { c -> c.drawColor(Color.rgb(150,110,70));c.poly(cut,Color.rgb(238,236,230));c.rows(.12f,.2f,.8f,.82f,Color.rgb(50,50,50)) }
+        try {
+            val found=requireNotNull(ImagePipeline.detect(cover)) {"Cover not found"}
+            // The leather board, as CamScanner shows it; the board with its cloth spine is also a correct outline.
+            assertTrue("Cover: $found",min(found.motion(frame(*board.toTypedArray())),found.motion(wholeBook))<.05f)
+            val right=requireNotNull(ImagePipeline.detect(open)) {"Page not found"}
+            assertTrue("Right page: $right",right.motion(frame(*page.toTypedArray()))<.05f)
+            val clipped=requireNotNull(ImagePipeline.detect(corner)) {"Cut page not found"}
+            assertTrue("Cut page: $clipped",clipped.motion(frame(*cut.toTypedArray()))<.06f)
+        } finally { cover.delete();open.delete();corner.delete() }
+    }
     @Test fun colourOnlyBoundariesRemainEligibleForSharpAutomaticCapture() {
         ImagePipeline.ensureAvailable()
         val bitmap=Bitmap.createBitmap(500,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap)
