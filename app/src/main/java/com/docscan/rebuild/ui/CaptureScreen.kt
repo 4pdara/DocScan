@@ -57,7 +57,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
-private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean)
+private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean, val closer: Boolean = false)
 
 @Composable
 fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, Frame?, (Boolean) -> Unit) -> Unit, prompt: Int? = null) {
@@ -131,7 +131,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                             val now = SystemClock.elapsedRealtime()
                             if (!capturing.get() && now - lastAnalysis >= 180) {
                                 lastAnalysis = now
-                                val result = inspectFrame(image, gate, tracker, autoFlag.get(), now)
+                                val result = inspectFrame(image, gate, tracker, autoFlag.get(), now, guided = prompt != null)
                                 main.execute { if (!disposed) { observation = result; if (result.trigger && autoFlag.get()) latestShoot() } }
                             }
                         } catch (e: Exception) { main.execute { if (!disposed) error = true } }
@@ -203,7 +203,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         }
         // A guided capture (the ID card tool) says which side to photograph next.
         if (prompt != null) Text(stringResource(prompt), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp).testTag("capture-prompt"), style = MaterialTheme.typography.titleMedium, color = ScanMint)
-        Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+        Text(stringResource(if (observation.frame == null) R.string.find_page else if (observation.closer) R.string.move_closer else if (observation.progress >= 1f) R.string.page_saved else R.string.hold_still), Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp).testTag("capture-status"), style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(onImport, enabled = !taking && !busy) { Icon(Icons.Outlined.AddPhotoAlternate, stringResource(R.string.import_images), Modifier.size(28.dp)) }
@@ -222,7 +222,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     }
 }
 
-private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: BoundaryTracker, automatic: Boolean, now: Long): CameraObservation {
+private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: BoundaryTracker, automatic: Boolean, now: Long, guided: Boolean = false): CameraObservation {
     ImagePipeline.ensureAvailable()
     val plane = image.planes[0]; val bytes = plane.buffer.duplicate(); val step = max(1, image.width / 720)
     val width = (image.width + step - 1) / step; val height = (image.height + step - 1) / step
@@ -254,8 +254,8 @@ private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: Bou
         val frame = tracker.sample(ImagePipeline.detectGray(gray, rgba))
         val sharp = frame != null && CaptureQuality.sharp(gray, rgba)
         val signature = if (frame == null) emptyList() else CaptureQuality.signature(rgba, frame)
-        val decision = if (automatic && (sharp || frame == null)) gate.sample(frame, signature, now) else { gate.unstable(); CaptureStability.Decision(0f, false) }
-        return CameraObservation(frame, gray.cols().toFloat() / gray.rows(), decision.progress, signature, decision.capture)
+        val decision = if (automatic && (sharp || frame == null)) gate.sample(frame, signature, now, nearOnly = !guided) else { gate.unstable(); CaptureStability.Decision(0f, false) }
+        return CameraObservation(frame, gray.cols().toFloat() / gray.rows(), decision.progress, signature, decision.capture, decision.closer)
     } finally { gray.release(); rgba.release() }
 }
 

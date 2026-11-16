@@ -110,6 +110,31 @@ class GeometryTest {
         assertNull(tracker.sample(jump));assertEquals(jump,tracker.sample(jump))
         assertNull(tracker.sample(null));assertEquals(f,tracker.sample(f))
     }
+    @Test fun shownOutlineHoldsStillUntilACornerClearlyMoves() {
+        val tracker=BoundaryTracker();val f=Frame(listOf(Vertex(.2f,.2f),Vertex(.7f,.2f),Vertex(.7f,.7f),Vertex(.2f,.7f)))
+        assertEquals(f,tracker.sample(f))
+        // Differences of under 2% between looks leave every corner exactly where it is shown.
+        assertEquals(f,tracker.sample(Frame(f.points.mapIndexed {i,p->Vertex(p.x+(if(i%2==0) .012f else -.01f),p.y+.008f)})))
+        // A corner that clearly moved follows at once, the others stay.
+        val moved=Frame(f.points.mapIndexed {i,p->if(i==2) Vertex(p.x+.04f,p.y+.02f) else Vertex(p.x+.005f,p.y)})
+        val shown=tracker.sample(moved)!!
+        assertEquals(moved.points[2],shown.points[2]);assertEquals(f.points[0],shown.points[0]);assertEquals(f.points[3],shown.points[3])
+    }
+    @Test fun aSmallPageAsksToComeCloserAndIsNotPhotographedAutomatically() {
+        val gate=CaptureStability();val content=List(64){if(it%3==0) 60f else 190f}
+        val small=Frame(listOf(Vertex(.35f,.35f),Vertex(.6f,.35f),Vertex(.6f,.75f),Vertex(.35f,.75f)))
+        for(t in listOf(0L,600L,1200L,2400L)) { val d=gate.sample(small,content,t);assertTrue(d.closer);assertFalse(d.capture);assertEquals(0f,d.progress) }
+        // Closer: the page fills more than half of the view, and steadiness is measured from then on.
+        val near=Frame(listOf(Vertex(.15f,.12f),Vertex(.82f,.12f),Vertex(.82f,.9f),Vertex(.15f,.9f)))
+        assertFalse(gate.sample(near,content,3000).closer)
+        assertFalse(gate.sample(near,content,3400).capture)
+        assertTrue(gate.sample(near,content,3800).capture)
+        // A guided capture (an ID card is small) is not held back.
+        val guided=CaptureStability()
+        assertFalse(guided.sample(small,content,0,nearOnly=false).closer)
+        guided.sample(small,content,400,nearOnly=false)
+        assertTrue(guided.sample(small,content,800,nearOnly=false).capture)
+    }
     @Test fun twoObservationsOrChangingContentCannotTriggerAutomaticCapture() {
         val gate=CaptureStability();val a=List(64){if(it<32)40f else 180f}
         assertFalse(gate.sample(Frame.FULL,a,0).capture)

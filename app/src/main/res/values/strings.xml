@@ -14,6 +14,7 @@
     <string name="auto_capture">Auto capture</string>
     <string name="hold_still">Hold steady</string>
     <string name="find_page">Place a page inside the frame</string>
+    <string name="move_closer">Move closer to the page</string>
     <string name="page_saved">Page saved — replace the page</string>
     <string name="capture">Capture</string>
     <string name="camera_permission">Allow camera access to scan. You can also import photos.</string>

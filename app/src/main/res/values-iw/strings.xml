@@ -14,6 +14,7 @@
     <string name="auto_capture">צילום אוטומטי</string>
     <string name="hold_still">החזק יציב</string>
     <string name="find_page">הנח דף בתוך המסגרת</string>
+    <string name="move_closer">התקרב לדף</string>
     <string name="page_saved">העמוד נשמר — החלף דף</string>
     <string name="capture">צילום</string>
     <string name="camera_permission">יש לאפשר גישה למצלמה לצילום. אפשר גם לייבא תמונות.</string>

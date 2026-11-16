@@ -58,6 +58,8 @@ data class Frame(val points: List<Vertex>) {
         return left to right
     }
     fun motion(other: Frame) = points.zip(other.points).maxOf { (a, b) -> a.distance(b) }
+    /** The page fills more than half of the view across or down; farther away a photo of it loses detail. */
+    fun fillsHalfTheView(): Boolean = max(points.maxOf { it.x } - points.minOf { it.x }, points.maxOf { it.y } - points.minOf { it.y }) > .5f
     fun turned(degrees: Int): Frame {
         var vertices = points
         repeat(((degrees % 360 + 360) % 360) / 90) {
@@ -217,8 +219,10 @@ class CaptureStability {
     private var stableSignature: List<Float>? = null
     private var absentSince: Long? = null
     private var captured: List<Float>? = null
-    data class Decision(val progress: Float, val capture: Boolean)
-    @Synchronized fun sample(frame: Frame?, signature: List<Float>, now: Long): Decision {
+    /** [closer]: a page is in view but too small for an automatic photo; the camera asks to move closer. */
+    data class Decision(val progress: Float, val capture: Boolean, val closer: Boolean = false)
+    /** [nearOnly]: an automatic photo waits until the page fills more than half of the view (not for a guided capture such as an ID card). */
+    @Synchronized fun sample(frame: Frame?, signature: List<Float>, now: Long, nearOnly: Boolean = true): Decision {
         if (frame == null || !frame.valid()) {
             if (absentSince == null) absentSince = now
             if (now - (absentSince ?: now) >= 450) captured = null
@@ -228,6 +232,10 @@ class CaptureStability {
         absentSince = null
         val previous = captured
         if (previous != null && !contentChanged(previous, signature)) return Decision(1f, false)
+        if (nearOnly && !frame.fillsHalfTheView()) {
+            anchor = null; stableSamples = 0; stableSignature = null
+            return Decision(0f, false, closer = true)
+        }
         val origin = anchor
         // The outline found in the camera wanders a little from frame to frame even when the phone is still (an open
         // book's page edges and spine); a steadier hold than 2.5% of the frame would hardly ever be reached.
@@ -257,6 +265,7 @@ class CaptureStability {
 
 /** Temporal consensus keeps a single erroneous boundary proposal out of auto capture. */
 class BoundaryTracker {
+    private companion object { const val HOLD = .018f }
     private var tracked: Frame? = null
     private var pending: Frame? = null
     fun sample(candidate: Frame?): Frame? {
@@ -273,8 +282,11 @@ class BoundaryTracker {
             return candidate
         }
         pending = null
-        val smoothed = Frame(previous.points.zip(candidate.points).map { (a,b) -> Vertex(a.x*.55f+b.x*.45f,a.y*.55f+b.y*.45f) })
-        tracked = if (smoothed.valid()) smoothed else candidate
+        // A corner of the shown outline follows only a clear move (more than about 2% of the view, some 7 dp on a
+        // phone); smaller differences between looks leave it where it is, so the outline holds still instead of
+        // trembling with every look.
+        val held = Frame(previous.points.zip(candidate.points).map { (a, b) -> if (a.distance(b) <= HOLD) a else b })
+        tracked = if (held.valid()) held else candidate
         return tracked
     }
 }
