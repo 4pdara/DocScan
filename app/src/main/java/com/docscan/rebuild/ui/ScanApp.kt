@@ -555,7 +555,7 @@ fun ScanApp(store: ScanStore) {
                     onDelete = { deletePage(page) { pageId = null; route = "document" } },
                     onRetake = { retakeId = page.id; route = "camera" },
                     onWatermarkAll = { recipe -> watermarkAll(recipe) }, onHeader = { choice -> applyHeader(choice) },
-                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;vm.straightenHalves(page);draft=null;route="document"} },
+                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;straightenHalves(page);draft=null;route="document"} },
                     onOcr = { recipe -> vm.perform {
                         store.save(page,recipe);val current=requireNotNull(store.dao.page(page.id))
                         ocrText=if(current.ocrRecipe==current.recipe)current.ocrText.orEmpty() else "";ocrBack="editor";route="ocr"
