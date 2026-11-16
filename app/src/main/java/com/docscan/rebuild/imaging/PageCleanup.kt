@@ -261,17 +261,26 @@ object PageCleanup {
             fun at(yy: Int, xx: Int) = log[((yy + size) % size) * size + (xx + size) % size]
             val ring = ArrayList<Pair<Int, Int>>()
             for (dy in -5..5) for (dx in -5..5) { val d = hypot(dx.toDouble(), dy.toDouble()); if (d >= 3 && d <= 5) ring += dy to dx }
-            // A peak: the highest point around it, at fine detail, off both axes, and four times stronger than
-            // anything 3 to 5 steps away (a text line's spacing spreads along a whole row and never stands out so).
-            val peaks = ArrayList<Pair<Int, Int>>(); val limit = ln(4f)
+            // The typical strength of each row and column of the spectrum, away from the axes. Lines of text repeat
+            // down the page, which fills whole rows with energy; a printed raster stands out of its row and column.
+            val rowLevel = FloatArray(size) { yy -> median(FloatArray(size) { xx -> if (abs(freq(xx)) > 2) log[yy * size + xx] else Float.NaN }) }
+            val colLevel = FloatArray(size) { xx -> median(FloatArray(size) { yy -> if (abs(freq(yy)) > 2) log[yy * size + xx] else Float.NaN }) }
+            // A peak: the highest point around it, at fine detail, off both axes, four times stronger than anything
+            // 3 to 5 steps away, and ten times its row's and column's typical strength.
+            val candidates = ArrayList<Pair<Int, Int>>(); val peaks = ArrayList<Pair<Int, Int>>(); val limit = ln(4f); val apart = ln(10f)
             for (yy in 0 until size) for (xx in 0 until size) {
                 val fy = freq(yy); val fx = freq(xx)
                 if (abs(fx) <= 2 || abs(fy) <= 2 || hypot(fx.toDouble(), fy.toDouble()) < size * .06) continue
                 val v = log[yy * size + xx]
                 var highest = true
                 loop@ for (dy in -2..2) for (dx in -2..2) if ((dx != 0 || dy != 0) && at(yy + dy, xx + dx) > v) { highest = false; break@loop }
-                if (highest && v - ring.maxOf { (dy, dx) -> at(yy + dy, xx + dx) } > limit) peaks += fy to fx
+                if (!highest || v - ring.maxOf { (dy, dx) -> at(yy + dy, xx + dx) } <= limit) continue
+                candidates += fy to fx
+                if (v - rowLevel[yy] > apart && v - colLevel[xx] > apart) peaks += fy to fx
             }
+            // The pattern's second and third harmonics go with it.
+            val found = peaks.toList()
+            for ((fy, fx) in candidates) if ((fy to fx) !in peaks && found.any { (py, px) -> (2..3).any { k -> abs(fy - k * py) <= 1 && abs(fx - k * px) <= 1 } }) peaks += fy to fx
             if (peaks.isEmpty()) return false
             val keep = FloatArray(size * size) { 1f }
             for ((py, px) in peaks) for (dy in -6..6) for (dx in -6..6) {
@@ -279,9 +288,60 @@ object PageCleanup {
                 keep[i] *= (1 - exp(-(dx * dx + dy * dy) / (2 * 1.5 * 1.5))).toFloat()
             }
             notch.create(size, size, CvType.CV_32FC2); notch.put(0, 0, FloatArray(size * size * 2) { keep[it / 2] })
+            // A raster covers the blank paper too; a grid of letters (a monospaced font, lines alike) does not. What the
+            // notch would take out must match the fine detail of the paper between the print.
+            if (onPaper(gray, win, notch, size, stepX, stepY) < .3) return false
             removeTiles(rgba, gray, win, notch, size, s)
             return true
         } finally { gray.release(); win.release(); notch.release() }
+    }
+
+    /** The middle of the values that are not NaN. */
+    private fun median(values: FloatArray): Float {
+        val kept = values.filter { !it.isNaN() }.sorted(); return if (kept.isEmpty()) 0f else kept[kept.size / 2]
+    }
+
+    /**
+     * Correlation, on paper pixels only (away from print), between the page's fine detail and what [notch] removes,
+     * over the same tiles as the spectrum: near 1 for a pattern printed over everything, near 0 for print.
+     */
+    private fun onPaper(gray: Mat, win: Mat, notch: Mat, size: Int, stepX: Int, stepY: Int): Double {
+        var num = 0.0; var gg = 0.0; var rr = 0.0
+        val w = floats(win); val square = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(9.0, 9.0)); val near = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(7.0, 7.0))
+        try {
+            var y = 0
+            while (y + size <= gray.rows()) {
+                var x = 0
+                while (x + size <= gray.cols()) {
+                    val tile = gray.submat(Rect(x, y, size, size)); val f = Mat(); val complex = Mat(); val kept = Mat(); val back = Mat()
+                    val paper = Mat(); val ink = Mat(); val blur = Mat()
+                    try {
+                        tile.convertTo(f, CvType.CV_32F)
+                        val t = floats(f)
+                        Imgproc.dilate(tile, paper, square)
+                        val lifted = Mat(); Core.subtract(paper, Scalar(100.0), lifted)
+                        Core.compare(tile, lifted, ink, Core.CMP_LT); lifted.release()
+                        Imgproc.dilate(ink, ink, near)
+                        val inked = bytes(ink)
+                        Imgproc.GaussianBlur(f, blur, Size(0.0, 0.0), 6.0)
+                        val smooth = floats(blur)
+                        Core.subtract(f, Scalar(Core.mean(f).`val`[0]), f); Core.multiply(f, win, f)
+                        Core.dft(f, complex, Core.DFT_COMPLEX_OUTPUT); Core.multiply(complex, notch, kept); Core.subtract(complex, kept, complex)
+                        Core.idft(complex, back, Core.DFT_SCALE or Core.DFT_REAL_OUTPUT)
+                        val r = floats(back)
+                        // The middle half of the tile, where the window is strong.
+                        for (yy in size / 4 until size - size / 4) for (xx in size / 4 until size - size / 4) {
+                            val i = yy * size + xx; if (inked[i].toInt() != 0) continue
+                            val g = (t[i] - smooth[i]) * w[i]
+                            num += g * r[i]; gg += g * g; rr += r[i].toDouble() * r[i]
+                        }
+                    } finally { listOf(tile, f, complex, kept, back, paper, ink, blur).forEach(Mat::release) }
+                    x += stepX
+                }
+                y += stepY
+            }
+        } finally { square.release(); near.release() }
+        return if (gg <= 0 || rr <= 0) 0.0 else num / kotlin.math.sqrt(gg * rr)
     }
 
     /** Sine-squared: half-overlapping windows add up to one. */
