@@ -449,7 +449,7 @@
     <string name="hide_mosaic">Mosaic</string>
     <string name="hide_hint">Drag over what to hide. For sensitive details use a black box: it leaves nothing of the original.</string>
     <string name="hide_auto">Hide personal details</string>
-    <string name="hide_auto_hint">Finds ID numbers, phone numbers, e-mail addresses and card numbers in the page's recognised text. Check by eye that nothing is left showing.</string>
+    <string name="hide_auto_hint">Finds ID numbers, phone numbers, e-mail addresses and card numbers in the recognised text of the page. Check by eye that nothing is left showing.</string>
     <string name="hide_found">%1$d details hidden</string>
     <string name="hide_none">No personal details found</string>
     <string name="shapes">Shapes</string>
