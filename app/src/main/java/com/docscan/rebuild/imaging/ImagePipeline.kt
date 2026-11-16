@@ -131,6 +131,8 @@ object ImagePipeline {
                 Core.extractChannel(current, alpha, 3)
                 Core.insertChannel(alpha, result, 3)
             }
+            // Hidden areas over the finished page, under anything drawn on it.
+            if (recipe.hides.isNotEmpty()) PageHide.apply(result, recipe.hides)
             return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { Utils.matToBitmap(result, it); PageMarks.draw(it, recipe) }
         } finally { source.release(); current.release(); result.release(); alpha.release() }
     }

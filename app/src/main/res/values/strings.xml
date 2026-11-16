@@ -444,6 +444,20 @@
     <string name="clean_fingers">Remove fingers at the page edge</string>
     <string name="clean_moire">Remove moiré (a striped or dotted pattern)</string>
     <string name="cleanup_hint">Clean-up changes only the page image. The original photo is kept as it is.</string>
+    <string name="hide_info">Hide</string>
+    <string name="hide_black">Black box</string>
+    <string name="hide_mosaic">Mosaic</string>
+    <string name="hide_hint">Drag over what to hide. For sensitive details use a black box: it leaves nothing of the original.</string>
+    <string name="hide_auto">Hide personal details</string>
+    <string name="hide_auto_hint">Finds ID numbers, phone numbers, e-mail addresses and card numbers in the page's recognised text. Check by eye that nothing is left showing.</string>
+    <string name="hide_found">%1$d details hidden</string>
+    <string name="hide_none">No personal details found</string>
+    <string name="shapes">Shapes</string>
+    <string name="shape_rect">Rectangle</string>
+    <string name="shape_oval">Oval</string>
+    <string name="shape_arrow">Arrow</string>
+    <string name="shape_line">Line</string>
+    <string name="shape_hint">Drag on the page to draw. An arrow points to where the drag ends.</string>
 </resources>
 
 

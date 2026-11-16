@@ -444,6 +444,20 @@
     <string name="clean_fingers">הסרת אצבעות בשולי הדף</string>
     <string name="clean_moire">הסרת מוארה (דפוס של פסים או נקודות)</string>
     <string name="cleanup_hint">הניקוי משנה רק את תמונת הדף. הצילום המקורי נשמר כמו שהוא.</string>
+    <string name="hide_info">הסתרה</string>
+    <string name="hide_black">מלבן שחור</string>
+    <string name="hide_mosaic">פסיפס</string>
+    <string name="hide_hint">גוררים על מה שצריך להסתיר. לפרטים רגישים עדיף מלבן שחור: הוא לא משאיר שום דבר מהמקור.</string>
+    <string name="hide_auto">הסתרת פרטים אישיים</string>
+    <string name="hide_auto_hint">מוצא לפי זיהוי הטקסט מספרי תעודת זהות, טלפונים, כתובות דוא״ל ומספרי כרטיס אשראי. כדאי לבדוק בעין שלא נשאר פרט גלוי.</string>
+    <string name="hide_found">הוסתרו %1$d פרטים</string>
+    <string name="hide_none">לא נמצאו פרטים אישיים</string>
+    <string name="shapes">צורות</string>
+    <string name="shape_rect">מלבן</string>
+    <string name="shape_oval">עיגול</string>
+    <string name="shape_arrow">חץ</string>
+    <string name="shape_line">קו</string>
+    <string name="shape_hint">גוררים על הדף כדי לצייר. חץ מצביע לנקודה שבה הגרירה נגמרת.</string>
 </resources>
 
 

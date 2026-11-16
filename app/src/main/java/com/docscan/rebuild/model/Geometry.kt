@@ -136,15 +136,41 @@ data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val tre
     /** Curved top and bottom page edges ([PageEdgeCurves]), or empty for straight edges. */
     val edges: List<Float> = emptyList(),
     /** Clean-up before the filter: a light reflection taken off, fingers at the page edge filled with paper, a fine regular pattern (moiré) removed. */
-    val glare: Boolean = false, val fingers: Boolean = false, val moire: Boolean = false) {
+    val glare: Boolean = false, val fingers: Boolean = false, val moire: Boolean = false,
+    /** Areas hidden on the turned page (black box or mosaic), after the filter. They stay when text is recognised. */
+    val hides: List<HideMark> = emptyList(),
+    /** Rectangles, ovals, arrows and lines drawn over the page. */
+    val shapes: List<ShapeMark> = emptyList()) {
     val edgeCurves: PageEdgeCurves? get() = PageEdgeCurves(edges).takeIf { edges.isNotEmpty() && it.valid() }
-    /** Everything drawn over the page removed: what text recognition should read. Erased areas stay erased. */
-    fun withoutMarks() = copy(watermark = null, stamp = null, footer = null, signatures = emptyList(), ink = emptyList(), texts = emptyList(), numberText = null)
-    val marked: Boolean get() = watermark != null || stamp != null || footer != null || numberText != null || signatures.isNotEmpty() || ink.isNotEmpty() || texts.isNotEmpty()
+    /** Everything drawn over the page removed: what text recognition should read. Erased and hidden areas stay so, and what is hidden is never read. */
+    fun withoutMarks() = copy(watermark = null, stamp = null, footer = null, signatures = emptyList(), ink = emptyList(), texts = emptyList(), numberText = null, shapes = emptyList())
+    val marked: Boolean get() = watermark != null || stamp != null || footer != null || numberText != null || signatures.isNotEmpty() || ink.isNotEmpty() || texts.isNotEmpty() || shapes.isNotEmpty()
     fun valid() = frame.valid() && curvature.valid() && signatures.all { it.valid() } && erase.all { it.valid() } && ink.all { it.valid() } && texts.all { it.valid() } &&
         watermarkSpot.valid() && watermarkStyle.valid() && (flatten.isEmpty() || Flattening.valid(flatten)) &&
         (outputAspect == null || outputAspect.isFinite() && outputAspect in .1f..10f) && detail.isFinite() && detail in 0f..1f &&
-        (edges.isEmpty() || PageEdgeCurves(edges).valid())
+        (edges.isEmpty() || PageEdgeCurves(edges).valid()) && hides.size <= 500 && hides.all { it.valid() } && shapes.size <= 500 && shapes.all { it.valid() }
+
+    /**
+     * The hidden areas for one half when the page is split at [position] (a share of the unturned page's width):
+     * each keeps what lies on its side, moved into the half's own coordinates and widened by a margin, so that
+     * nothing hidden comes back into view where the split line falls a little differently on the page.
+     */
+    fun hidesForHalf(position: Float, left: Boolean): List<HideMark> {
+        val quarters = turns.mod(4)
+        // Turning clockwise takes (x, y) to (1 - y, x); back undoes it.
+        fun back(v: Vertex): Vertex { var p = v; repeat(quarters) { p = Vertex(p.y, 1f - p.x) }; return p }
+        fun forward(v: Vertex): Vertex { var p = v; repeat(quarters) { p = Vertex(1f - p.y, p.x) }; return p }
+        val lo = if (left) 0f else position; val hi = if (left) position else 1f
+        if (hi - lo < .01f) return emptyList()
+        val margin = .04f
+        return hides.mapNotNull { m ->
+            val a = back(m.a); val b = back(m.b)
+            val x0 = (min(a.x, b.x) - lo) / (hi - lo) - margin; val x1 = (max(a.x, b.x) - lo) / (hi - lo) + margin
+            if (x1 < 0f || x0 > 1f) return@mapNotNull null
+            val p = forward(Vertex(x0.coerceIn(-.1f, 1.1f), min(a.y, b.y))); val q = forward(Vertex(x1.coerceIn(-.1f, 1.1f), max(a.y, b.y)))
+            HideMark(m.kind, Vertex(min(p.x, q.x), min(p.y, q.y)), Vertex(max(p.x, q.x), max(p.y, q.y)))
+        }
+    }
 
     /**
      * The page turned [quarters] times clockwise, with everything placed on it moving along. [aspect] is the
@@ -157,6 +183,8 @@ data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val tre
             result = result.copy(turns = (result.turns + 1).mod(4),
                 erase = result.erase.map { m -> if (m.kind == EraseKind.RECT) m.copy(points = m.points.map(::t).let { p -> listOf(Vertex(min(p[0].x, p[1].x), min(p[0].y, p[1].y)), Vertex(max(p[0].x, p[1].x), max(p[0].y, p[1].y))) }) else m.copy(points = m.points.map(::t)) },
                 ink = result.ink.map { it.copy(points = it.points.map(::t)) },
+                hides = result.hides.map { m -> val p = t(m.a); val q = t(m.b); m.copy(a = Vertex(min(p.x, q.x), min(p.y, q.y)), b = Vertex(max(p.x, q.x), max(p.y, q.y))) },
+                shapes = result.shapes.map { it.copy(a = t(it.a), b = t(it.b)) },
                 texts = result.texts.map { val c = t(Vertex(it.x, it.y)); it.copy(x = c.x, y = c.y) },
                 watermarkSpot = result.watermarkSpot.let { val c = t(Vertex(it.x, it.y)); it.copy(x = c.x, y = c.y) },
                 signatures = result.signatures.map { s ->
@@ -177,6 +205,18 @@ enum class EraseKind { STROKE, RECT, SHAPE }
 data class EraseMark(val kind: EraseKind, val points: List<Vertex>, val width: Float = .03f) {
     fun valid() = points.isNotEmpty() && points.size <= 5000 && points.all { it.x.isFinite() && it.y.isFinite() && it.x in -.2f..1.2f && it.y in -.2f..1.2f } &&
         width.isFinite() && width in .001f.. .5f && (kind != EraseKind.RECT || points.size == 2) && (kind != EraseKind.SHAPE || points.size == 1)
+}
+/** How a hidden area looks: a solid black box, or a coarse mosaic of the page under it. */
+enum class HideKind { BLACK, MOSAIC }
+/** An area hidden on the turned page, between corners [a] (top left) and [b] (bottom right), in page fractions. */
+data class HideMark(val kind: HideKind, val a: Vertex, val b: Vertex) {
+    fun valid() = listOf(a, b).all { it.x.isFinite() && it.y.isFinite() && it.x in -.2f..1.2f && it.y in -.2f..1.2f } && b.x - a.x >= .002f && b.y - a.y >= .002f
+}
+enum class ShapeKind { RECT, OVAL, ARROW, LINE }
+/** A shape drawn from [a] to [b] (page fractions; an arrow points at [b]) in [rgb], its line [width] a share of the page's short side. */
+data class ShapeMark(val kind: ShapeKind, val a: Vertex, val b: Vertex, val rgb: Int = 0xD32F2F, val width: Float = .006f) {
+    fun valid() = listOf(a, b).all { it.x.isFinite() && it.y.isFinite() && it.x in -.2f..1.2f && it.y in -.2f..1.2f } && (a.x != b.x || a.y != b.y) &&
+        width.isFinite() && width in .001f.. .05f
 }
 /** A brush stroke drawn over the page: [width] is a share of the page's short side, [rgb] its colour and [alpha] 255 for a pen, less for a highlighter. */
 data class InkStroke(val points: List<Vertex>, val width: Float, val rgb: Int, val alpha: Int = 255) {

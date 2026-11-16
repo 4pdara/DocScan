@@ -92,10 +92,10 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
-    val fullTools = setOf("erase", "text", "brush", "addtext", "watermark")
+    val fullTools = setOf("erase", "text", "brush", "addtext", "watermark", "hide", "shapes")
     var tool by rememberSaveable(page.id) { mutableStateOf(startTool?.takeIf { it !in fullTools }) }
     var full by rememberSaveable(page.id) { mutableStateOf(startTool?.takeIf { it in fullTools }) }
-    var tab by rememberSaveable { mutableStateOf(when (startTool) { "brush", "addtext", "watermark" -> "marks"; else -> "image" }) }
+    var tab by rememberSaveable { mutableStateOf(when (startTool) { "brush", "addtext", "watermark", "hide", "shapes" -> "marks"; else -> "image" }) }
     var original by rememberSaveable { mutableStateOf(false) }
     var export by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
@@ -163,6 +163,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             EditorAction("sign", R.string.signature, Icons.Outlined.Draw) { signing = true },
             EditorAction("addtext", R.string.add_text, Icons.Outlined.Title) { full = "addtext" },
             EditorAction("brush", R.string.brush, Icons.Outlined.Brush) { full = "brush" },
+            EditorAction("hide", R.string.hide_info, Icons.Outlined.VisibilityOff, edit.hides.isNotEmpty()) { full = "hide" },
+            EditorAction("shapes", R.string.shapes, Icons.Outlined.Category) { full = "shapes" },
             EditorAction("watermark", R.string.watermark, Icons.Outlined.WaterDrop) { full = "watermark" },
             EditorAction("header", R.string.header_short, Icons.Outlined.FormatListNumbered) { header = true })
         "pages" -> listOfNotNull(
@@ -189,6 +191,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         "erase" -> EraseTool(store, page, edit, language, onDone = { change(it); full = null }, onCancel = { full = null })
         "text" -> TextEditTool(store, page, edit, language, onDone = { change(it); full = null }, onCancel = { full = null })
         "brush" -> BrushTool(store, page, edit, onDone = { change(it); full = null }, onCancel = { full = null })
+        "hide" -> HideTool(store, page, edit, language, onDone = { change(it); full = null }, onCancel = { full = null })
+        "shapes" -> ShapeTool(store, page, edit, onDone = { change(it); full = null }, onCancel = { full = null })
         "addtext" -> TextMarkTool(store, page, edit, onDone = { change(it); full = null }, onCancel = { full = null })
         "watermark" -> WatermarkTool(store, page, edit, offerAllPages = pageCount > 1 && onWatermarkAll != null, onDone = { recipe, all ->
             change(recipe); full = null; if (all) onWatermarkAll?.invoke(recipe) }, onCancel = { full = null })

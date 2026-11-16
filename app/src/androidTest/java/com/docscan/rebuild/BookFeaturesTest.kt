@@ -31,6 +31,72 @@ class BookFeaturesTest {
         val file=File(context.cacheDir,"$name-${System.nanoTime()}.png")
         try {file.outputStream().use {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))}}finally{bitmap.recycle()};return file
     }
+    @Test fun hidesPersonalDetailsFromThePageAndFromTextRecognitionAndDrawsShapes():Unit=runBlocking {
+        // 1.3.2: hiding (black box, mosaic), shapes, and personal details found in the recognised text.
+        ImagePipeline.ensureAvailable()
+        val name="hide-${System.nanoTime()}.db"
+        val db=Room.databaseBuilder(context,ScanDatabase::class.java,name).build();val store=ScanStore(context,db);val book=store.create("Hide")
+        val file=fixture("hide",1800,1200) { canvas ->
+            val paint=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=80f;typeface=Typeface.create("sans-serif",Typeface.NORMAL)}
+            canvas.drawText("ID 123456782",150f,250f,paint)
+            canvas.drawText("Phone 052-1234567",150f,450f,paint)
+            canvas.drawText("Mail dana@example.com",150f,650f,paint)
+            canvas.drawText("Total 1250 in 2026",150f,850f,paint)
+        }
+        fun pixels(b:Bitmap)=IntArray(b.width*b.height).also{b.getPixels(it,0,b.width,0,0,b.width,b.height)}
+        fun lum(p:Int)=(Color.red(p)*299+Color.green(p)*587+Color.blue(p)*114)/1000
+        try {
+            val sheet=store.captured(book.id,file)
+            // The details are found in the page's own recognised text; the amount and the year are not details.
+            val text=OfflineOcr(store).layout(sheet,sheet.edit(),"eng")
+            val found=SensitiveText.find(text.words.map{TextBox(it.text,it.left.toFloat()/text.width,it.top.toFloat()/text.height,it.right.toFloat()/text.width,it.bottom.toFloat()/text.height)})
+            android.util.Log.i("DocScanHideTest","found ${found.map{it.kind to it.text}}")
+            assertEquals(found.map{it.kind}.toString(),setOf(SensitiveText.Kind.ID,SensitiveText.Kind.PHONE,SensitiveText.Kind.EMAIL),found.map{it.kind}.toSet())
+            assertTrue(found.none{it.top>.6f})
+            // Hidden with black boxes, even under Magic Color, and never read again.
+            val hidden=sheet.edit().copy(treatment=Treatment.NATIVE_MAGIC_COLOR,hides=found.map{it.hide()})
+            store.save(sheet,hidden)
+            val page=ImagePipeline.render(store.source(sheet),store.dao.page(sheet.id)!!.edit(),1200)
+            try {
+                val px=pixels(page)
+                for(f in found) {
+                    val cx=((f.left+f.right)/2*page.width).toInt();val cy=((f.top+f.bottom)/2*page.height).toInt()
+                    assertEquals("black over ${f.text}",0,lum(px[cy*page.width+cx]))
+                }
+            } finally { page.recycle() }
+            val read=OfflineOcr(store).recognize(store.dao.page(sheet.id)!!,"eng")
+            android.util.Log.i("DocScanHideTest","read after hiding: $read")
+            assertTrue(read,read.contains("Total"))
+            listOf("123456782","1234567","dana","example").forEach{assertFalse("$it still readable in: $read",read.contains(it))}
+            // Kept with the page, also in what text recognition reads (stored rounded to 4 decimals).
+            val kept=store.dao.page(sheet.id)!!.edit().withoutMarks().hides
+            assertEquals(hidden.hides.size,kept.size)
+            hidden.hides.zip(kept).forEach{(x,y)->assertTrue(abs(x.a.x-y.a.x)<1e-3f&&abs(x.b.y-y.b.y)<1e-3f&&x.kind==y.kind)}
+        } finally { store.dao.allPages().forEach{store.source(it).delete()};file.delete();db.close();context.deleteDatabase(name) }
+        // Mosaic: square tiles of one colour each, with the print's fine detail gone; shapes are drawn over the page.
+        val input=Bitmap.createBitmap(600,400,Bitmap.Config.ARGB_8888)
+        Canvas(input).apply{drawColor(Color.WHITE);drawText("Secret 123456782",40f,200f,Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=48f})}
+        try {
+            val plain=ImagePipeline.transform(input,EditRecipe())
+            val mosaic=ImagePipeline.transform(input,EditRecipe(hides=listOf(HideMark(HideKind.MOSAIC,Vertex(0f,.3f),Vertex(1f,.6f)))))
+            val drawn=ImagePipeline.transform(input,EditRecipe(shapes=listOf(ShapeMark(ShapeKind.RECT,Vertex(.1f,.1f),Vertex(.9f,.9f),0xD32F2F,.01f),ShapeMark(ShapeKind.ARROW,Vertex(.2f,.8f),Vertex(.5f,.5f),0x1E88E5,.01f))))
+            try {
+                val a=pixels(plain);val m=pixels(mosaic);val d=pixels(drawn)
+                fun detail(p:IntArray):Long { var s=0L; for(y in 130 until 230) for(x in 40 until 560) s+=abs(lum(p[y*600+x])-lum(p[y*600+x+1])); return s }
+                assertTrue("print under the mosaic: ${detail(a)} -> ${detail(m)}",detail(m)<detail(a)/5)
+                // 10-pixel tiles (2.5% of the short side, 400): neighbours inside a tile are equal.
+                assertEquals(m[150*600+16],m[150*600+17])
+                assertTrue("outside the mosaic nothing changes",(0 until 600*110).all{a[it]==m[it]})
+                val border=d[40*600+300];val arrow=d[(400*.65f).toInt()*600+(600*.35f).toInt()]
+                assertTrue("red rectangle edge: ${Integer.toHexString(border)}",Color.red(border)>180&&Color.green(border)<90)
+                assertTrue("blue arrow: ${Integer.toHexString(arrow)}",Color.blue(arrow)>180&&Color.red(arrow)<90)
+                assertEquals("away from the shapes the page stays",a[200*600+550],d[200*600+550])
+                val shaped=EditRecipe(shapes=listOf(ShapeMark(ShapeKind.OVAL,Vertex(.2f,.2f),Vertex(.4f,.5f))),hides=listOf(HideMark(HideKind.BLACK,Vertex(.1f,.1f),Vertex(.2f,.2f))))
+                assertEquals(shaped,RecipeCodec.decode(RecipeCodec.encode(shaped)))
+                assertTrue(shaped.withoutMarks().shapes.isEmpty()&&shaped.withoutMarks().hides.size==1&&shaped.marked)
+            } finally { plain.recycle();mosaic.recycle();drawn.recycle() }
+        } finally { input.recycle() }
+    }
     @Test fun texturedCoversWithGlareAndBrokenCornersKeepTheirOuterBoundary() {
         val expected=Frame(listOf(Vertex(.15f,.12f),Vertex(.83f,.18f),Vertex(.89f,.88f),Vertex(.1f,.81f)))
         for(dark in listOf(true,false)) {

@@ -128,6 +128,8 @@ object RecipeCodec {
             if (r.fingers) put("fingers", true)
             if (r.moire) put("moire", true)
             if (r.erase.isNotEmpty()) put("erase", JSONArray(r.erase.map { JSONObject().put("k", it.kind.name).put("w", r4(it.width)).put("p", points(it.points)) }))
+            if (r.hides.isNotEmpty()) put("hides", JSONArray(r.hides.map { JSONObject().put("k", it.kind.name).put("p", points(listOf(it.a, it.b))) }))
+            if (r.shapes.isNotEmpty()) put("shapes", JSONArray(r.shapes.map { JSONObject().put("k", it.kind.name).put("p", points(listOf(it.a, it.b))).put("c", it.rgb).put("w", r4(it.width)) }))
             if (r.ink.isNotEmpty()) put("ink", JSONArray(r.ink.map { JSONObject().put("w", r4(it.width)).put("c", it.rgb).put("a", it.alpha).put("p", points(it.points)) }))
             if (r.texts.isNotEmpty()) put("texts", JSONArray(r.texts.map { JSONObject().put("t", it.text).put("x", r4(it.x)).put("y", r4(it.y)).put("s", r4(it.size)).put("c", it.rgb).put("f", it.font.name) }))
         }.toString()
@@ -159,6 +161,15 @@ object RecipeCodec {
             erase = list("erase", 500).mapNotNull { m ->
                 val kind = m.optString("k").let { k -> EraseKind.values().firstOrNull { it.name == k } } ?: return@mapNotNull null
                 EraseMark(kind, points(m.optJSONArray("p")), m.optDouble("w", .03).toFloat()).takeIf { it.valid() }
+            },
+            hides = list("hides", 500).mapNotNull { m ->
+                val kind = option(m, "k", HideKind.BLACK); val p = points(m.optJSONArray("p"))
+                if (p.size == 2) HideMark(kind, p[0], p[1]).takeIf { it.valid() } else null
+            },
+            shapes = list("shapes", 500).mapNotNull { m ->
+                val kind = m.optString("k").let { k -> ShapeKind.values().firstOrNull { it.name == k } } ?: return@mapNotNull null
+                val p = points(m.optJSONArray("p"))
+                if (p.size == 2) ShapeMark(kind, p[0], p[1], m.optInt("c", 0xD32F2F) and 0xFFFFFF, m.optDouble("w", .006).toFloat()).takeIf { it.valid() } else null
             },
             ink = list("ink", 500).mapNotNull { m -> InkStroke(points(m.optJSONArray("p")), m.optDouble("w", .01).toFloat(), m.optInt("c") and 0xFFFFFF, m.optInt("a", 255)).takeIf { it.valid() } },
             texts = list("texts", 100).mapNotNull { m ->
@@ -265,8 +276,10 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             val base = recipe.copy(outputAspect=null,curvature=BookCurve(),edges=emptyList(),flatten=emptyList())
             val pages = dao.snapshot(current.notebookId)
             pages.filter { it.position>current.position }.sortedByDescending { it.position }.forEach { dao.position(it.id,it.position+1) }
-            dao.recipe(current.id,RecipeCodec.encode(base.copy(frame=crops[0])))
-            val second = current.copy(id=UUID.randomUUID().toString(),position=current.position+1,recipe=RecipeCodec.encode(base.copy(frame=crops[1])),ocrText=null,ocrRecipe=null)
+            // Hidden areas stay hidden on the half they are on (mapped into its own coordinates).
+            fun half(crop: Frame) = base.copy(frame=crop,hides=recipe.hidesForHalf(position,crop==left))
+            dao.recipe(current.id,RecipeCodec.encode(half(crops[0])))
+            val second = current.copy(id=UUID.randomUUID().toString(),position=current.position+1,recipe=RecipeCodec.encode(half(crops[1])),ocrText=null,ocrRecipe=null)
             dao.insert(second)
             renumber(current.notebookId)
             requireNotNull(dao.page(current.id))

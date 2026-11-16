@@ -99,7 +99,7 @@ fun TextDialog(title: Int, initial: String, singleLine: Boolean = false, limit: 
 }
 
 @Composable
-private fun UndoRow(canUndo: Boolean, canRedo: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, tag: String, extra: @Composable RowScope.() -> Unit = {}) {
+internal fun UndoRow(canUndo: Boolean, canRedo: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, tag: String, extra: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onUndo, enabled = canUndo, modifier = Modifier.testTag("$tag-undo")) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.undo)) }
         IconButton(onRedo, enabled = canRedo, modifier = Modifier.testTag("$tag-redo")) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.redo)) }

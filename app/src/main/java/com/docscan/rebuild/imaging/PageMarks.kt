@@ -18,6 +18,8 @@ import com.docscan.rebuild.model.MarkFont
 import com.docscan.rebuild.model.MarkPlace
 import com.docscan.rebuild.model.MarkSpot
 import com.docscan.rebuild.model.MarkStyle
+import com.docscan.rebuild.model.ShapeKind
+import com.docscan.rebuild.model.ShapeMark
 import com.docscan.rebuild.model.SignatureMark
 import com.docscan.rebuild.model.StampPlace
 import com.docscan.rebuild.model.TextMark
@@ -67,6 +69,7 @@ object PageMarks {
         val canvas = Canvas(bitmap); val w = bitmap.width.toFloat(); val h = bitmap.height.toFloat(); val short = min(w, h)
         // Brush first (a highlighter goes under the rest), then text, signatures, the watermark and the edge notes.
         recipe.ink.forEach { ink(canvas, w, h, it) }
+        recipe.shapes.forEach { shape(canvas, w, h, it) }
         recipe.texts.forEach { text(canvas, w, h, it) }
         recipe.signatures.forEach { signature(canvas, w, h, it) }
         recipe.watermark?.let { watermark(canvas, w, h, it, recipe.watermarkPlace, recipe.watermarkStyle, recipe.watermarkSpot) }
@@ -167,6 +170,31 @@ object PageMarks {
         val points = stroke.points.map { it.x * w to it.y * h }
         if (points.size == 1) { canvas.drawPoint(points[0].first, points[0].second, paint); return }
         canvas.drawPath(smooth(points), paint)
+    }
+
+    /** A rectangle, oval, line or arrow (its head at [ShapeMark.b]) in the shape's colour. */
+    fun shape(canvas: Canvas, w: Float, h: Float, mark: ShapeMark) {
+        val stroke = maxOf(1f, mark.width * min(w, h))
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(Color.red(mark.rgb), Color.green(mark.rgb), Color.blue(mark.rgb))
+            style = Paint.Style.STROKE; strokeWidth = stroke; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+        }
+        val ax = mark.a.x * w; val ay = mark.a.y * h; val bx = mark.b.x * w; val by = mark.b.y * h
+        val box = RectF(minOf(ax, bx), minOf(ay, by), maxOf(ax, bx), maxOf(ay, by))
+        when (mark.kind) {
+            ShapeKind.RECT -> canvas.drawRect(box, paint)
+            ShapeKind.OVAL -> canvas.drawOval(box, paint)
+            ShapeKind.LINE -> canvas.drawLine(ax, ay, bx, by, paint)
+            ShapeKind.ARROW -> {
+                canvas.drawLine(ax, ay, bx, by, paint)
+                // Two strokes back from the tip, at 28 degrees, as long as about five line widths (and never longer than half the arrow).
+                val angle = atan2(by - ay, bx - ax); val length = minOf(stroke * 5f + min(w, h) * .015f, hypot(bx - ax, by - ay) / 2)
+                for (side in listOf(-1, 1)) {
+                    val a = angle + Math.PI.toFloat() + side * Math.toRadians(28.0).toFloat()
+                    canvas.drawLine(bx, by, bx + length * kotlin.math.cos(a), by + length * kotlin.math.sin(a), paint)
+                }
+            }
+        }
     }
 
     /** Midpoint quadratic smoothing through the sampled touch points. */
