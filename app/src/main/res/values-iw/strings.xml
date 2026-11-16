@@ -439,6 +439,11 @@
     <string name="tags_none">עדיין אין תגיות.</string>
     <string name="new_scan_filter">מסנן לסריקות חדשות</string>
     <string name="new_scan_filter_hint">כל צילום חדש מתחיל עם המסנן הזה. אפשר לבחור מסנן אחר בעורך, והצילום המקורי תמיד נשמר.</string>
+    <string name="cleanup">ניקוי</string>
+    <string name="clean_glare">הסרת השתקפות אור</string>
+    <string name="clean_fingers">הסרת אצבעות בשולי הדף</string>
+    <string name="clean_moire">הסרת מוארה (דפוס של פסים או נקודות)</string>
+    <string name="cleanup_hint">הניקוי משנה רק את תמונת הדף. הצילום המקורי נשמר כמו שהוא.</string>
 </resources>
 
 

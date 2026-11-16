@@ -77,6 +77,10 @@ object ImagePipeline {
             // Automatic straightening from the page's own text lines, then the manual book curve.
             if (recipe.flatten.isNotEmpty()) PageFlattener.apply(current, recipe.flatten)
             if (recipe.curvature.active) BookDewarp.apply(current, recipe.curvature)
+            // Clean-up chosen for the page: the regular pattern first (it would confuse the others), then the reflection, then fingers.
+            if (recipe.moire) PageCleanup.moire(current)
+            if (recipe.glare) PageCleanup.glare(current)
+            if (recipe.fingers) PageCleanup.fingers(current)
             if (recipe.eraseColor) ColorMarks.erase(current)
             when (recipe.turns.mod(4)) {
                 1 -> Core.rotate(current, current, Core.ROTATE_90_CLOCKWISE)

@@ -33,6 +33,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.security.MessageDigest
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
 class RebuildFlowTest {
@@ -727,6 +728,84 @@ class RebuildFlowTest {
             assertFalse(EditRecipe(detail = 1.5f).valid())
             assertArrayEquals(before, IntArray(400 * 300).also { input.getPixels(it, 0, 400, 0, 0, 400, 300) })
         } finally { input.recycle() }
+    }
+    @Test fun cleanupTakesOffGlareFingersAndMoireAndLeavesCleanPagesAlone() {
+        // 1.3.1: clean-up tools (CamScanner offers glare, finger and moiré removal).
+        ImagePipeline.ensureAvailable()
+        val w = 800; val h = 1100
+        fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+        fun page(paper: Int = Color.rgb(240, 238, 232)) = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { b ->
+            Canvas(b).apply {
+                drawColor(paper)
+                val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(25, 25, 25); textSize = 22f }
+                for (y in 102 until 1062 step 36) drawText("Scanned pages keep their print sharp and clear 2468", 60f, y.toFloat(), ink)
+            }
+        }
+        fun pixels(b: Bitmap) = IntArray(b.width * b.height).also { b.getPixels(it, 0, b.width, 0, 0, b.width, b.height) }
+        fun maxChange(a: IntArray, b: IntArray, x0: Int = 0, y0: Int = 0, x1: Int = w, y1: Int = h): Int {
+            var m = 0; for (y in y0 until y1) for (x in x0 until x1) m = maxOf(m, abs(lum(a[y * w + x]) - lum(b[y * w + x]))); return m
+        }
+        fun box(p: IntArray) = (520 until 580).flatMap { y -> (340 until 460).map { x -> lum(p[y * w + x]) } }.sorted()
+        fun contrast(v: List<Int>) = v[(v.size - 1) * 95 / 100] - v[(v.size - 1) * 3 / 100]
+        fun cleaned(input: Bitmap, recipe: EditRecipe): IntArray { val out = ImagePipeline.transform(input, recipe); try { return pixels(out) } finally { out.recycle() } }
+        val clean = page()
+        // A reflection: light added over the page and compressed by the camera's tone curve, so the print fades.
+        val lit = clean.copy(Bitmap.Config.ARGB_8888, true); val glared = clean.copy(Bitmap.Config.ARGB_8888, true)
+        val src = pixels(clean); val withLight = IntArray(w * h); val withGlare = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val c = src[y * w + x]; val shade = Math.pow(.8 + .1 * x / w, 2.2)
+            val spot = 140 * Math.exp(-((x - 400.0) * (x - 400.0) + (y - 550.0) * (y - 550.0)) / (2 * 116.0 * 116.0))
+            fun tone(v: Int, extra: Double): Int { val l = Math.pow(v / 255.0, 2.2) * shade + extra / 255 * .9; val t = (l / (1 + .35 * l) * 1.35).coerceIn(0.0, 1.0); return (255 * Math.pow(t, 1 / 2.2) + .5).toInt().coerceIn(0, 255) }
+            withLight[y * w + x] = Color.rgb(tone(Color.red(c), 0.0), tone(Color.green(c), 0.0), tone(Color.blue(c), 0.0))
+            withGlare[y * w + x] = Color.rgb(tone(Color.red(c), spot), tone(Color.green(c), spot), tone(Color.blue(c), spot))
+        }
+        lit.setPixels(withLight, 0, w, 0, 0, w, h); glared.setPixels(withGlare, 0, w, 0, 0, w, h)
+        // Fingers holding the page at its left edge.
+        val held = clean.copy(Bitmap.Config.ARGB_8888, true)
+        Canvas(held).apply {
+            val skin = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(224, 172, 140); strokeWidth = 60f; strokeCap = Paint.Cap.ROUND }
+            drawLine(-10f, 600f, 120f, 620f, skin)
+        }
+        // A printed raster: two fine crossed patterns over the page.
+        val raster = clean.copy(Bitmap.Config.ARGB_8888, true)
+        val rasterPixels = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val a = 2 * Math.PI / 4.2; val d = 18 * Math.cos(a * (x + y) / Math.sqrt(2.0)) + 18 * Math.cos(a * (y - x) / Math.sqrt(2.0))
+            val c = src[y * w + x]; fun ch(v: Int) = (v + d).roundToInt().coerceIn(0, 255)
+            rasterPixels[y * w + x] = Color.rgb(ch(Color.red(c)), ch(Color.green(c)), ch(Color.blue(c)))
+        }
+        raster.setPixels(rasterPixels, 0, w, 0, 0, w, h)
+        val cream = page(Color.rgb(245, 225, 190))
+        val sources = listOf(clean, lit, glared, held, raster, cream); val untouched = sources.map { pixels(it) }
+        try {
+            // Glare: the print under the reflection gets its contrast back and the paper there comes down to the page's.
+            // Compared with the same page rendered without clean-up.
+            fun plain(b: Bitmap) = cleaned(b, EditRecipe())
+            val before = box(plain(glared)); val after = box(cleaned(glared, EditRecipe(glare = true)))
+            assertTrue("print under the glare: ${contrast(before)} -> ${contrast(after)}", contrast(after) > contrast(before) * 1.8)
+            assertTrue("paper under the glare: ${before[before.size / 2]} -> ${after[after.size / 2]}", after[after.size / 2] < before[before.size / 2] - 20)
+            assertTrue(maxChange(plain(glared), cleaned(glared, EditRecipe(glare = true)), 50, 950, 300, 1000) <= 2)
+            // An evenly lit page, and one lit unevenly but without a reflection, are left alone.
+            assertTrue(maxChange(plain(clean), cleaned(clean, EditRecipe(glare = true))) <= 2)
+            assertTrue(maxChange(plain(lit), cleaned(lit, EditRecipe(glare = true))) <= 6)
+            // Fingers: the skin at the edge becomes paper; print far from it does not change.
+            val fingerless = cleaned(held, EditRecipe(fingers = true)); val heldPixels = plain(held)
+            val spot = fingerless[605 * w + 40]
+            assertTrue("finger left: ${Integer.toHexString(spot)}", lum(spot) > 215 && abs(Color.red(spot) - Color.blue(spot)) < 20)
+            assertTrue(maxChange(heldPixels, fingerless, 300, 100, 700, 400) <= 2)
+            assertTrue(maxChange(plain(clean), cleaned(clean, EditRecipe(fingers = true))) <= 2)
+            assertTrue("cream paper is not skin", maxChange(plain(cream), cleaned(cream, EditRecipe(fingers = true))) <= 2)
+            // Moiré: the pattern goes, the print stays.
+            fun error(p: IntArray) = p.indices.sumOf { abs(lum(p[it]) - lum(src[it])).toLong() }.toDouble() / p.size
+            val patterned = error(plain(raster)); val removed = error(cleaned(raster, EditRecipe(moire = true)))
+            assertTrue("moiré: $patterned -> $removed", removed < patterned * .5)
+            assertTrue(maxChange(plain(clean), cleaned(clean, EditRecipe(moire = true))) <= 2)
+            // Kept with the page's edits; the photos are never changed.
+            val recipe = EditRecipe(glare = true, fingers = true, moire = true)
+            assertEquals(recipe, RecipeCodec.decode(RecipeCodec.encode(recipe)))
+            assertEquals(EditRecipe(), RecipeCodec.decode(RecipeCodec.encode(EditRecipe())))
+            sources.forEachIndexed { i, b -> assertArrayEquals(untouched[i], pixels(b)) }
+        } finally { sources.forEach { it.recycle() } }
     }
     @Test fun referenceRecipesRoundTripAndNeverFallBackToAnotherFilter() {
         ImagePipeline.ensureAvailable()

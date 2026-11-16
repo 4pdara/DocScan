@@ -134,7 +134,9 @@ data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val tre
     /** Fine detail brought out after the filter (0 none .. 1 strong): sharper print and edges. */
     val detail: Float = 0f,
     /** Curved top and bottom page edges ([PageEdgeCurves]), or empty for straight edges. */
-    val edges: List<Float> = emptyList()) {
+    val edges: List<Float> = emptyList(),
+    /** Clean-up before the filter: a light reflection taken off, fingers at the page edge filled with paper, a fine regular pattern (moiré) removed. */
+    val glare: Boolean = false, val fingers: Boolean = false, val moire: Boolean = false) {
     val edgeCurves: PageEdgeCurves? get() = PageEdgeCurves(edges).takeIf { edges.isNotEmpty() && it.valid() }
     /** Everything drawn over the page removed: what text recognition should read. Erased areas stay erased. */
     fun withoutMarks() = copy(watermark = null, stamp = null, footer = null, signatures = emptyList(), ink = emptyList(), texts = emptyList(), numberText = null)

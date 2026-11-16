@@ -124,6 +124,9 @@ object RecipeCodec {
             if (r.signatures.isNotEmpty()) put("signatures", JSONArray(r.signatures.map { SignatureCodec.encode(it) }))
             if (r.flatten.isNotEmpty()) put("flatten", JSONArray(r.flatten.map { it.toDouble() }))
             if (r.eraseColor) put("eraseColor", true)
+            if (r.glare) put("glare", true)
+            if (r.fingers) put("fingers", true)
+            if (r.moire) put("moire", true)
             if (r.erase.isNotEmpty()) put("erase", JSONArray(r.erase.map { JSONObject().put("k", it.kind.name).put("w", r4(it.width)).put("p", points(it.points)) }))
             if (r.ink.isNotEmpty()) put("ink", JSONArray(r.ink.map { JSONObject().put("w", r4(it.width)).put("c", it.rgb).put("a", it.alpha).put("p", points(it.points)) }))
             if (r.texts.isNotEmpty()) put("texts", JSONArray(r.texts.map { JSONObject().put("t", it.text).put("x", r4(it.x)).put("y", r4(it.y)).put("s", r4(it.size)).put("c", it.rgb).put("f", it.font.name) }))
@@ -152,6 +155,7 @@ object RecipeCodec {
             signatures = list("signatures", 20).mapNotNull { SignatureCodec.decode(it) },
             flatten = o.optJSONArray("flatten")?.let { a -> (0 until a.length()).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { Flattening.valid(it) }.orEmpty(),
             eraseColor = o.optBoolean("eraseColor", false),
+            glare = o.optBoolean("glare", false), fingers = o.optBoolean("fingers", false), moire = o.optBoolean("moire", false),
             erase = list("erase", 500).mapNotNull { m ->
                 val kind = m.optString("k").let { k -> EraseKind.values().firstOrNull { it.name == k } } ?: return@mapNotNull null
                 EraseMark(kind, points(m.optJSONArray("p")), m.optDouble("w", .03).toFloat()).takeIf { it.valid() }

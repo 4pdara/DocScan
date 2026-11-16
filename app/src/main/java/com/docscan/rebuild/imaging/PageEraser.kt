@@ -94,8 +94,8 @@ object PageEraser {
         }
     }
 
-    /** Fills the masked pixels of [image] (RGBA) with the surrounding paper. */
-    private fun fill(image: Mat, mask: Mat) {
+    /** Fills the masked pixels of [image] (RGBA) with the surrounding paper. Also used by [PageCleanup.fingers]. */
+    internal fun fill(image: Mat, mask: Mat) {
         val w = image.cols(); val h = image.rows()
         val scale = min(1.0, 700.0 / max(w, h))
         val sw = max(1, (w * scale).roundToInt()); val sh = max(1, (h * scale).roundToInt())

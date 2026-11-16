@@ -180,6 +180,7 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             EditorAction("text", R.string.edit_text, Icons.Outlined.TextFields) { full = "text" },
             EditorAction("erase", R.string.smart_erase, Icons.Outlined.AutoFixHigh) { full = "erase" },
             EditorAction("colour", R.string.colour_marks_short, Icons.Outlined.FormatColorReset, edit.eraseColor) { change(edit.copy(eraseColor = !edit.eraseColor)) },
+            EditorAction("cleanup", R.string.cleanup, Icons.Outlined.CleaningServices, tool == "cleanup" || edit.glare || edit.fingers || edit.moire) { open("cleanup") },
             EditorAction("curve", R.string.book_curve, Icons.Outlined.AutoStories, tool == "curve") { open("curve") },
             if (onOcr != null) EditorAction("ocr", R.string.read_text, Icons.Outlined.FindInPage) { onOcr(edit) } else null,
             if (onRetake != null) EditorAction("retake", R.string.retake, Icons.Outlined.CameraAlt) { onRetake(edit) } else null)
@@ -273,6 +274,17 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                                     Text(stringResource(treatment.label()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp, bottom = 3.dp), color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                 }
                             }
+                        }
+                        "cleanup" -> Column(Modifier.padding(horizontal = 16.dp)) {
+                            // Each clean-up is kept in the page's edits and applied before the filter.
+                            listOf(Triple(R.string.clean_glare, edit.glare, "clean-glare"), Triple(R.string.clean_fingers, edit.fingers, "clean-fingers"), Triple(R.string.clean_moire, edit.moire, "clean-moire")).forEach { (label, on, tag) ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                    Switch(on, { value -> change(when (tag) { "clean-glare" -> edit.copy(glare = value); "clean-fingers" -> edit.copy(fingers = value); else -> edit.copy(moire = value) }) },
+                                        enabled = !busy, modifier = Modifier.testTag(tag))
+                                }
+                            }
+                            Text(stringResource(R.string.cleanup_hint), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 6.dp))
                         }
                         "adjust" -> Column(Modifier.padding(horizontal = 22.dp)) {
                             Text(stringResource(R.string.brightness), style = MaterialTheme.typography.labelMedium)

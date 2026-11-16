@@ -439,6 +439,11 @@
     <string name="tags_none">No tags yet.</string>
     <string name="new_scan_filter">Filter for new scans</string>
     <string name="new_scan_filter_hint">Every new photo starts with this filter. Another filter can be chosen in the editor, and the original photo is always kept.</string>
+    <string name="cleanup">Clean up</string>
+    <string name="clean_glare">Remove light glare</string>
+    <string name="clean_fingers">Remove fingers at the page edge</string>
+    <string name="clean_moire">Remove moiré (a striped or dotted pattern)</string>
+    <string name="cleanup_hint">Clean-up changes only the page image. The original photo is kept as it is.</string>
 </resources>
 
 
