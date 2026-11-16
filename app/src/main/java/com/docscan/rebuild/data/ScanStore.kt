@@ -104,6 +104,7 @@ object RecipeCodec {
     private fun points(a: JSONArray?): List<Vertex> = if (a == null) emptyList() else (0 until minOf(a.length() / 2, 5000)).map { Vertex(a.optDouble(it * 2).toFloat(), a.optDouble(it * 2 + 1).toFloat()) }
     fun encode(r: EditRecipe): String = JSONObject().put("turns", r.turns).put("filter", r.treatment.name)
         .put("brightness", r.brightness.toDouble()).put("contrast", r.contrast.toDouble())
+        .apply { if (r.detail != 0f) put("detail", r4(r.detail)); if (r.edges.isNotEmpty()) put("edges", JSONArray(r.edges.map { Math.round(it * 1e6) / 1e6 })) }
         .put("outputAspect", r.outputAspect?.toDouble() ?: JSONObject.NULL)
         .put("curveTop", r.curvature.top.toDouble()).put("curveBottom", r.curvature.bottom.toDouble())
         .put("frame", JSONArray(r.frame.points.map { JSONArray(listOf(it.x.toDouble(), it.y.toDouble())) }))
@@ -140,6 +141,8 @@ object RecipeCodec {
             treatment = runCatching { Treatment.valueOf(o.optString("filter", "ORIGINAL")) }.getOrDefault(Treatment.ORIGINAL),
             brightness = o.optDouble("brightness", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-50f, 50f) ?: 0f,
             contrast = o.optDouble("contrast", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(.5f, 1.8f) ?: 1f,
+            detail = o.optDouble("detail", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f,
+            edges = o.optJSONArray("edges")?.let { a -> (0 until minOf(a.length(), 6)).map { a.optDouble(it, Double.NaN).toFloat() } }?.takeIf { PageEdgeCurves(it).valid() }.orEmpty(),
             outputAspect = o.optDouble("outputAspect", Double.NaN).toFloat().takeIf { it.isFinite() && it in .1f..10f },
             curvature = BookCurve(o.optDouble("curveTop", 0.0).toFloat(), o.optDouble("curveBottom", 0.0).toFloat()).takeIf { it.valid() } ?: BookCurve(),
             watermark = o.optString("watermark").trim().take(80).ifBlank { null }, stamp = o.optString("stamp").trim().take(80).ifBlank { null },
@@ -254,7 +257,8 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
             val current = requireNotNull(dao.page(page.id))
             val (left,right) = recipe.frame.split(position)
             val crops = if(rightFirst) listOf(right,left) else listOf(left,right)
-            val base = recipe.copy(outputAspect=null,curvature=BookCurve())
+            // Each half is its own page: curved edges and straightening found on the spread do not carry over.
+            val base = recipe.copy(outputAspect=null,curvature=BookCurve(),edges=emptyList(),flatten=emptyList())
             val pages = dao.snapshot(current.notebookId)
             pages.filter { it.position>current.position }.sortedByDescending { it.position }.forEach { dao.position(it.id,it.position+1) }
             dao.recipe(current.id,RecipeCodec.encode(base.copy(frame=crops[0])))

@@ -32,6 +32,7 @@
     <string name="adjust">Adjust</string>
     <string name="brightness">Brightness</string>
     <string name="contrast">Contrast</string>
+    <string name="detail">Detail (sharpness)</string>
     <string name="reset">Reset</string>
     <string name="crop_hint">Drag a corner or side. Your original stays unchanged.</string>
     <string name="document">Document</string>
@@ -278,6 +279,8 @@
     <string name="pdf_import_protected">This PDF is password protected. To import it, first save a copy without a password.</string>
     <string name="auto_flatten">Straighten automatically from the text lines</string>
     <string name="auto_flatten_none">Not enough text lines to straighten the page</string>
+    <string name="edge_flatten">Straighten along the curved page edges</string>
+    <string name="edge_flatten_none">The page edges are straight; nothing to straighten</string>
     <string name="erase_color_marks">Erase colour marks (pen, highlighter)</string>
     <string name="to_excel">To Excel</string>
     <string name="to_powerpoint">To PowerPoint</string>

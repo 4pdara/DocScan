@@ -12,7 +12,7 @@ object BookGutter {
      * (the shadow in the fold) between 38% and 62%, or the middle when no fold is clearly darker than the paper.
      */
     fun find(file: File, recipe: EditRecipe): Float {
-        val plain = recipe.withoutMarks().copy(flatten = emptyList(), erase = emptyList(), treatment = Treatment.ORIGINAL, brightness = 0f, contrast = 1f, turns = 0)
+        val plain = recipe.withoutMarks().copy(flatten = emptyList(), edges = emptyList(), erase = emptyList(), treatment = Treatment.ORIGINAL, brightness = 0f, contrast = 1f, turns = 0)
         val page = ImagePipeline.render(file, plain, 900)
         try {
             val w = page.width; val h = page.height

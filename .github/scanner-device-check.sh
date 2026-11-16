@@ -28,17 +28,17 @@ printf '%s\n' "$actual_page" > "$out/page-size.txt"
 install_args=(-r)
 # The ARM64 run installs the APK phones download (ARM libraries only); the x86 emulators need the universal build of
 # the same code (the build job checks that the two differ only in the Intel libraries).
-apk="$root/tests/DocScan-1.2.9-universal.apk"
-if [[ -n "$forced_abi" ]]; then install_args+=(--abi "$forced_abi"); apk="$root/DocScan-1.2.9.apk"; fi
+apk="$root/tests/DocScan-1.3.0-universal.apk"
+if [[ -n "$forced_abi" ]]; then install_args+=(--abi "$forced_abi"); apk="$root/DocScan-1.3.0.apk"; fi
 echo "Installing $apk" | tee "$out/apk.txt"
 adb install "${install_args[@]}" "$apk" | tee "$out/app-install.txt"
 grep -q '^Success' "$out/app-install.txt"
 adb shell dumpsys package "$app" > "$out/package.txt"
-grep -q "versionName=1.2.9" "$out/package.txt"
+grep -q "versionName=1.3.0" "$out/package.txt"
 if [[ -n "$forced_abi" ]]; then grep -q "primaryCpuAbi=$forced_abi" "$out/package.txt"; fi
 adb shell am start -W -n "$app/com.docscan.rebuild.MainActivity" | tee "$out/launch.txt"
 grep -q 'Status: ok' "$out/launch.txt"
-adb install -r -t "$root/tests/DocScan-1.2.9-tests.apk"
+adb install -r -t "$root/tests/DocScan-1.3.0-tests.apk"
 args=()
 if [[ "$suite" == 'smoke' ]]; then
   # The 19-test set the 0.1.8 release pipeline used, plus the original-filter and detection measurements, on Android 8 and 16 KB images (storage, processing, editing,
@@ -54,6 +54,8 @@ if [[ "$suite" == 'smoke' ]]; then
   classes+=",com.docscan.rebuild.RebuildFlowTest#magicColourAndProKeepADarkCoverDark"
   classes+=",com.docscan.rebuild.RebuildFlowTest#magicColourAndProKeepAPhotoCoverPrintedToItsEdges"
   classes+=",com.docscan.rebuild.BookFeaturesTest#findsAPictureCoverPrintedToItsEdgesOnAShadedCloth"
+  classes+=",com.docscan.rebuild.BookFeaturesTest#cropsABookPageAlongItsCurvedTopEdgeAndLeavesStraightPagesAlone"
+  classes+=",com.docscan.rebuild.RebuildFlowTest#detailAdjustmentSharpensStrokesLeavesPaperAndSurvivesSaving"
   classes+=",com.docscan.rebuild.BookFeaturesTest#detectsCoversAtTheFrameEdgeAndThePageOfAnOpenBook"
   classes+=",com.docscan.rebuild.BookFeaturesTest#detectsAngledCoversOpenRightPagesAndPagesCutByTheFrame"
   classes+=",com.docscan.rebuild.BookFeaturesTest#findsTheLeftPageOfAnOpenBookInsideItsPageEdgesOnALightChair"
@@ -72,7 +74,7 @@ python3 - "$out/instrumentation.txt" "$suite" <<'PY'
 from pathlib import Path
 import re, sys
 text = Path(sys.argv[1]).read_text()
-expected = 34 if sys.argv[2] == 'smoke' else 48
+expected = 36 if sys.argv[2] == 'smoke' else 50
 if not re.search(r'^OK \((\d+) tests\)', text, re.M) or re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|INSTRUMENTATION_ABORTED', text):
     raise SystemExit('Exact APK instrumentation suite did not pass')
 count = int(re.search(r'^OK \((\d+) tests\)', text, re.M).group(1))

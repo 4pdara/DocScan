@@ -82,6 +82,22 @@ data class Frame(val points: List<Vertex>) {
 }
 
 /**
+ * Curved top and bottom page edges: three coefficients each of d(u) = u(1-u)(a + b·u + c·u²), the edge's offset from
+ * the straight line between its corners at u (0 left .. 1 right) as a share of the page height, positive downwards.
+ */
+data class PageEdgeCurves(val values: List<Float>) {
+    val top: List<Float> get() = values.take(3)
+    val bottom: List<Float> get() = values.drop(3).take(3)
+    fun valid() = values.size == 6 && values.all { it.isFinite() && abs(it) <= 2f } && peak(top) <= .1f && peak(bottom) <= .1f
+    /** Either edge departs from its straight line by at least [least] of the page height. */
+    fun bows(least: Float = .004f) = valid() && max(peak(top), peak(bottom)) >= least
+    companion object {
+        fun offset(c: List<Float>, u: Float) = u * (1 - u) * (c[0] + c[1] * u + c[2] * u * u)
+        fun peak(c: List<Float>) = (0..40).maxOf { abs(offset(c, it / 40f)) }
+    }
+}
+
+/**
  * A saved automatic straightening: nine numbers of the first (polynomial) model, or the B-spline surface saved as
  * [across, down, across x down coefficients]. Coefficients are shares of the page height.
  */
@@ -114,13 +130,19 @@ data class EditRecipe(val frame: Frame = Frame.FULL, val turns: Int = 0, val tre
     val watermarkStyle: MarkStyle = MarkStyle(), val footer: String? = null, val footerPlace: StampPlace = StampPlace.BOTTOM_CENTER, val noteColor: MarkColor = MarkColor.RED,
     val signatures: List<SignatureMark> = emptyList(), val flatten: List<Float> = emptyList(), val eraseColor: Boolean = false,
     val erase: List<EraseMark> = emptyList(), val ink: List<InkStroke> = emptyList(), val texts: List<TextMark> = emptyList(),
-    val watermarkSpot: MarkSpot = MarkSpot(), val numbers: NumberFormat? = null, val numberPlace: StampPlace = StampPlace.BOTTOM_CENTER, val numberText: String? = null) {
+    val watermarkSpot: MarkSpot = MarkSpot(), val numbers: NumberFormat? = null, val numberPlace: StampPlace = StampPlace.BOTTOM_CENTER, val numberText: String? = null,
+    /** Fine detail brought out after the filter (0 none .. 1 strong): sharper print and edges. */
+    val detail: Float = 0f,
+    /** Curved top and bottom page edges ([PageEdgeCurves]), or empty for straight edges. */
+    val edges: List<Float> = emptyList()) {
+    val edgeCurves: PageEdgeCurves? get() = PageEdgeCurves(edges).takeIf { edges.isNotEmpty() && it.valid() }
     /** Everything drawn over the page removed: what text recognition should read. Erased areas stay erased. */
     fun withoutMarks() = copy(watermark = null, stamp = null, footer = null, signatures = emptyList(), ink = emptyList(), texts = emptyList(), numberText = null)
     val marked: Boolean get() = watermark != null || stamp != null || footer != null || numberText != null || signatures.isNotEmpty() || ink.isNotEmpty() || texts.isNotEmpty()
     fun valid() = frame.valid() && curvature.valid() && signatures.all { it.valid() } && erase.all { it.valid() } && ink.all { it.valid() } && texts.all { it.valid() } &&
         watermarkSpot.valid() && watermarkStyle.valid() && (flatten.isEmpty() || Flattening.valid(flatten)) &&
-        (outputAspect == null || outputAspect.isFinite() && outputAspect in .1f..10f)
+        (outputAspect == null || outputAspect.isFinite() && outputAspect in .1f..10f) && detail.isFinite() && detail in 0f..1f &&
+        (edges.isEmpty() || PageEdgeCurves(edges).valid())
 
     /**
      * The page turned [quarters] times clockwise, with everything placed on it moving along. [aspect] is the

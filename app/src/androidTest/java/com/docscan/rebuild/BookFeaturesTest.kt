@@ -188,6 +188,38 @@ class BookFeaturesTest {
             assertTrue("Whole cover: $found",found.motion(Frame(quad.map {Vertex(it.first,it.second)}))<.04f)
         } finally { file.delete() }
     }
+    @Test fun cropsABookPageAlongItsCurvedTopEdgeAndLeavesStraightPagesAlone() {
+        // 1.3.0: a book page bows; cropped with straight sides, a wedge of the table shows above the page's middle.
+        // Mirrors docs/RELEASE_1.3.0_HE.md and the desktop measurement on the owner's open-book photo.
+        val w=1000;val h=1300
+        val frame=Frame(listOf(Vertex(.15f,.12f),Vertex(.85f,.12f),Vertex(.85f,.9f),Vertex(.15f,.9f)))
+        fun page(bow:Float)=fixture("bowed-page",w,h) { c ->
+            c.drawColor(Color.rgb(116,112,110))
+            val path=Path()
+            for(i in 0..40){val u=i/40f;val x=(.15f+.7f*u)*w;val y=(.12f+bow*.78f*4*u*(1-u))*h;if(i==0)path.moveTo(x,y)else path.lineTo(x,y)}
+            path.lineTo(.85f*w,.9f*h);path.lineTo(.15f*w,.9f*h);path.close()
+            c.drawPath(path,Paint().apply {color=Color.rgb(235,232,222);isAntiAlias=true})
+            for(r in 0 until 16){val y=(.2f+r*.042f)*h;c.drawRect(.22f*w,y,.78f*w,y+9,Paint().apply {color=Color.rgb(36,38,40)})}
+        }
+        fun lum(c:Int)=(Color.red(c)*299+Color.green(c)*587+Color.blue(c)*114)/1000
+        fun topMiddle(b:Bitmap):Int {var sum=0;var n=0;for(y in 0 until (b.height*.015f).toInt().coerceAtLeast(1))for(x in b.width/3 until 2*b.width/3){sum+=lum(b.getPixel(x,y));n++};return sum/n}
+        val bowed=page(.03f)
+        try {
+            val curves=requireNotNull(ImagePipeline.pageEdges(bowed,frame)) {"Curved top edge not found"}
+            assertEquals(.03f,PageEdgeCurves.peak(curves.top),.007f)
+            assertTrue("Bottom edge is straight: ${PageEdgeCurves.peak(curves.bottom)}",PageEdgeCurves.peak(curves.bottom)<.004f)
+            val straight=ImagePipeline.render(bowed,EditRecipe(frame=frame));val curved=ImagePipeline.render(bowed,EditRecipe(frame=frame,edges=curves.values))
+            try {
+                assertTrue("Straight crop should show the table above the bow: ${topMiddle(straight)}",topMiddle(straight)<160)
+                assertTrue("Curved crop should start at the paper: ${topMiddle(curved)}",topMiddle(curved)>200)
+                assertEquals(straight.width,curved.width);assertEquals(straight.height,curved.height)
+            } finally {straight.recycle();curved.recycle()}
+            val saved=RecipeCodec.decode(RecipeCodec.encode(EditRecipe(frame=frame,edges=curves.values)))
+            assertEquals(curves.values.size,saved.edges.size);assertNotNull(saved.edgeCurves)
+        } finally {bowed.delete()}
+        val flat=page(0f)
+        try {assertNull("A straight page needs no curved crop",ImagePipeline.pageEdges(flat,frame))} finally {flat.delete()}
+    }
     @Test fun colourOnlyBoundariesRemainEligibleForSharpAutomaticCapture() {
         ImagePipeline.ensureAvailable()
         val bitmap=Bitmap.createBitmap(500,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap)

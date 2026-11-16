@@ -82,7 +82,9 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
                 val frame = Frame.choose(detected, seen?.takeIf { detectBounds })
                 // A detected page whose text lines bend (a book page curving to the spine) is straightened automatically;
                 // a flat page or one without enough text keeps no correction. The editor can turn it off.
-                val cropped = if (frame != null) page.edit().copy(frame = frame) else page.edit()
+                // A book page whose top or bottom edge bows is cropped along its curved edges.
+                val curved = if (frame == null) null else withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(store.source(page), frame) }.getOrNull() }
+                val cropped = if (frame != null) page.edit().copy(frame = frame, edges = curved?.values.orEmpty()) else page.edit()
                 val flatten = if (frame == null) null else withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), cropped) }.getOrNull() }
                 // Marks chosen in Settings (off by default) go on new pages only, and so does the filter for new scans
                 // (Magic Color unless changed); the photo itself is kept as taken.
@@ -375,6 +377,17 @@ fun ScanApp(store: ScanStore) {
             all.forEach { store.save(it, it.edit().copy(eraseColor = on)) }
         }
     }
+    /** After a spread is split, each page measures its own curved edges and text-line straightening on its own crop. */
+    suspend fun straightenHalves(page: Sheet) {
+        store.dao.snapshot(page.notebookId).filter { it.source == page.source }.forEach { half ->
+            val curved = withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(store.source(half), half.edit().frame) }.getOrNull() }
+            val edged = half.edit().copy(edges = curved?.values.orEmpty())
+            val coef = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(half), edged) }.getOrNull() }
+            val next = if (coef != null) edged.copy(flatten = coef.toList()) else edged
+            if (next != half.edit()) store.save(half, next)
+        }
+    }
+
     /** What a scan mode does to each captured page. Book mode cuts a detected spread into its two pages at the spine. */
     suspend fun applyMode(page: Sheet, mode: String?): Sheet {
         val recipe = page.edit()
@@ -387,11 +400,7 @@ fun ScanApp(store: ScanStore) {
                     val gutter = withContext(Dispatchers.Default) { runCatching { com.docscan.rebuild.imaging.BookGutter.find(store.source(page), recipe) }.getOrDefault(.5f) }
                     val rightFirst = rightToLeft
                     val first = runCatching { store.split(page, recipe.copy(flatten = emptyList()), gutter, rightFirst) }.getOrNull() ?: return page
-                    // Each page straightens on its own crop.
-                    store.dao.snapshot(page.notebookId).filter { it.source == page.source }.forEach { half ->
-                        val coef = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(half), half.edit()) }.getOrNull() }
-                        if (coef != null) store.save(half, half.edit().copy(flatten = coef.toList()))
-                    }
+                    straightenHalves(page)
                     requireNotNull(store.dao.page(first.id))
                 }
             }
@@ -528,9 +537,12 @@ fun ScanApp(store: ScanStore) {
             }
             "editor", "review" -> pages.firstOrNull { it.id == pageId }?.let { page ->
                 PageEditor(store, page, vm.busy, snack = snack, onBack = { if (draft != null) leaveDraft() else route = "document" }, onSave = { recipe -> editorStart = null; vm.perform(R.string.saved) {
-                    // Straightening is measured on the crop; a new crop measures it again.
-                    val fresh = if (recipe.flatten.isNotEmpty() && recipe.frame != page.edit().frame)
-                        recipe.copy(flatten = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), recipe) }.getOrNull() }?.toList().orEmpty()) else recipe
+                    // Curved edges and straightening are measured on the crop; a new crop measures them again.
+                    val moved = recipe.frame != page.edit().frame
+                    val edged = if (moved && recipe.edges.isNotEmpty())
+                        recipe.copy(edges = withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(store.source(page), recipe.frame) }.getOrNull() }?.values.orEmpty()) else recipe
+                    val fresh = if (edged.flatten.isNotEmpty() && moved)
+                        edged.copy(flatten = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), edged) }.getOrNull() }?.toList().orEmpty()) else edged
                     store.save(page, fresh); draft = null; route = "document" } },
                     onExportImage = { recipe -> imagePage = page.id; imageRecipe = RecipeCodec.encode(recipe); imageSaver.launch("scan-${page.position + 1}.jpg") },
                     onGallery = { recipe -> requestGallery(page, recipe) },
@@ -543,7 +555,7 @@ fun ScanApp(store: ScanStore) {
                     onDelete = { deletePage(page) { pageId = null; route = "document" } },
                     onRetake = { retakeId = page.id; route = "camera" },
                     onWatermarkAll = { recipe -> watermarkAll(recipe) }, onHeader = { choice -> applyHeader(choice) },
-                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;draft=null;route="document"} },
+                    onSplit = { recipe,position,rightFirst -> vm.perform(R.string.book_split_saved) {pageId=store.split(page,recipe,position,rightFirst).id;vm.straightenHalves(page);draft=null;route="document"} },
                     onOcr = { recipe -> vm.perform {
                         store.save(page,recipe);val current=requireNotNull(store.dao.page(page.id))
                         ocrText=if(current.ocrRecipe==current.recipe)current.ocrText.orEmpty() else "";ocrBack="editor";route="ocr"

@@ -691,6 +691,43 @@ class RebuildFlowTest {
         pdf.delete(); input.delete(); store.source(first).delete(); store.source(second).delete(); db.close()
     }
 
+    @Test fun detailAdjustmentSharpensStrokesLeavesPaperAndSurvivesSaving() {
+        // 1.3.0: a "detail" adjustment (CamScanner's editor has brightness, contrast and detail).
+        ImagePipeline.ensureAvailable()
+        fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+        val input = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888)
+        Canvas(input).apply {
+            drawColor(Color.rgb(225, 222, 214))
+            // Thin grey print strokes, as a slightly soft photo shows small text.
+            val ink = Paint().apply { color = Color.rgb(110, 110, 116); strokeWidth = 2f }
+            for (k in 0 until 12) drawLine(150f + k * 9f, 60f, 150f + k * 9f, 240f, ink)
+        }
+        val before = IntArray(400 * 300).also { input.getPixels(it, 0, 400, 0, 0, 400, 300) }
+        fun energy(b: Bitmap): Double {
+            var sum = 0.0
+            for (y in 80 until 220) for (x in 140 until 260) {
+                val l = 4 * lum(b.getPixel(x, y)) - lum(b.getPixel(x - 1, y)) - lum(b.getPixel(x + 1, y)) - lum(b.getPixel(x, y - 1)) - lum(b.getPixel(x, y + 1))
+                sum += l.toDouble() * l
+            }
+            return sum
+        }
+        try {
+            val plain = ImagePipeline.transform(input, EditRecipe())
+            val sharp = ImagePipeline.transform(input, EditRecipe(detail = 1f))
+            try {
+                // Paper far from the print is unchanged; the print's fine detail is clearly stronger.
+                assertTrue(abs(lum(sharp.getPixel(40, 150)) - lum(plain.getPixel(40, 150))) <= 2)
+                val ratio = energy(sharp) / energy(plain)
+                assertTrue("detail did not sharpen: x$ratio", ratio > 1.5)
+                assertEquals(400, sharp.width); assertEquals(300, sharp.height)
+            } finally { plain.recycle(); sharp.recycle() }
+            val recipe = EditRecipe(detail = .65f, treatment = Treatment.GRAY)
+            assertEquals(.65f, RecipeCodec.decode(RecipeCodec.encode(recipe)).detail, .0001f)
+            assertEquals(0f, RecipeCodec.decode(RecipeCodec.encode(EditRecipe())).detail, 0f)
+            assertFalse(EditRecipe(detail = 1.5f).valid())
+            assertArrayEquals(before, IntArray(400 * 300).also { input.getPixels(it, 0, 400, 0, 0, 400, 300) })
+        } finally { input.recycle() }
+    }
     @Test fun referenceRecipesRoundTripAndNeverFallBackToAnotherFilter() {
         ImagePipeline.ensureAvailable()
         val delay = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0

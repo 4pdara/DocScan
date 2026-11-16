@@ -63,9 +63,16 @@ object ImagePipeline {
                 // dark line. Sample a quarter percent inside the crop (same output size) so the border stays clean.
                 val inset = if (recipe.frame == Frame.FULL) 0.0 else max(1.0, min(width, height) * .0025)
                 val to = MatOfPoint2f(Point(-inset, -inset), Point(width - 1 + inset, -inset), Point(width - 1 + inset, height - 1 + inset), Point(-inset, height - 1 + inset))
-                val homography = Imgproc.getPerspectiveTransform(from, to)
-                try { Imgproc.warpPerspective(source, current, homography, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
-                finally { from.release(); to.release(); homography.release() }
+                val curves = recipe.edgeCurves.takeIf { recipe.frame != Frame.FULL }
+                if (curves != null) {
+                    // A book page's curved top and bottom edges: the page is taken from the surface between them.
+                    val back = Imgproc.getPerspectiveTransform(to, from)
+                    try { PageEdges.warp(source, back, width, height, inset, curves, current) } finally { from.release(); to.release(); back.release() }
+                } else {
+                    val homography = Imgproc.getPerspectiveTransform(from, to)
+                    try { Imgproc.warpPerspective(source, current, homography, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
+                    finally { from.release(); to.release(); homography.release() }
+                }
             }
             // Automatic straightening from the page's own text lines, then the manual book curve.
             if (recipe.flatten.isNotEmpty()) PageFlattener.apply(current, recipe.flatten)
@@ -114,6 +121,7 @@ object ImagePipeline {
                 }
             }
             if (recipe.brightness != 0f || recipe.contrast != 1f) result.convertTo(result, -1, recipe.contrast.toDouble(), recipe.brightness.toDouble())
+            if (recipe.detail > 0f) bringOutDetail(result, recipe.detail)
             // Brightness and contrast operate on color; retain the cropped source alpha.
             if (result.channels() == 4) {
                 Core.extractChannel(current, alpha, 3)
@@ -121,6 +129,28 @@ object ImagePipeline {
             }
             return Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888).also { Utils.matToBitmap(result, it); PageMarks.draw(it, recipe) }
         } finally { source.release(); current.release(); result.release(); alpha.release() }
+    }
+
+    /**
+     * Unsharp masking scaled to the page: the blur radius grows with the image (about a pen stroke's width), and
+     * [amount] 0..1 adds up to 1.6 times the fine detail back. Flat paper, which has no detail, stays as it is.
+     */
+    internal fun bringOutDetail(image: Mat, amount: Float) {
+        val blurred = Mat()
+        try {
+            val sigma = max(1.0, min(image.cols(), image.rows()) / 1400.0)
+            Imgproc.GaussianBlur(image, blurred, Size(0.0, 0.0), sigma)
+            val gain = 1.6 * amount.coerceIn(0f, 1f)
+            Core.addWeighted(image, 1 + gain, blurred, -gain, 0.0, image)
+        } finally { blurred.release() }
+    }
+
+    /** A book page's curved top and bottom edges ([PageEdges]) on the photo in [file] for the page at [frame], or null. */
+    fun pageEdges(file: File, frame: Frame): PageEdgeCurves? {
+        ensureAvailable()
+        if (frame == Frame.FULL || !frame.valid()) return null
+        val bitmap = decode(file, 1600); val rgba = Mat()
+        return try { Utils.bitmapToMat(bitmap, rgba); PageEdges.estimate(rgba, frame) } finally { bitmap.recycle(); rgba.release() }
     }
 
     fun detect(file: File): Frame? {

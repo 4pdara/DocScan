@@ -244,6 +244,20 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                                     }
                                 }, enabled = !flattening && !busy, modifier = Modifier.testTag("auto-flatten"))
                             }
+                            // Curved top and bottom page edges (a book page's bow): found automatically after capture.
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.edge_flatten), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                Switch(edit.edges.isNotEmpty(), { on ->
+                                    if (!on) change(edit.copy(edges = emptyList())) else {
+                                        flattening = true
+                                        scope.launch {
+                                            val curves = withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(store.source(page), currentEdit.frame) }.getOrNull() }
+                                            flattening = false
+                                            if (curves != null) change(currentEdit.copy(edges = curves.values)) else snack.showSnackbar(context.getString(R.string.edge_flatten_none))
+                                        }
+                                    }
+                                }, enabled = !flattening && !busy, modifier = Modifier.testTag("edge-flatten"))
+                            }
                             Text(stringResource(R.string.curve_hint),style=MaterialTheme.typography.bodySmall)
                             Text(stringResource(R.string.curve_top),style=MaterialTheme.typography.labelSmall)
                             Slider(edit.curvature.top,{change(edit.copy(curvature=edit.curvature.copy(top=it)))},valueRange=-.2f.. .2f,modifier=Modifier.testTag("curve-top"))
@@ -265,6 +279,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                             Slider(edit.brightness, { change(edit.copy(brightness = it)) }, valueRange = -50f..50f)
                             Text(stringResource(R.string.contrast), style = MaterialTheme.typography.labelMedium)
                             Slider(edit.contrast, { change(edit.copy(contrast = it)) }, valueRange = .5f..1.8f)
+                            Text(stringResource(R.string.detail), style = MaterialTheme.typography.labelMedium)
+                            Slider(edit.detail, { change(edit.copy(detail = it)) }, valueRange = 0f..1f, modifier = Modifier.testTag("adjust-detail"))
                         }
                         "crop" -> Column {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {

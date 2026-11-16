@@ -32,6 +32,7 @@
     <string name="adjust">התאמות</string>
     <string name="brightness">בהירות</string>
     <string name="contrast">ניגודיות</string>
+    <string name="detail">פרטים (חדות)</string>
     <string name="reset">איפוס</string>
     <string name="crop_hint">גרור פינה או צלע. המקור נשמר ללא שינוי.</string>
     <string name="document">מסמך</string>
@@ -278,6 +279,8 @@
     <string name="pdf_import_protected">ה־PDF מוגן בסיסמה. כדי לייבא אותו, שמרו קודם עותק בלי סיסמה.</string>
     <string name="auto_flatten">יישור אוטומטי לפי שורות הטקסט</string>
     <string name="auto_flatten_none">לא נמצאו מספיק שורות טקסט כדי ליישר את הדף</string>
+    <string name="edge_flatten">יישור לפי שולי הדף המעוקלים</string>
+    <string name="edge_flatten_none">שולי הדף ישרים, אין מה ליישר</string>
     <string name="erase_color_marks">מחיקת סימונים בצבע (עט, מרקר)</string>
     <string name="to_excel">ל־Excel</string>
     <string name="to_powerpoint">ל־PowerPoint</string>
