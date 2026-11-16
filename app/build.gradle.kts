@@ -60,7 +60,7 @@ android {
         targetSdk = 36
         versionCode = 29
         versionName = when {
-            phoneRelease -> "1.2.7"
+            phoneRelease -> "1.2.7-r8"
             universalPreview -> "1.2.7-universal-preview"
             camScannerNative -> "1.2.7-native-preview"
             else -> "1.2.7-preview"
@@ -92,6 +92,15 @@ android {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         // Compressed libraries extracted at install time, the packaging the owner's phone accepted in 0.1.7.1.
         if (universalPreview || phoneRelease) jniLibs.useLegacyPackaging = true
+    }
+    // Experiment (branch experiment/smaller-apk-r8, not for main): R8 removes the library code the app never calls
+    // (most of it from Compose's icon set) and unused resources. The app's own classes, OpenCV's and Tesseract's are
+    // kept whole: native code and the device tests reach them by name. See docs/EXPERIMENT_R8_HE.md.
+    if (phoneRelease) buildTypes.getByName("debug") {
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        testProguardFiles("proguard-test-rules.pro")
     }
     testOptions { animationsDisabled = true }
     lint { abortOnError = true }
