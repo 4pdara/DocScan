@@ -148,6 +148,46 @@ class BookFeaturesTest {
             assertTrue("Left page: $found",found.motion(Frame(page.map {Vertex(it.first,it.second)}))<.05f)
         } finally { file.delete() }
     }
+    @Test fun findsAPictureCoverPrintedToItsEdgesOnAShadedCloth() {
+        // Owner's 1.2.6 report (with CamScanner screen recordings): a magazine cover, a picture printed to its edges
+        // with no margin, on a grey cloth lit unevenly with a shadow at one corner. DocScan outlined a house inside the
+        // picture; CamScanner the whole cover. Mirrors docs/DETECTION_1.2.8_HE.md.
+        val w=900;val h=1200
+        val quad=listOf(.27f to .25f,.71f to .26f,.75f to .77f,.24f to .78f)
+        fun at(u:Float,v:Float):Pair<Float,Float> {
+            val tx=quad[0].first+(quad[1].first-quad[0].first)*u;val ty=quad[0].second+(quad[1].second-quad[0].second)*u
+            val bx=quad[3].first+(quad[2].first-quad[3].first)*u;val by=quad[3].second+(quad[2].second-quad[3].second)*u
+            return (tx+(bx-tx)*v)*w to (ty+(by-ty)*v)*h
+        }
+        // (u0, v0, u1, v1, colour) on the cover: a sky, towers, a house running to each side edge, a stone house, a street.
+        val shapes=listOf(
+            listOf(0f,0f,1f,.32f) to Color.rgb(196,218,232),listOf(.2f,.05f,.8f,.1f) to Color.rgb(34,30,48),
+            listOf(0f,.32f,1f,1f) to Color.rgb(176,132,82),listOf(.02f,.14f,.2f,.5f) to Color.rgb(226,222,210),
+            listOf(.75f,.1f,.97f,.48f) to Color.rgb(208,202,196),listOf(.3f,.2f,.62f,.4f) to Color.rgb(150,160,170),
+            listOf(0f,.45f,.32f,.85f) to Color.rgb(236,226,196),listOf(.34f,.42f,.74f,.9f) to Color.rgb(196,140,70),
+            listOf(.4f,.5f,.68f,.62f) to Color.rgb(70,52,40),listOf(.44f,.7f,.64f,.9f) to Color.rgb(60,40,30),
+            listOf(.76f,.55f,1f,.95f) to Color.rgb(150,70,40),listOf(0f,.9f,1f,1f) to Color.rgb(214,178,110))+
+            (0 until 4).flatMap { k -> listOf(.05f to .17f,.78f to .94f,.33f to .59f).map { (u0,u1) -> listOf(u0,.18f+k*.07f,u1,.205f+k*.07f) to Color.rgb(40,50,60) } }
+        val file=fixture("picture-cover-cloth",w,h) { c ->
+            // Grey cloth with a fine weave, lit from the top right, a soft shadow at the bottom right.
+            val pixels=IntArray(w*h)
+            for(y in 0 until h) for(x in 0 until w) {
+                val shadow=45*exp(-(((x-.82*w)/(.2*w)).pow(2)+((y-.95*h)/(.15*h)).pow(2)))
+                val g=(150-40.0*y/h+18.0*x/w+10*sin((x+y)*.9)*sin((x-y)*.23)-shadow).coerceIn(0.0,255.0)
+                pixels[y*w+x]=Color.rgb((g*1.02).coerceAtMost(255.0).toInt(),g.toInt(),g.toInt())
+            }
+            val cloth=Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888);c.drawBitmap(cloth,0f,0f,null);cloth.recycle()
+            for((box,colour) in shapes) {
+                val (u0,v0,u1,v1)=box
+                val corners=listOf(at(u0,v0),at(u1,v0),at(u1,v1),at(u0,v1))
+                c.drawPath(Path().apply {corners.forEachIndexed {i,(x,y)->if(i==0)moveTo(x,y)else lineTo(x,y)};close()},Paint().apply {color=colour;isAntiAlias=true})
+            }
+        }
+        try {
+            val found=requireNotNull(ImagePipeline.detect(file)) {"Cover not found"}
+            assertTrue("Whole cover: $found",found.motion(Frame(quad.map {Vertex(it.first,it.second)}))<.04f)
+        } finally { file.delete() }
+    }
     @Test fun colourOnlyBoundariesRemainEligibleForSharpAutomaticCapture() {
         ImagePipeline.ensureAvailable()
         val bitmap=Bitmap.createBitmap(500,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap)

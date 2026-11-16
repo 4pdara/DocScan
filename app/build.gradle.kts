@@ -58,12 +58,12 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 29
+        versionCode = 30
         versionName = when {
-            phoneRelease -> "1.2.7"
-            universalPreview -> "1.2.7-universal-preview"
-            camScannerNative -> "1.2.7-native-preview"
-            else -> "1.2.7-preview"
+            phoneRelease -> "1.2.8"
+            universalPreview -> "1.2.8-universal-preview"
+            camScannerNative -> "1.2.8-native-preview"
+            else -> "1.2.8-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk {

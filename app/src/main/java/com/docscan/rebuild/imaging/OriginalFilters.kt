@@ -95,25 +95,52 @@ internal object OriginalFilters {
 
     /**
      * Light paper is evened out to white by [paperFilter]; a dark or deeply coloured document (a leather or cloth
-     * book cover) is not paper, and dividing by its own surface would bleach it. Its colours are kept and only made
-     * clearer: its own range stretched, a little more colour and contrast, sharper detail. Paper is light even in
-     * shade: the lightness inside the document decides.
+     * book cover) is not paper, and dividing by its own surface would bleach it. Neither is a picture printed to its
+     * edges (a magazine or booklet cover, a photograph): dividing by its own smoothed picture flattens and tints it.
+     * Their colours are kept and only made clearer: their own range stretched, a little more colour and contrast,
+     * sharper detail.
      */
     private fun byDocumentTone(rgb: Mat, out: Mat, paperFilter: (Mat) -> Unit) {
-        if (documentLightness(rgb) >= PAPER_LIGHTNESS) paperFilter(out) else richColour(rgb, out)
+        if (isPaper(rgb)) paperFilter(out) else richColour(rgb, out)
     }
 
-    /** The 75th percentile of lightness (0..255) inside the document, a tenth of its size away from each edge. */
-    private fun documentLightness(rgb: Mat): Double {
-        val small = Mat(); val gray = Mat()
+    /**
+     * Paper is light even in shade (the 75th percentile of lightness inside the document, a tenth of its size away
+     * from each edge), and once its print is closed over, most of it is one even tint: white, cream or yellowed, lit
+     * warm or cool. A picture's surface keeps changing colour.
+     */
+    private fun isPaper(rgb: Mat): Boolean {
+        val small = Mat(); val gray = Mat(); val surface = Mat(); val lab = Mat(); var kernel: Mat? = null
         try {
             val scale = min(1.0, 400.0 / max(rgb.cols(), rgb.rows()))
             Imgproc.resize(rgb, small, Size(max(1.0, rgb.cols() * scale), max(1.0, rgb.rows() * scale)), 0.0, 0.0, Imgproc.INTER_AREA)
-            Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
-            val mx = gray.cols() / 10; val my = gray.rows() / 10
-            val inner = gray.submat(Rect(mx, my, max(1, gray.cols() - 2 * mx), max(1, gray.rows() - 2 * my)))
-            return try { percentile(inner, .75) } finally { inner.release() }
-        } finally { small.release(); gray.release() }
+            val mx = small.cols() / 10; val my = small.rows() / 10
+            val inner = small.submat(Rect(mx, my, max(1, small.cols() - 2 * mx), max(1, small.rows() - 2 * my)))
+            try {
+                Imgproc.cvtColor(inner, gray, Imgproc.COLOR_RGB2GRAY)
+                if (percentile(gray, .75) < PAPER_LIGHTNESS) return false
+                // The paper under the print: text and lines closed over, then smoothed.
+                val k = max(3, (min(inner.cols(), inner.rows()) * .04).toInt() or 1)
+                kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(k.toDouble(), k.toDouble()))
+                Imgproc.morphologyEx(inner, surface, Imgproc.MORPH_CLOSE, kernel)
+                Imgproc.medianBlur(surface, surface, k)
+                Imgproc.cvtColor(surface, lab, Imgproc.COLOR_RGB2Lab)
+            } finally { inner.release() }
+            val n = (lab.total()).toInt()
+            val bytes = ByteArray(n * 3).also { lab.get(0, 0, it) }
+            val l = IntArray(n) { bytes[it * 3].toInt() and 255 }
+            val sorted = l.sortedArray()
+            val bright = sorted[(n * .7).toInt().coerceAtMost(n - 1)]; val top = sorted[(n * .9).toInt().coerceAtMost(n - 1)]
+            // The paper's own tint: the middle of the brightest part's colours.
+            val a = ArrayList<Int>(); val b = ArrayList<Int>()
+            for (i in 0 until n) if (l[i] >= bright) { a += bytes[i * 3 + 1].toInt() and 255; b += bytes[i * 3 + 2].toInt() and 255 }
+            a.sort(); b.sort()
+            val ta = a[a.size / 2].toDouble(); val tb = b[b.size / 2].toDouble()
+            if (hypot(ta - 128, tb - 128) > 30) return false
+            var even = 0
+            for (i in 0 until n) if (l[i] >= top - 45 && hypot((bytes[i * 3 + 1].toInt() and 255) - ta, (bytes[i * 3 + 2].toInt() and 255) - tb) <= 8) even++
+            return even >= .5 * n
+        } finally { small.release(); gray.release(); surface.release(); lab.release(); kernel?.release() }
     }
 
     /** A document's own colours, clearer: its darkest and brightest half percent stretched, livelier colour, sharper. */

@@ -757,6 +757,33 @@ class RebuildFlowTest {
             }
         } finally { cases.forEach { it.first.recycle() } }
     }
+    @Test fun magicColourAndProKeepAPhotoCoverPrintedToItsEdges() {
+        // Owner's 1.2.6 report: Magic Color turned a book cover photograph (a face in front of a warm orange backdrop,
+        // a dark hat and coat, a white shirt) pale and purple, where CamScanner keeps its colours. The cover is light,
+        // so lightness alone took it for paper. Mirrors docs/DETECTION_1.2.8_HE.md.
+        ImagePipeline.ensureAvailable()
+        Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
+        val cover = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
+        Canvas(cover).apply {
+            fun rect(l: Float, t: Float, r: Float, b: Float, c: Int) = drawRect(l, t, r, b, Paint().apply { color = c })
+            fun oval(cx: Float, cy: Float, rx: Float, ry: Float, c: Int) = drawOval(cx - rx, cy - ry, cx + rx, cy + ry, Paint().apply { color = c; isAntiAlias = true })
+            rect(0f, 0f, 600f, 800f, Color.rgb(232, 150, 64)); rect(0f, 470f, 600f, 800f, Color.rgb(36, 32, 34))
+            rect(230f, 470f, 370f, 800f, Color.rgb(238, 238, 232)); oval(300f, 330f, 130f, 160f, Color.rgb(222, 170, 138))
+            oval(300f, 430f, 110f, 90f, Color.rgb(150, 118, 96)); rect(130f, 60f, 470f, 210f, Color.rgb(28, 24, 26))
+            rect(90f, 660f, 510f, 760f, Color.rgb(240, 160, 40))
+        }
+        try {
+            for (treatment in listOf(Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_PRO_LOCAL)) {
+                val out = ImagePipeline.transform(cover, EditRecipe(treatment = treatment))
+                try {
+                    val backdrop = out.getPixel(40, 100); val face = out.getPixel(300, 330); val hat = out.getPixel(300, 130)
+                    assertTrue("$treatment bleached the orange backdrop: ${Integer.toHexString(backdrop)}", Color.red(backdrop) - Color.blue(backdrop) >= 120)
+                    assertTrue("$treatment bleached the face: ${Integer.toHexString(face)}", Color.red(face) - Color.blue(face) >= 60 && Color.green(face) <= 200)
+                    assertTrue("$treatment lost the dark hat: ${Integer.toHexString(hat)}", Color.red(hat) + Color.green(hat) + Color.blue(hat) <= 120)
+                } finally { out.recycle() }
+            }
+        } finally { cover.recycle() }
+    }
     @Test fun originalFiltersRemoveShadowsKeepInkColourAndSeparateBoardStrokes() {
         ImagePipeline.ensureAvailable()
         Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)

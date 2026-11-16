@@ -21,8 +21,11 @@ import kotlin.math.*
  * valley with paper on both sides) does not count against the page's even rim colour. Then: an open book whose
  * facing page runs off the frame is cut at the spine, and a strip of another material along a side (page edges,
  * a cloth spine, a band of table) is cut off; along a dark line on a page's long side only a strip of another
- * colour is, at the innermost clear edge. Measured on owner photographs and CamScanner reference screenshots and
- * screen recordings; see docs/DETECTION_1.2.1_HE.md and docs/DETECTION_1.2.3_HE.md.
+ * colour is, at the innermost clear edge. The surface the document lies on (a cloth, a table) is also flooded inwards
+ * from the frame border by its hue, which shade and shadow hardly change; what it leaves gives candidates too, and an
+ * outline with that one surface outside every side needs no even rim of its own (a cover printed to its edges).
+ * Measured on owner photographs and CamScanner reference screenshots and screen recordings; see
+ * docs/DETECTION_1.2.1_HE.md, docs/DETECTION_1.2.3_HE.md and docs/DETECTION_1.2.8_HE.md.
  */
 object BoundaryDetector {
     private const val EDGE = 640
@@ -46,6 +49,11 @@ object BoundaryDetector {
         } finally { rgb.release(); work.release() }
     }
 }
+
+/** Hue and colourfulness (Lab a, b) within one surface under uneven light. */
+private const val HUE = 9.0
+/** The same surface lit a little more, or in shadow (a phone, a hand, a fold of the cloth). */
+private fun shaded(change: Float) = change < 50 && change > -80
 
 private class Pt(val x: Double, val y: Double)
 
@@ -92,7 +100,7 @@ private class Samples(val m: Int) {
 private class Scored(
     val q: List<Pt>, val full: List<Pt>, val support: DoubleArray, val ends: DoubleArray, val border: BooleanArray,
     val valleyish: BooleanArray, val nb: Int, val colour: FloatArray, val score: Double, val rim: Double = 0.0, var spine: Set<Int> = emptySet(),
-    val hollow: BooleanArray = BooleanArray(4),
+    val hollow: BooleanArray = BooleanArray(4), val surrounded: Boolean = false,
 )
 
 private class Scene(
@@ -104,7 +112,8 @@ private class Scene(
     private val o = max(4.0, s * .022)
     var trace: ((String) -> Unit)? = null
     private fun describe(r: Scored) = r.q.joinToString(" ") { "(%.0f,%.0f)".format(it.x, it.y) } + " s=%.3f sup=%s ends=%s nb=%d".format(r.score,
-        r.support.joinToString(",") { "%.2f".format(it) }, r.ends.joinToString(",") { "%.2f".format(it) }, r.nb) + " rim=%.0f".format(r.rim)
+        r.support.joinToString(",") { "%.2f".format(it) }, r.ends.joinToString(",") { "%.2f".format(it) }, r.nb) + " rim=%.0f".format(r.rim) +
+        if (r.surrounded) " surrounded" else ""
 
     fun release() = plain.release()
 
@@ -288,9 +297,37 @@ private class Scene(
         val unseen = real.sumOf { lengths[it] * (1 - seen[it].count { v -> v }.toDouble() / seen[it].size) } / lengths.sum()
         val rim = real.maxOf { deviation[it] }
         val overshoot = ends.sumOf { max(0.0, .5 - it) }
-        val total = .55 * support.average() + .3 * sqrt(share) + .15 * real.minOf { support[it] } - .25 * ((rim - 22) / 40).coerceIn(0.0, 1.0) -
+        val surrounded = surrounded(sides, seen, real)
+        // An uneven rim marks a strip of another material inside the outline, unless one surface surrounds it all.
+        val uneven = if (surrounded) 0.0 else .25 * ((rim - 22) / 40).coerceIn(0.0, 1.0)
+        val total = .55 * support.average() + .3 * sqrt(share) + .15 * real.minOf { support[it] } - uneven -
             .1 * nb - .2 * overshoot - .1 * unseen
-        return Scored(cq, q, support, ends, border, valleyish, nb, rimColour, total, rim, hollow = hollow)
+        return Scored(cq, q, support, ends, border, valleyish, nb, rimColour, total, rim, hollow = hollow, surrounded = surrounded)
+    }
+
+    /**
+     * A print that runs to its edges (a magazine cover, a poster, a photograph) has no even margin: its rim changes
+     * colour from side to side. What marks its outline is the surface around it: one material just outside every
+     * visible side, unlike the print just inside each of them. A detail inside the picture has the rest of the picture
+     * around it, which changes from side to side.
+     */
+    private fun surrounded(sides: List<Samples>, seen: List<BooleanArray>, real: List<Int>): Boolean {
+        if (real.size < 3) return false
+        val outside = ArrayList<Int>()
+        for (i in real) for (k in 0 until sides[i].m) if (sides[i].outsideOk[k] && seen[i][k]) outside += i * 1000 + k
+        if (outside.size < real.size * 8) return false
+        val values = DoubleArray(outside.size)
+        val ring = FloatArray(3) { c -> outside.forEachIndexed { j, key -> values[j] = sides[key / 1000].outer[(key % 1000) * 3 + c].toDouble() }; median(values, outside.size).toFloat() }
+        // Light falls unevenly across the surface: its shade may change, its hue and colourfulness hardly do.
+        fun hue(c: FloatArray, at: Int = 0) = hypot(c[at * 3 + 1] - ring[1].toDouble(), c[at * 3 + 2] - ring[2].toDouble())
+        val even = outside.count { hue(sides[it / 1000].outer, it % 1000) < HUE && shaded(sides[it / 1000].outer[(it % 1000) * 3] - ring[0]) }.toDouble() / outside.size
+        val apart = real.map { i ->
+            val sm = sides[i]
+            val near = medianColour(sm.outer, { sm.outsideOk[it] && seen[i][it] }, sm.m)
+            val within = medianColour(sm.deep, { sm.insideOk[it] && seen[i][it] }, sm.m)
+            if (near == null || within == null) 0.0 else gap(within, near)
+        }
+        return even >= .85 && apart.all { it > 20 }
     }
 
     /** A cheap estimate of [score]: side evidence at a few points, sides on the frame border counted as half. */
@@ -418,7 +455,7 @@ private class Scene(
      * apart from the page edges of the book block, a cover and a table or chair of almost the same brightness.
      * Worked out at half resolution (the region's outline is refined against the full-size evidence afterwards).
      */
-    private fun surfaceQuads(edges: Mat, out: MutableList<List<Pt>>) {
+    private fun surfaceQuads(edges: Mat, out: MutableList<List<Pt>>, around: MutableList<List<Pt>>) {
         val gw = (w + 1) / 2; val gh = (h + 1) / 2
         val barrier = Mat(); val mask = Mat(gh, gw, CvType.CV_8UC1); val labels = Mat(); val thicken = Mat.ones(3, 3, CvType.CV_8U)
         val k = max(3, (s * .01).toInt() or 1).toDouble()
@@ -434,6 +471,7 @@ private class Scene(
                 if (full[i].toInt() != 0) blocked[g] = 1
             }
             for (g in 0 until gw * gh) { val n = counts[g].toFloat(); colours[g * 3] /= n; colours[g * 3 + 1] /= n; colours[g * 3 + 2] /= n }
+            surroundings(gw, gh, colours, blocked, bytes, queue, mask, opening, around)
             val r = max(2, (s * .03).toInt())
             val seeds = listOf(.5 to .5, .35 to .5, .65 to .5, .5 to .35, .5 to .65).map { (fx, fy) -> (fx * (gw - 1)).roundToInt() to (fy * (gh - 1)).roundToInt() }
             val values = DoubleArray((2 * r + 1) * (2 * r + 1))
@@ -468,9 +506,49 @@ private class Scene(
         } finally { barrier.release(); mask.release(); labels.release(); opening.release(); thicken.release() }
     }
 
+    /**
+     * The surface the document lies on (a cloth, a table), flooded inwards from the frame border: under uneven light
+     * and shadow its shade changes, but its hue hardly does, and it changes only gradually from point to point. What
+     * it leaves is the document, a print that runs to its edges with no margin of its own (a magazine cover, a
+     * poster) as well as a page.
+     */
+    private fun surroundings(gw: Int, gh: Int, colours: FloatArray, blocked: ByteArray, bytes: ByteArray, queue: IntArray, mask: Mat, opening: Mat, out: MutableList<List<Pt>>) {
+        if (gw < 3 || gh < 3) return
+        val border = IntArray(2 * gw + 2 * (gh - 2))
+        var n = 0
+        for (x in 0 until gw) { border[n++] = x; border[n++] = (gh - 1) * gw + x }
+        for (y in 1 until gh - 1) { border[n++] = y * gw; border[n++] = y * gw + gw - 1 }
+        val values = DoubleArray(border.size)
+        val ring = FloatArray(3) { c -> border.forEachIndexed { j, i -> values[j] = colours[i * 3 + c].toDouble() }; median(values, border.size).toFloat() }
+        fun alike(i: Int): Boolean {
+            return shaded(colours[i * 3] - ring[0]) && hypot(colours[i * 3 + 1] - ring[1].toDouble(), colours[i * 3 + 2] - ring[2].toDouble()) < HUE
+        }
+        java.util.Arrays.fill(bytes, 0)
+        var head = 0; var tail = 0
+        for (i in border) if (bytes[i].toInt() == 0 && alike(i)) { bytes[i] = -1; queue[tail++] = i }
+        // Most of the frame border must show one surface; otherwise the document fills the view.
+        if (tail < border.size / 2) return
+        val here = FloatArray(3)
+        while (head < tail) {
+            val p = queue[head++]; val px = p % gw; val py = p / gw
+            here[0] = colours[p * 3]; here[1] = colours[p * 3 + 1]; here[2] = colours[p * 3 + 2]
+            for (d in 0..3) {
+                val nx = px + (if (d == 0) 1 else if (d == 1) -1 else 0); val ny = py + (if (d == 2) 1 else if (d == 3) -1 else 0)
+                if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue
+                val q = ny * gw + nx
+                if (bytes[q].toInt() != 0) continue
+                if (blocked[q].toInt() == 0 && near(colours, q, here) < 2f * 2f && alike(q)) { bytes[q] = -1; queue[tail++] = q }
+            }
+        }
+        for (i in 0 until gw * gh) bytes[i] = if (bytes[i].toInt() == 0) -1 else 0
+        mask.put(0, 0, bytes)
+        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, opening)
+        contourQuads(mask, Imgproc.RETR_EXTERNAL, out, 2.0)
+    }
+
     /** Shapes from contours, regions and lines; surface regions kept apart (they are always measured). */
-    private fun candidates(): Pair<List<List<Pt>>, List<List<Pt>>> {
-        val out = ArrayList<List<Pt>>(); val regions = ArrayList<List<Pt>>()
+    private fun candidates(): Triple<List<List<Pt>>, List<List<Pt>>, List<List<Pt>>> {
+        val out = ArrayList<List<Pt>>(); val regions = ArrayList<List<Pt>>(); val around = ArrayList<List<Pt>>()
         val lab8 = Mat(); val channel = Mat(); val edges = Mat.zeros(h, w, CvType.CV_8UC1); val canny = Mat(); val valleys = Mat(); val closed = Mat(); val gray = Mat(); val mask = Mat()
         val darkMat = Mat(h, w, CvType.CV_32FC1); val small = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
         try {
@@ -496,11 +574,11 @@ private class Scene(
                 contourQuads(mask, Imgproc.RETR_EXTERNAL, out)
             }
             lineQuads(lines(edges, valleys), out)
-            surfaceQuads(edges, regions)
+            surfaceQuads(edges, regions, around)
         } finally {
             lab8.release(); channel.release(); edges.release(); canny.release(); valleys.release(); closed.release(); gray.release(); mask.release(); darkMat.release(); small.release()
         }
-        return out to regions
+        return Triple(out, regions, around)
     }
 
     // ------------------------------------------------------------------------------------------------ refinement
@@ -654,6 +732,7 @@ private class Scene(
      */
     private fun trimStrips(start: Scored): Scored {
         var r = start
+        val trimmed = HashSet<Int>()
         repeat(2) {
             val q = r.q
             var changed = false
@@ -661,11 +740,14 @@ private class Scene(
                 // A page's spine side is a shadow, not a strip of another material. A side that runs in a dark valley
                 // is cut only across the page's short way (a band of table above a book): a spine runs along a page's
                 // long side, and its shadow is not cut away.
-                if (r.border[j] || j in r.spine) continue
+                if (r.border[j] || j in r.spine || (start.surrounded && j in trimmed)) continue
                 // A side in a real dark valley (darker than both of its sides; a plain step between two surfaces is not).
                 val inValley = r.hollow[j]
                 val alongValley = inValley && dist(q[j], q[(j + 1) % 4]) >= dist(q[(j + 1) % 4], q[(j + 2) % 4])
-                val cut = bestCut(q, j, .66, .97, 12.0, false, if (inValley && !alongValley) .88 else 1.0, alongValley) ?: continue
+                // With one surface all around, a wide band inside the outline is the print itself (the dark band at the
+                // top of a cover): only one narrow strip (a book's page edges seen from the side) may be another material.
+                val from = if (start.surrounded) .86 else .66
+                val cut = bestCut(q, j, from, .97, 12.0, false, if (inValley && !alongValley) .88 else 1.0, alongValley) ?: continue
                 val sm = cut.samples
                 val ok = (0 until sm.m).filter { sm.outsideOk[it] && sm.insideOk[it] }
                 if (ok.size < 6) continue
@@ -703,12 +785,13 @@ private class Scene(
                 val material = cut.evidence >= .6 && (valley < 8 || step >= 30) && gap(strip, inner) >= 15 && unlike >= 2 && along >= .75
                 val corners = cut.cornerA >= .8 && cut.cornerB >= .8 && cut.evidence >= .3 && !r.valleyish[j]
                 if (!material && !corners) continue
-                val trimmed = q.toMutableList(); trimmed[j] = cut.a; trimmed[(j + 1) % 4] = cut.b
-                val next = score(trimmed) ?: continue
-                if (next.support[j] < .3 || next.score < r.score - .15) continue
+                val shorter = q.toMutableList(); shorter[j] = cut.a; shorter[(j + 1) % 4] = cut.b
+                val next = score(shorter) ?: continue
+                // Cutting into a surrounded outline costs it its surroundings; only a clear strip is worth that.
+                if (next.support[j] < .3 || next.score < r.score - (if (start.surrounded) .1 else .15)) continue
                 next.spine = r.spine
                 trace?.invoke("trim side $j ev=%.2f corners=%.2f,%.2f -> ".format(cut.evidence, cut.cornerA, cut.cornerB) + describe(next))
-                r = next; changed = true
+                r = next; changed = true; trimmed += j
                 break
             }
             if (!changed) return r
@@ -721,12 +804,12 @@ private class Scene(
         val scored = ArrayList<Scored>()
         var clock = System.nanoTime()
         fun lap(name: String) { trace?.invoke("$name %.0f ms".format((System.nanoTime() - clock) / 1e6)); clock = System.nanoTime() }
-        val (shapes, surfaces) = candidates()
+        val (shapes, surfaces, around) = candidates()
         lap("candidates")
         fun key(q: List<Pt>) = q.flatMap { listOf((it.x / 6).roundToInt(), (it.y / 6).roundToInt()) }
         // A quick look (fewer samples, no colours) keeps the most promising candidates for the full measurement.
         val quick = ArrayList<Pair<List<Pt>, Double>>()
-        for (q in shapes + surfaces) {
+        for (q in shapes + surfaces + around) {
             if (!plausible(q)) continue
             if (!seen.add(key(q))) continue
             quick += q to glance(q)
@@ -735,7 +818,8 @@ private class Scene(
         // Surface regions are few and always measured: a side may stop short of its edge (where the page shades
         // into the spine) until refinement looks further out.
         val distinct = HashSet<List<Int>>()
-        val regions = surfaces.filter { plausible(it) && distinct.add(key(it)) }.mapNotNull { score(it) }.sortedByDescending { it.score }.take(2)
+        val regions = surfaces.filter { plausible(it) && distinct.add(key(it)) }.mapNotNull { score(it) }.sortedByDescending { it.score }.take(2) +
+            around.filter { plausible(it) && distinct.add(key(it)) }.mapNotNull { score(it) }.sortedByDescending { it.score }.take(2)
         lap("score")
         // Each of the best candidates is snapped to the strongest edges near its sides.
         val refined = scored.sortedByDescending { it.score }.take(12).mapNotNull { score(refine(it.full)) } + regions.mapNotNull { score(refine(it.full, true)) }
