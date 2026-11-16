@@ -18,12 +18,12 @@ internal object OriginalFilters {
     val BOARD_GREEN = doubleArrayOf(40.0, 74.0, 70.0)
     private const val BACKGROUND_EDGE = 900.0
     /**
-     * Lightness of a document's brighter parts (its 90th percentile) at or below which it is treated as dark (a
-     * leather or cloth cover), and at or above which as paper. Measured: paper pages photographed in shade 150..214,
-     * dark covers 57..94 (docs/FILTERS_1.2.5_HE.md).
+     * Paper or not: the 75th percentile of lightness inside the document, away from its edges (a crop often takes in
+     * a thin strip of the table or chair around a cover). Paper pages photographed in shade measure 147..208, dark
+     * leather and cloth covers 33..74 (docs/FILTERS_1.2.6_HE.md). One clear switch between them: a blend of a
+     * whitened and an unwhitened cover looked bleached and pink.
      */
-    private const val DARK_DOCUMENT = 110.0
-    private const val LIGHT_PAPER = 140.0
+    private const val PAPER_LIGHTNESS = 128.0
 
     fun apply(current: Mat, treatment: Treatment, result: Mat) {
         val rgb = Mat()
@@ -96,29 +96,23 @@ internal object OriginalFilters {
     /**
      * Light paper is evened out to white by [paperFilter]; a dark or deeply coloured document (a leather or cloth
      * book cover) is not paper, and dividing by its own surface would bleach it. Its colours are kept and only made
-     * clearer: its own range stretched, a little more colour and contrast, sharper detail. The lightness of the
-     * document's brighter parts decides (paper is light even in shade), with a blend between the two in the middle.
+     * clearer: its own range stretched, a little more colour and contrast, sharper detail. Paper is light even in
+     * shade: the lightness inside the document decides.
      */
     private fun byDocumentTone(rgb: Mat, out: Mat, paperFilter: (Mat) -> Unit) {
-        val lightness = documentLightness(rgb)
-        val weight = ((lightness - DARK_DOCUMENT) / (LIGHT_PAPER - DARK_DOCUMENT)).coerceIn(0.0, 1.0)
-        if (weight >= 1.0) { paperFilter(out); return }
-        if (weight <= 0.0) { richColour(rgb, out); return }
-        val paperLike = Mat()
-        try {
-            paperFilter(paperLike); richColour(rgb, out)
-            Core.addWeighted(paperLike, weight, out, 1 - weight, 0.0, out)
-        } finally { paperLike.release() }
+        if (documentLightness(rgb) >= PAPER_LIGHTNESS) paperFilter(out) else richColour(rgb, out)
     }
 
-    /** Lightness (0..255) of the document's brighter parts: the 90th percentile, from a small copy. */
+    /** The 75th percentile of lightness (0..255) inside the document, a tenth of its size away from each edge. */
     private fun documentLightness(rgb: Mat): Double {
         val small = Mat(); val gray = Mat()
         try {
             val scale = min(1.0, 400.0 / max(rgb.cols(), rgb.rows()))
             Imgproc.resize(rgb, small, Size(max(1.0, rgb.cols() * scale), max(1.0, rgb.rows() * scale)), 0.0, 0.0, Imgproc.INTER_AREA)
             Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
-            return percentile(gray, .9)
+            val mx = gray.cols() / 10; val my = gray.rows() / 10
+            val inner = gray.submat(Rect(mx, my, max(1, gray.cols() - 2 * mx), max(1, gray.rows() - 2 * my)))
+            return try { percentile(inner, .75) } finally { inner.release() }
         } finally { small.release(); gray.release() }
     }
 

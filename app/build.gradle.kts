@@ -55,12 +55,12 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 27
+        versionCode = 28
         versionName = when {
-            phoneRelease -> "1.2.5"
-            universalPreview -> "1.2.5-universal-preview"
-            camScannerNative -> "1.2.5-native-preview"
-            else -> "1.2.5-preview"
+            phoneRelease -> "1.2.6"
+            universalPreview -> "1.2.6-universal-preview"
+            camScannerNative -> "1.2.6-native-preview"
+            else -> "1.2.6-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }

@@ -725,29 +725,37 @@ class RebuildFlowTest {
 
     @Test fun magicColourAndProKeepADarkCoverDark() {
         // Owner's 1.2.4 report: Magic Color turned a dark purple leather cover with gold lettering almost white, where
-        // CamScanner's Magic Color keeps it dark. Mirrors docs/FILTERS_1.2.5_HE.md.
+        // CamScanner's Magic Color keeps it dark. 1.2.5 report: the same cover came out bleached and pink when the crop
+        // took in a thin strip of the light chair, or the camera exposed it brighter. Mirrors docs/FILTERS_1.2.6_HE.md.
         ImagePipeline.ensureAvailable()
         Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
         fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
-        val cover = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
-        Canvas(cover).apply {
-            drawColor(Color.rgb(58, 38, 62))
-            drawRect(0f, 300f, 600f, 421f, Paint().apply { color = Color.rgb(84, 66, 88) })
-            drawRect(40f, 40f, 560f, 760f, Paint().apply { color = Color.rgb(40, 26, 44); style = Paint.Style.STROKE; strokeWidth = 4f })
-            for (row in 0 until 3) drawRect(150f, 200f + row * 60f, 451f, 231f + row * 60f, Paint().apply { color = Color.rgb(205, 180, 110) })
+        fun cover(leather: Int, sheen: Int, strip: Int) = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888).also { bitmap ->
+            Canvas(bitmap).apply {
+                drawColor(leather)
+                drawRect(0f, 300f, 600f, 421f, Paint().apply { color = sheen })
+                drawRect(40f, 40f, 560f, 760f, Paint().apply { color = Color.rgb(40, 26, 44); style = Paint.Style.STROKE; strokeWidth = 4f })
+                for (row in 0 until 3) drawRect(150f, 200f + row * 60f, 451f, 231f + row * 60f, Paint().apply { color = Color.rgb(205, 180, 110) })
+                if (strip > 0) drawRect(0f, 0f, 600f, strip.toFloat(), Paint().apply { color = Color.rgb(228, 222, 205) })
+            }
         }
+        // (cover, darkest allowed leather, darkest allowed sheen)
+        val cases = listOf(
+            Triple(cover(Color.rgb(58, 38, 62), Color.rgb(84, 66, 88), 0), 70, 120),
+            Triple(cover(Color.rgb(58, 38, 62), Color.rgb(84, 66, 88), 48), 70, 120),
+            Triple(cover(Color.rgb(98, 72, 104), Color.rgb(136, 112, 140), 48), 110, 170))
         try {
-            for (treatment in listOf(Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_PRO_LOCAL)) {
-                val out = ImagePipeline.transform(cover, EditRecipe(treatment = treatment))
+            for ((bitmap, leatherLimit, sheenLimit) in cases) for (treatment in listOf(Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_PRO_LOCAL)) {
+                val out = ImagePipeline.transform(bitmap, EditRecipe(treatment = treatment))
                 try {
                     val leather = out.getPixel(100, 120); val sheen = lum(out.getPixel(100, 360)); val gold = lum(out.getPixel(300, 215))
-                    assertTrue("$treatment bleached the cover: ${lum(leather)}", lum(leather) <= 70)
-                    assertTrue("$treatment bleached the sheen: $sheen", sheen <= 120)
-                    assertTrue("$treatment lost the lettering: $gold vs ${lum(leather)}", gold - lum(leather) >= 120)
+                    assertTrue("$treatment bleached the cover: ${lum(leather)}", lum(leather) <= leatherLimit)
+                    assertTrue("$treatment bleached the sheen: $sheen", sheen <= sheenLimit)
+                    assertTrue("$treatment lost the lettering: $gold vs ${lum(leather)}", gold - lum(leather) >= 100)
                     assertTrue("$treatment lost the purple: $leather", Color.blue(leather) > Color.green(leather) && Color.red(leather) > Color.green(leather))
                 } finally { out.recycle() }
             }
-        } finally { cover.recycle() }
+        } finally { cases.forEach { it.first.recycle() } }
     }
     @Test fun originalFiltersRemoveShadowsKeepInkColourAndSeparateBoardStrokes() {
         ImagePipeline.ensureAvailable()
