@@ -16,6 +16,9 @@ val standaloneNativePreview = providers.gradleProperty("standaloneNativePreview"
 require(!standaloneNativePreview || camScannerNative) { "Standalone Native preview requires camScannerNativeDir" }
 // Public phone release: original code and licensed components only, under its own package and signing identity.
 val phoneRelease = providers.gradleProperty("phoneRelease").orNull?.toBooleanStrict() ?: false
+// The APK published for phones carries only ARM libraries (32 and 64 bit: every Android 8+ phone). The Intel copies
+// are needed only by the x86 emulators that test each release, which install a separate universal build.
+val armOnly = providers.gradleProperty("armOnly").orNull?.toBooleanStrict() ?: false
 require(!phoneRelease || !camScannerNative) { "The public phone release never bundles the optional research engine" }
 if (camScannerNative) {
     val expected = mapOf(
@@ -55,15 +58,21 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
+        versionCode = 29
         versionName = when {
-            phoneRelease -> "1.2.6"
-            universalPreview -> "1.2.6-universal-preview"
-            camScannerNative -> "1.2.6-native-preview"
-            else -> "1.2.6-preview"
+            phoneRelease -> "1.2.7"
+            universalPreview -> "1.2.7-universal-preview"
+            camScannerNative -> "1.2.7-native-preview"
+            else -> "1.2.7-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
-        ndk { abiFilters += if (camScannerNative && !universalPreview) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+        ndk {
+            abiFilters += when {
+                camScannerNative && !universalPreview -> listOf("arm64-v8a")
+                armOnly -> listOf("arm64-v8a", "armeabi-v7a")
+                else -> listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            }
+        }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
     }
     // Phone releases from 0.2.1 on are signed with one persistent key so each version installs over the previous one.
