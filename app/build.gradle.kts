@@ -93,12 +93,10 @@ android {
         // Compressed libraries extracted at install time, the packaging the owner's phone accepted in 0.1.7.1.
         if (universalPreview || phoneRelease) jniLibs.useLegacyPackaging = true
     }
-    // Experiment (branch experiment/smaller-apk-r8, not for main): R8 removes the library code the app never calls
-    // (most of it from Compose's icon set) and unused resources. The app's own classes, OpenCV's and Tesseract's are
-    // kept whole: native code and the device tests reach them by name. See docs/EXPERIMENT_R8_HE.md.
+    // Experiment (branch experiment/smaller-apk-r8, not for main): R8 removes the unused icons of Compose's full icon
+    // set; every other class is kept whole (app/proguard-rules.pro). See docs/EXPERIMENT_R8_HE.md.
     if (phoneRelease) buildTypes.getByName("debug") {
         isMinifyEnabled = true
-        isShrinkResources = true
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         testProguardFiles("proguard-test-rules.pro")
     }
