@@ -503,6 +503,21 @@
     <string name="receipt_total">Total</string>
     <string name="receipt_use_name">Use as document name</string>
     <string name="receipts_tag">Receipts</string>
+    <string name="doc_radar">Doc Radar</string>
+    <string name="radar_permission">To find documents in the gallery, the app needs permission to read photos. The check is done on the phone only.</string>
+    <string name="radar_allow">Allow</string>
+    <string name="radar_looking">Checking the latest photos: %1$d of %2$d</string>
+    <string name="tool_count">Count</string>
+    <string name="count_title">Count: %1$d</string>
+    <string name="count_hint">Tap one of the things to count</string>
+    <string name="count_adjust">Tap a mark to remove it, or elsewhere to add one. Size and sensitivity can be changed.</string>
+    <string name="count_size">Size</string>
+    <string name="count_sensitivity">Sensitivity</string>
+    <string name="count_again">New example</string>
+    <string name="count_save">Save as document</string>
+    <string name="count_document">Count: %1$d items</string>
+    <plurals name="radar_import"><item quantity="one">Import %1$d document</item><item quantity="other">Import %1$d documents</item></plurals>
+    <plurals name="radar_found"><item quantity="one">%1$d document found in the latest %2$d photos</item><item quantity="other">%1$d documents found in the latest %2$d photos</item></plurals>
 </resources>
 
 
