@@ -90,4 +90,65 @@ class CaptureModesTest {
             assertEquals(1, Regex("TEL:").findAll(text).count())
         } finally { card.delete(); bill.delete(); store.trash(setOf(book.id), false); store.deleteForever(setOf(book.id)) }
     }
+
+    @Test fun countingFindsEveryBoxAfterOneIsMarked() {
+        // 1.3.5: basic counting on 35 box ends in a grid.
+        ImagePipeline.ensureAvailable()
+        val w = 1200; val h = 900
+        val picture = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val centres = ArrayList<Pair<Int, Int>>()
+        Canvas(picture).apply {
+            drawColor(Color.rgb(70, 70, 70))
+            val face = Paint().apply { color = Color.rgb(210, 190, 170) }; val edge = Paint().apply { color = Color.rgb(160, 140, 120); style = Paint.Style.STROKE; strokeWidth = 4f }
+            for (r in 0 until 5) for (c in 0 until 7) { val x = 120 + c * 150; val y = 110 + r * 160; drawRect(x - 60f, y - 65f, x + 60f, y + 65f, face); drawRect(x - 60f, y - 65f, x + 60f, y + 65f, edge); centres += x to y }
+        }
+        val m = org.opencv.core.Mat()
+        try {
+            org.opencv.android.Utils.bitmapToMat(picture, m)
+            val result = com.docscan.rebuild.imaging.ObjectCount.count(m, 120f / w, 110f / h)
+            val hit = centres.count { (x, y) -> result.centres.any { (fx, fy) -> kotlin.math.hypot(fx * w - x.toDouble(), fy * h - y.toDouble()) < 30 } }
+            assertEquals("found ${result.centres.size}", 35, hit); assertEquals(35, result.centres.size)
+            // Less sensitive keeps the clear matches; a size given by the user is used as it is.
+            assertEquals(.2f, com.docscan.rebuild.imaging.ObjectCount.count(m, 120f / w, 110f / h, size = .2f, sensitivity = .3f).size, .01f)
+            // The count saved as marks: a ring and a number for each, inside the page.
+            val (rings, numbers) = com.docscan.rebuild.ui.countMarks(result.centres, result.size, w, h)
+            assertEquals(35, rings.size); assertEquals(35, numbers.size); assertEquals("35", numbers.last().text)
+        } finally { m.release(); picture.recycle() }
+    }
+
+    @Test fun docRadarFindsADocumentPhotoInTheGalleryAndNotAPlainPhoto() {
+        // 1.3.5: Doc Radar looks at the gallery's newest photos.
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val pkg = context.packageName
+        // pm grant works on every version (UiAutomation.grantRuntimePermission needs Android 9).
+        fun grant(permission: String) = instrumentation.uiAutomation.executeShellCommand("pm grant $pkg $permission").close()
+        if (android.os.Build.VERSION.SDK_INT >= 33) grant(android.Manifest.permission.READ_MEDIA_IMAGES) else grant(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (android.os.Build.VERSION.SDK_INT < 29) grant(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        fun insert(name: String, draw: (Canvas) -> Unit): android.net.Uri {
+            val b = Bitmap.createBitmap(1200, 1600, Bitmap.Config.ARGB_8888); Canvas(b).also(draw)
+            val values = android.content.ContentValues().apply { put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "$name-${System.nanoTime()}.jpg"); put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg") }
+            val uri = requireNotNull(context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+            try { context.contentResolver.openOutputStream(uri)!!.use { check(b.compress(Bitmap.CompressFormat.JPEG, 92, it)) } } finally { b.recycle() }
+            return uri
+        }
+        val document = insert("radar-page") { c ->
+            c.drawColor(Color.rgb(96, 70, 50))
+            c.drawRect(220f, 260f, 980f, 1340f, Paint().apply { color = Color.rgb(245, 243, 236) })
+            val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 30, 30); textSize = 34f }
+            for (i in 0 until 18) c.drawText("Invoice line $i for the radar test", 280f, 340f + i * 52, ink)
+        }
+        val plain = insert("radar-plain") { c ->
+            for (y in 0 until 1600 step 8) c.drawRect(0f, y.toFloat(), 1200f, y + 8f, Paint().apply { color = Color.rgb(90 + y / 20, 140, 200 - y / 16) })
+        }
+        try {
+            // The test saves its photos from the app itself, which the radar leaves out (pages DocScan saved to the
+            // gallery are not new documents) on Android 10 and later, where the gallery records who saved a photo.
+            val newest = com.docscan.rebuild.ui.latestPhotos(context, 10, own = true)
+            assertTrue(newest.containsAll(listOf(document, plain)))
+            if (android.os.Build.VERSION.SDK_INT >= 29) assertFalse(com.docscan.rebuild.ui.latestPhotos(context, 10).contains(document))
+            val found = com.docscan.rebuild.ui.look(context, document)
+            assertNotNull("the page photo is a document", found); found?.recycle()
+            assertNull("a plain photo is not", com.docscan.rebuild.ui.look(context, plain))
+        } finally { context.contentResolver.delete(document, null, null); context.contentResolver.delete(plain, null, null) }
+    }
 }

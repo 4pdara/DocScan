@@ -405,7 +405,8 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
             Tool(R.string.pdf_size, Icons.Outlined.Compress, red) { onTool("compress") }, Tool(R.string.protected_pdf, Icons.Outlined.Lock, HomeGreen) { onTool("protect") },
             Tool(R.string.collage, Icons.Outlined.Dashboard, blue) { onTool("collage") }, Tool(R.string.lock_document, Icons.Outlined.Lock, red) { onTool("lock") },
             Tool(R.string.tags, Icons.Outlined.Sell, HomeGreen) { onTool("tags") }, Tool(R.string.pdf_settings, Icons.Outlined.Settings, HomeMuted) { onTool("pdfsettings") }),
-        R.string.tools_utilities to listOf(Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, HomeGreen) { onTool("qr") }, Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") },
+        R.string.tools_utilities to listOf(Tool(R.string.qr_scan, Icons.Outlined.QrCodeScanner, HomeGreen) { onTool("qr") },
+            Tool(R.string.doc_radar, Icons.Outlined.Radar, blue) { onTool("radar") }, Tool(R.string.tool_count, Icons.Outlined.Numbers, red) { onTool("count") }, Tool(R.string.print, Icons.Outlined.Print, HomeGreen) { onTool("print") },
             Tool(R.string.email, Icons.Outlined.Email, blue) { onTool("email") }, Tool(R.string.files_tab, Icons.Outlined.FolderOpen, blue, onFiles),
             Tool(R.string.select_documents, Icons.Outlined.Checklist, HomeGreen, onSelect), Tool(R.string.trash, Icons.Outlined.RestoreFromTrash, HomeGreen, onTrash),
             Tool(R.string.settings_tab, Icons.Outlined.Settings, HomeMuted) { onTool("settings") }))

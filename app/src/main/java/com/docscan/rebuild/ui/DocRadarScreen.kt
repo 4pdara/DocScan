@@ -125,11 +125,11 @@ fun DocRadarScreen(busy: Boolean, onBack: () -> Unit, onImport: (List<Uri>) -> U
     }
 }
 
-/** The newest photos in the gallery, newest first; not the ones DocScan saved there itself. */
-internal fun latestPhotos(context: Context, limit: Int): List<Uri> {
+/** The newest photos in the gallery, newest first; not the ones DocScan saved there itself (unless [own]). */
+internal fun latestPhotos(context: Context, limit: Int, own: Boolean = false): List<Uri> {
     val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
     val out = ArrayList<Uri>()
-    val (where, args) = if (Build.VERSION.SDK_INT >= 29) "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} IS NULL OR ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} != ?" to arrayOf(context.packageName) else null to null
+    val (where, args) = if (Build.VERSION.SDK_INT >= 29 && !own) "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} IS NULL OR ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} != ?" to arrayOf(context.packageName) else null to null
     context.contentResolver.query(collection, arrayOf(MediaStore.Images.Media._ID), where, args, "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { c ->
         while (c.moveToNext() && out.size < limit) out += ContentUris.withAppendedId(collection, c.getLong(0))
     }
