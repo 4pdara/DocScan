@@ -13,4 +13,8 @@ class ScanSettings(context: Context) {
     var treatment: Treatment
         get() = prefs.getString("treatment", null)?.let { name -> Treatment.values().firstOrNull { it.name == name } } ?: Treatment.NATIVE_MAGIC_COLOR
         set(v) { prefs.edit().putString("treatment", v.name).apply() }
+    /** The camera shows how long the page network and the detector take on each frame (off by default). */
+    var showTimings: Boolean
+        get() = prefs.getBoolean("timings", false)
+        set(v) { prefs.edit().putBoolean("timings", v).apply() }
 }

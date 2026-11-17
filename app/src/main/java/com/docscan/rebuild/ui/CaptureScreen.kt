@@ -49,6 +49,7 @@ import com.docscan.rebuild.R
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.CaptureQuality
+import com.docscan.rebuild.imaging.LiveDetection
 import com.docscan.rebuild.model.*
 import org.opencv.core.*
 import java.io.File
@@ -57,7 +58,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
-private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean, val closer: Boolean = false)
+private data class CameraObservation(val frame: Frame?, val aspect: Float, val progress: Float, val signature: List<Float>, val trigger: Boolean, val closer: Boolean = false, val timing: LiveDetection.Timing? = null)
 
 @Composable
 fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: SnackbarHostState, onDone: () -> Unit, onImport: () -> Unit, onCaptured: (File, Boolean, Boolean, Frame?, (Boolean) -> Unit) -> Unit, prompt: Int? = null) {
@@ -72,6 +73,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     var detectBounds by rememberSaveable { mutableStateOf(true) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }; var camera by remember { mutableStateOf<Camera?>(null) }
     var observation by remember { mutableStateOf(CameraObservation(null, .75f, 0f, emptyList(), false)) }
+    val showTimings = remember { ScanSettings(context).showTimings }
     var streaming by remember { mutableStateOf(false) }
     var taking by remember { mutableStateOf(false) }; var error by remember { mutableStateOf(false) }; var torch by remember { mutableStateOf(false) }
     val latestCaptured by rememberUpdatedState(onCaptured)
@@ -108,6 +110,9 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
         val streamObserver = Observer<PreviewView.StreamState> { streaming = it == PreviewView.StreamState.STREAMING }
         preview.previewStreamState.observe(lifecycle, streamObserver)
         val executor = Executors.newSingleThreadExecutor()
+        // The full detector runs here, at its own pace, while the page network looks at each frame (1.3.7).
+        val detectorExecutor = Executors.newSingleThreadExecutor()
+        val live = LiveDetection(detectorExecutor)
         var previewUseCase: Preview? = null; var photoUseCase: ImageCapture? = null; var analysisUseCase: ImageAnalysis? = null
         if (allowed) {
             val future = ProcessCameraProvider.getInstance(context)
@@ -129,9 +134,11 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                     analysis.setAnalyzer(executor) { image ->
                         try {
                             val now = SystemClock.elapsedRealtime()
-                            if (!capturing.get() && now - lastAnalysis >= 180) {
+                            // With the page network a frame takes tens of milliseconds, so the outline follows the
+                            // page several times a second; without it, the detector's own pace sets the rate.
+                            if (!capturing.get() && now - lastAnalysis >= 120) {
                                 lastAnalysis = now
-                                val result = inspectFrame(image, gate, tracker, autoFlag.get(), now, guided = prompt != null)
+                                val result = inspectFrame(image, gate, tracker, live, autoFlag.get(), now, guided = prompt != null)
                                 main.execute { if (!disposed) { observation = result; if (result.trigger && autoFlag.get()) latestShoot() } }
                             }
                         } catch (e: Exception) { main.execute { if (!disposed) error = true } }
@@ -153,7 +160,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
             disposed = true; preview.previewStreamState.removeObserver(streamObserver); streaming = false; analysisUseCase?.clearAnalyzer()
             val cases = listOfNotNull(previewUseCase, photoUseCase, analysisUseCase).toTypedArray()
             if (cases.isNotEmpty()) provider?.unbind(*cases)
-            executor.shutdown(); capture = null
+            executor.shutdown(); detectorExecutor.shutdown(); capture = null
         }
     }
     Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
@@ -178,6 +185,11 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                     }
                 }
                 if ((capture == null || !streaming) && !error) Text(stringResource(R.string.camera_starting), color = Color.White)
+                // Detection times, when chosen in Settings: to measure the page network and the detector on this phone.
+                val timing = observation.timing
+                if (showTimings && timing != null) Text(listOfNotNull(timing.networkMs?.let { stringResource(R.string.timing_network, it) }, timing.detectorMs?.let { stringResource(R.string.timing_detector, it) }).joinToString(" · "),
+                    Modifier.align(Alignment.TopStart).padding(8.dp).background(Color.Black.copy(alpha = .6f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp).testTag("detection-timing"),
+                    color = Color.White, style = MaterialTheme.typography.labelMedium)
             } else Column(Modifier.padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(stringResource(R.string.camera_permission), color = Color.White)
                 Button(onClick = { permission.launch(Manifest.permission.CAMERA) }, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.grant_camera)) }
@@ -222,7 +234,7 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     }
 }
 
-private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: BoundaryTracker, automatic: Boolean, now: Long, guided: Boolean = false): CameraObservation {
+private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: BoundaryTracker, live: LiveDetection, automatic: Boolean, now: Long, guided: Boolean = false): CameraObservation {
     ImagePipeline.ensureAvailable()
     val plane = image.planes[0]; val bytes = plane.buffer.duplicate(); val step = max(1, image.width / 720)
     val width = (image.width + step - 1) / step; val height = (image.height + step - 1) / step
@@ -251,11 +263,11 @@ private fun inspectFrame(image: ImageProxy, gate: CaptureStability, tracker: Bou
     val gray = if (turn == null) sensorGray else Mat().also { Core.rotate(sensorGray, it, turn); sensorGray.release() }
     val rgba = if (turn == null) sensorRgba else Mat().also { Core.rotate(sensorRgba, it, turn); sensorRgba.release() }
     try {
-        val frame = tracker.sample(ImagePipeline.detectGray(gray, rgba))
+        val frame = tracker.sample(live.outline(gray, rgba))
         val sharp = frame != null && CaptureQuality.sharp(gray, rgba)
         val signature = if (frame == null) emptyList() else CaptureQuality.signature(rgba, frame)
         val decision = if (automatic && (sharp || frame == null)) gate.sample(frame, signature, now, nearOnly = !guided) else { gate.unstable(); CaptureStability.Decision(0f, false) }
-        return CameraObservation(frame, gray.cols().toFloat() / gray.rows(), decision.progress, signature, decision.capture, decision.closer)
+        return CameraObservation(frame, gray.cols().toFloat() / gray.rows(), decision.progress, signature, decision.capture, decision.closer, live.timing)
     } finally { gray.release(); rgba.release() }
 }
 

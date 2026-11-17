@@ -518,6 +518,10 @@
     <plurals name="radar_import"><item quantity="one">ייבוא מסמך אחד</item><item quantity="two">ייבוא %1$d מסמכים</item><item quantity="many">ייבוא %1$d מסמכים</item><item quantity="other">ייבוא %1$d מסמכים</item></plurals>
     <plurals name="radar_found"><item quantity="one">נמצא מסמך אחד ב־%2$d התמונות האחרונות</item><item quantity="two">נמצאו %1$d מסמכים ב־%2$d התמונות האחרונות</item><item quantity="many">נמצאו %1$d מסמכים ב־%2$d התמונות האחרונות</item><item quantity="other">נמצאו %1$d מסמכים ב־%2$d התמונות האחרונות</item></plurals>
     <string name="radar_settings">פתיחת ההגדרות של האפליקציה</string>
+    <string name="timing_network">רשת %1$d ms</string>
+    <string name="timing_detector">גלאי %1$d ms</string>
+    <string name="show_timings">זמני זיהוי במצלמה</string>
+    <string name="show_timings_hint">מציג במצלמה כמה זמן לוקח לרשת הזיהוי ולגלאי למצוא את הדף בכל פריים. לבדיקת מהירות בטלפון הזה.</string>
 </resources>
 
 

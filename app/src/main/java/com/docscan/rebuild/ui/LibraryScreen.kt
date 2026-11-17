@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -365,6 +366,16 @@ private fun LocalProfile(onFiles: () -> Unit, onTrash: () -> Unit, onBackup: () 
                 com.docscan.rebuild.model.Treatment.ORIGINAL, com.docscan.rebuild.model.Treatment.GRAY, com.docscan.rebuild.model.Treatment.INK).forEach { t ->
                 FilterChip(newFilter == t, { newFilter = t; scanSettings.treatment = t }, label = { Text(stringResource(t.label())) }, modifier = Modifier.testTag("new-filter-${t.name}"))
             }
+        }
+        // Detection times in the camera, to measure the page network and the detector on this phone.
+        var timings by remember { mutableStateOf(scanSettings.showTimings) }
+        Row(Modifier.fillMaxWidth().toggleable(timings, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = { timings = it; scanSettings.showTimings = it }).padding(vertical = 6.dp).testTag("settings-timings"),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.show_timings), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.show_timings_hint), style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(timings, null)
         }
         HorizontalDivider(Modifier.padding(vertical=12.dp))
         UpdateCard()
