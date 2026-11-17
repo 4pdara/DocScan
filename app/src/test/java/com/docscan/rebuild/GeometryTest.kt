@@ -120,6 +120,22 @@ class GeometryTest {
         val shown=tracker.sample(moved)!!
         assertEquals(moved.points[2],shown.points[2]);assertEquals(f.points[0],shown.points[0]);assertEquals(f.points[3],shown.points[3])
     }
+    @Test fun quickLooksMoveTheWholeOutlineAndKeepItThroughOneOddLook() {
+        // 1.3.8: with the page network a look comes every 120 ms or so.
+        val tracker=BoundaryTracker(quick=true);val f=Frame(listOf(Vertex(.2f,.2f),Vertex(.7f,.2f),Vertex(.7f,.7f),Vertex(.2f,.7f)))
+        fun moved(dx:Float)=Frame(f.points.map {Vertex(it.x+dx,it.y)})
+        assertEquals(f,tracker.sample(f))
+        // The phone moving several percent per look: every look is shown.
+        for(i in 1..4) assertEquals(moved(i*.05f),tracker.sample(moved(i*.05f)))
+        // One corner 3% away: the outline shown is the new look as a whole, never corners of two looks.
+        val bent=Frame(moved(.2f).points.mapIndexed {i,p->if(i==0) Vertex(p.x-.03f,p.y-.03f) else p})
+        assertEquals(bent,tracker.sample(bent))
+        // A single far look keeps the shown outline; the next look that agrees with it is followed.
+        val far=moved(-.15f)
+        assertEquals(bent,tracker.sample(far));assertEquals(far,tracker.sample(far))
+        // Two far looks in a row that disagree with each other hide it.
+        assertEquals(far,tracker.sample(moved(.1f)));assertNull(tracker.sample(moved(.2f)))
+    }
     @Test fun aSmallPageAsksToComeCloserAndIsNotPhotographedAutomatically() {
         val gate=CaptureStability();val content=List(64){if(it%3==0) 60f else 190f}
         val small=Frame(listOf(Vertex(.35f,.35f),Vertex(.6f,.35f),Vertex(.6f,.75f),Vertex(.35f,.75f)))

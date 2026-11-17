@@ -226,6 +226,10 @@ class CaptureModesTest {
             // The page moves a quarter of the view; the detector has not looked again, yet the outline follows it.
             time += 150
             val following = requireNotNull(look(moved)); assertTrue("followed $following", following.motion(movedTruth) < .05f)
+            // 1.3.8: the detector's look at the frame before the move finishes now; the phone has moved since, so
+            // the outline stays the network's on the moved page.
+            queue.removeFirst().run(); time += 150
+            val after = requireNotNull(look(moved)); assertTrue("after a late detector look $after", after.motion(movedTruth) < .05f)
         } finally { first.recycle(); moved.recycle(); while (queue.isNotEmpty()) queue.removeFirst().run() }
     }
 }
