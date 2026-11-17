@@ -50,6 +50,7 @@ import com.docscan.rebuild.data.*
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.CaptureQuality
 import com.docscan.rebuild.imaging.LiveDetection
+import com.docscan.rebuild.imaging.PageNet
 import com.docscan.rebuild.model.*
 import org.opencv.core.*
 import java.io.File
@@ -130,7 +131,8 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
                     val analysis = ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).setTargetRotation(rotation).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                     previewUseCase = view; photoUseCase = photo; analysisUseCase = analysis
                     var lastAnalysis = 0L
-                    val tracker = BoundaryTracker()
+                    // With the page network, looks come several times a second and the outline follows them as a whole (1.3.8).
+                    val tracker = BoundaryTracker(quick = PageNet.available)
                     analysis.setAnalyzer(executor) { image ->
                         try {
                             val now = SystemClock.elapsedRealtime()

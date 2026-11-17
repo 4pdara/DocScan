@@ -327,9 +327,16 @@ class CaptureStability {
 
 
 
-/** Temporal consensus keeps a single erroneous boundary proposal out of auto capture. */
-class BoundaryTracker {
-    private companion object { const val HOLD = .018f }
+/**
+ * Temporal consensus keeps a single erroneous boundary proposal out of auto capture.
+ *
+ * [quick] is for looks that come several times a second (DocScan's page network, 1.3.8). While the phone moves, two
+ * looks 120 ms apart differ by several percent, so the slow rules below (made for a look per second) hid the outline
+ * on about a third of the looks and moved single corners. Quick looks follow a jump once the next look roughly agrees
+ * with it, keep the shown outline for that one look meanwhile, and move the outline as a whole.
+ */
+class BoundaryTracker(private val quick: Boolean = false) {
+    private companion object { const val HOLD = .018f; const val JUMP = .065f; const val AGREE = .025f }
     private var tracked: Frame? = null
     private var pending: Frame? = null
     fun sample(candidate: Frame?): Frame? {
@@ -338,14 +345,22 @@ class BoundaryTracker {
         // Nothing shown yet: the first outline appears at once (a phone may need most of a second for each look);
         // the next look smooths it, or replaces it only when two looks agree on the new place.
         if (previous == null) { tracked = candidate; pending = null; return candidate }
-        if (previous.motion(candidate) > .065f) {
+        if (previous.motion(candidate) > JUMP) {
             val proposal = pending
             pending = candidate
-            if (proposal == null || proposal.motion(candidate) > .025f) return null
+            if (proposal == null || proposal.motion(candidate) > (if (quick) JUMP else AGREE)) {
+                // A quick look keeps the shown outline for one unconfirmed look; a second one in a row hides it.
+                return if (quick && proposal == null) previous else null
+            }
             tracked = candidate; pending = null
             return candidate
         }
         pending = null
+        if (quick) {
+            // The whole outline follows a clear move, so it never mixes corners of two looks.
+            if (previous.motion(candidate) > HOLD) tracked = candidate
+            return tracked
+        }
         // A corner of the shown outline follows only a clear move (more than about 2% of the view, some 7 dp on a
         // phone); smaller differences between looks leave it where it is, so the outline holds still instead of
         // trembling with every look.
