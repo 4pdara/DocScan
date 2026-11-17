@@ -55,9 +55,22 @@ import kotlinx.coroutines.withContext
 @Composable
 fun DocRadarScreen(busy: Boolean, onBack: () -> Unit, onImport: (List<Uri>) -> Unit) {
     val context = LocalContext.current
-    val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
-    var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
+    // Android 14 and later may give access to chosen photos only; that is enough to look through them.
+    val permissions = when {
+        Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+        else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+    fun granted() = permissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+    var allowed by remember { mutableStateOf(granted()) }
+    var asked by remember { mutableStateOf(false) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { allowed = granted(); asked = true }
+    // Coming back from the system settings with access given.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycle) {
+        val watch = androidx.lifecycle.LifecycleEventObserver { _, event -> if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) allowed = granted() }
+        lifecycle.lifecycle.addObserver(watch); onDispose { lifecycle.lifecycle.removeObserver(watch) }
+    }
     val found = remember { mutableStateListOf<Pair<Uri, Bitmap>>() }
     var looked by remember { mutableIntStateOf(0) }
     var total by remember { mutableIntStateOf(0) }
@@ -88,7 +101,11 @@ fun DocRadarScreen(busy: Boolean, onBack: () -> Unit, onImport: (List<Uri>) -> U
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 12.dp)) {
             if (!allowed) {
                 Text(stringResource(R.string.radar_permission), Modifier.padding(vertical = 12.dp))
-                Button({ ask.launch(permission) }, modifier = Modifier.testTag("radar-allow")) { Text(stringResource(R.string.radar_allow)) }
+                Button({ ask.launch(permissions) }, modifier = Modifier.testTag("radar-allow")) { Text(stringResource(R.string.radar_allow)) }
+                // After a refusal the system may not ask again; the app's settings page can still give access.
+                if (asked) TextButton({ runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) } }) {
+                    Text(stringResource(R.string.radar_settings))
+                }
                 return@Column
             }
             Text(if (done) pluralStringResource(R.plurals.radar_found, found.size, found.size, total) else stringResource(R.string.radar_looking, looked, total),
@@ -108,11 +125,12 @@ fun DocRadarScreen(busy: Boolean, onBack: () -> Unit, onImport: (List<Uri>) -> U
     }
 }
 
-/** The newest photos in the gallery, newest first. */
+/** The newest photos in the gallery, newest first; not the ones DocScan saved there itself. */
 internal fun latestPhotos(context: Context, limit: Int): List<Uri> {
     val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
     val out = ArrayList<Uri>()
-    context.contentResolver.query(collection, arrayOf(MediaStore.Images.Media._ID), null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { c ->
+    val (where, args) = if (Build.VERSION.SDK_INT >= 29) "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} IS NULL OR ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} != ?" to arrayOf(context.packageName) else null to null
+    context.contentResolver.query(collection, arrayOf(MediaStore.Images.Media._ID), where, args, "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { c ->
         while (c.moveToNext() && out.size < limit) out += ContentUris.withAppendedId(collection, c.getLong(0))
     }
     return out
@@ -128,7 +146,12 @@ internal fun look(context: Context, uri: Uri): Bitmap? {
         val turn = runCatching { context.contentResolver.openInputStream(uri)?.use { androidx.exifinterface.media.ExifInterface(it).rotationDegrees } }.getOrNull() ?: 0
         if (turn == 0) raw else Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { postRotate(turn.toFloat()) }, true).also { if (it !== raw) raw.recycle() }
     }
-    val frame = ImagePipeline.detectBitmap(small)
-    if (frame == null || frame == Frame.FULL || frame.area() < .2f) { small.recycle(); return null }
-    return small
+    // 10-bit and HDR photos give other pixel formats; detection works on ordinary 8-bit colour.
+    val plain = if (small.config == Bitmap.Config.ARGB_8888) small else small.copy(Bitmap.Config.ARGB_8888, false).also { small.recycle() } ?: return null
+    val frame = runCatching { ImagePipeline.detectBitmap(plain) }.getOrNull()
+    if (frame == null || frame == Frame.FULL || frame.area() < .2f) { plain.recycle(); return null }
+    // A small copy to show in the list.
+    val f = 256f / maxOf(plain.width, plain.height)
+    if (f >= 1f) return plain
+    return Bitmap.createScaledBitmap(plain, maxOf(1, (plain.width * f).toInt()), maxOf(1, (plain.height * f).toInt()), true).also { if (it !== plain) plain.recycle() }
 }

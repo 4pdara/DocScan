@@ -515,9 +515,9 @@
     <string name="count_sensitivity">רגישות</string>
     <string name="count_again">דוגמה חדשה</string>
     <string name="count_save">שמירה כמסמך</string>
-    <string name="count_document">ספירה: %1$d פריטים</string>
     <plurals name="radar_import"><item quantity="one">ייבוא מסמך אחד</item><item quantity="two">ייבוא %1$d מסמכים</item><item quantity="many">ייבוא %1$d מסמכים</item><item quantity="other">ייבוא %1$d מסמכים</item></plurals>
     <plurals name="radar_found"><item quantity="one">נמצא מסמך אחד ב־%2$d התמונות האחרונות</item><item quantity="two">נמצאו %1$d מסמכים ב־%2$d התמונות האחרונות</item><item quantity="many">נמצאו %1$d מסמכים ב־%2$d התמונות האחרונות</item><item quantity="other">נמצאו %1$d מסמכים ב־%2$d התמונות האחרונות</item></plurals>
+    <string name="radar_settings">פתיחת ההגדרות של האפליקציה</string>
 </resources>
 
 

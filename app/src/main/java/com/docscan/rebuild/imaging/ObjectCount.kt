@@ -25,39 +25,38 @@ object ObjectCount {
     /** [size]: the thing's size as a share of the picture's short side, or null to measure it; [sensitivity] 0..1. */
     fun count(rgba: Mat, x: Float, y: Float, size: Float? = null, sensitivity: Float = .5f): Result {
         val work = 900.0; val f = min(1.0, work / max(rgba.cols(), rgba.rows()))
-        val small = Mat(); val gray = Mat(); val edges = Mat(); val result = Mat()
+        val small = Mat(); val gray = Mat(); val result = Mat(); val dilated = Mat()
         try {
             Imgproc.resize(rgba, small, Size(max(1.0, rgba.cols() * f), max(1.0, rgba.rows() * f)), 0.0, 0.0, Imgproc.INTER_AREA)
             Imgproc.cvtColor(small, gray, if (small.channels() == 4) Imgproc.COLOR_RGBA2GRAY else Imgproc.COLOR_RGB2GRAY)
             Imgproc.GaussianBlur(gray, gray, Size(3.0, 3.0), 0.0)
-            val w = gray.cols(); val h = gray.rows(); val cx = (x * w).roundToInt().coerceIn(0, w - 1); val cy = (y * h).roundToInt().coerceIn(0, h - 1)
-            val r = size?.let { (it * min(w, h) / 2).roundToInt().coerceIn(4, min(w, h) / 4) } ?: radius(gray, cx, cy)
+            val w = gray.cols(); val h = gray.rows(); val short = min(w, h)
+            // Too small to look for anything: the marked point is all there is.
+            if (short < 24) return Result(listOf(x to y), size ?: .1f)
+            val cx = (x * w).roundToInt().coerceIn(0, w - 1); val cy = (y * h).roundToInt().coerceIn(0, h - 1)
+            val r = size?.let { (it * short / 2).roundToInt() }?.coerceIn(4, short / 4) ?: radius(gray, cx, cy)
             val side = 2 * r + 1
+            // The template is the square around the tap; near the picture's edge it is moved inside, and the tap
+            // keeps its place in it, so every match is reported where the tapped point would be.
             val x0 = (cx - r).coerceIn(0, w - side); val y0 = (cy - r).coerceIn(0, h - side)
-            if (side >= min(w, h)) return Result(listOf(x to y), side / min(w, h).toFloat())
+            val dx = cx - x0; val dy = cy - y0
             val template = gray.submat(Rect(x0, y0, side, side))
             try { Imgproc.matchTemplate(gray, template, result, Imgproc.TM_CCOEFF_NORMED) } finally { template.release() }
-            val rw = result.cols(); val rh = result.rows()
-            val score = FloatArray(rw * rh).also { result.get(0, 0, it) }
-            // Peaks: the best within a thing's size around them, and a clear match.
-            // Sensitivity .5 asks for a match of .5; more sensitive finds weaker matches.
+            // Peaks: the best match within about half a size around, and a clear one (sensitivity .5 asks for .5).
+            val k = max(3, r or 1).toDouble()
+            val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(k, k))
+            try { Imgproc.dilate(result, dilated, kernel) } finally { kernel.release() }
             val limit = (1f - sensitivity).coerceIn(.2f, .9f)
+            val rw = result.cols(); val rh = result.rows()
+            val score = FloatArray(rw * rh).also { result.get(0, 0, it) }; val top = FloatArray(rw * rh).also { dilated.get(0, 0, it) }
             val peaks = ArrayList<Triple<Int, Int, Float>>()
-            for (yy in 0 until rh) for (xx in 0 until rw) {
-                val v = score[yy * rw + xx]; if (v < limit) continue
-                var best = true
-                loop@ for (dy in -r / 2..r / 2) for (dx in -r / 2..r / 2) {
-                    val a = xx + dx; val b = yy + dy
-                    if (a in 0 until rw && b in 0 until rh && score[b * rw + a] > v) { best = false; break@loop }
-                }
-                if (best) peaks += Triple(xx + r, yy + r, v)
-            }
+            for (i in score.indices) if (score[i] >= limit && score[i] >= top[i]) peaks += Triple(i % rw + dx, i / rw + dy, score[i])
             // Strongest first; none closer than about one size to another.
             val kept = ArrayList<Pair<Int, Int>>()
             for ((px, py, _) in peaks.sortedByDescending { it.third }) if (kept.none { hypot((it.first - px).toDouble(), (it.second - py).toDouble()) < r * 1.4 }) kept += px to py
             if (kept.none { hypot((it.first - cx).toDouble(), (it.second - cy).toDouble()) < r }) kept += cx to cy
-            return Result(kept.map { (px, py) -> px / w.toFloat() to py / h.toFloat() }, side / min(w, h).toFloat())
-        } finally { listOf(small, gray, edges, result).forEach(Mat::release) }
+            return Result(kept.map { (px, py) -> px / w.toFloat() to py / h.toFloat() }, 2f * r / short)
+        } finally { listOf(small, gray, result, dilated).forEach(Mat::release) }
     }
 
     /**

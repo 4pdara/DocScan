@@ -1,8 +1,6 @@
 package com.docscan.rebuild.ui
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas as DrawArea
 import androidx.compose.foundation.Image
@@ -29,38 +27,45 @@ import com.docscan.rebuild.R
 import com.docscan.rebuild.imaging.ImagePipeline
 import com.docscan.rebuild.imaging.ObjectCount
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
 import org.opencv.core.Mat
-import java.io.ByteArrayOutputStream
 import kotlin.math.hypot
 import kotlin.math.min
 
 /**
  * Counting (1.3.5): tap one of the things to count and the app marks everything like it. Size and sensitivity can
- * be changed when its guess is off; tapping a mark removes it and tapping elsewhere adds one. The picture with its
- * numbered marks can be saved as a document.
+ * be changed when its guess is off; tapping a mark removes it and tapping elsewhere adds one. Saving keeps the photo
+ * itself unchanged and puts the numbered marks on it as editable marks.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CountScreen(picture: Bitmap, busy: Boolean, onBack: () -> Unit, onSave: (ByteArray, Int) -> Unit) {
+fun CountScreen(picture: Bitmap, busy: Boolean, onBack: () -> Unit, onSave: (List<Pair<Float, Float>>, Float) -> Unit) {
     var example by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     var marks by remember { mutableStateOf(listOf<Pair<Float, Float>>()) }
-    var size by remember { mutableStateOf<Float?>(null) }
+    // The size the user set (null: as measured), and the size measured on the example; only the first restarts counting.
+    var chosen by remember { mutableStateOf<Float?>(null) }
+    var measured by remember { mutableStateOf<Float?>(null) }
     var sensitivity by remember { mutableFloatStateOf(.5f) }
     var working by remember { mutableStateOf(false) }
     var box by remember { mutableStateOf(IntSize.Zero) }
     BackHandler(onBack = onBack)
-    // Counting again whenever the example, the size or the sensitivity changes.
-    LaunchedEffect(example, size, sensitivity) {
-        val at = example ?: return@LaunchedEffect
+    LaunchedEffect(example, chosen, sensitivity) {
+        val at = example ?: run { working = false; return@LaunchedEffect }
+        // Waits for a slider to settle before counting again.
+        delay(200)
         working = true
         val result = withContext(Dispatchers.Default) {
-            ImagePipeline.ensureAvailable()
-            val m = Mat(); try { Utils.bitmapToMat(picture, m); ObjectCount.count(m, at.first, at.second, size, sensitivity) } finally { m.release() }
+            runCatching {
+                ImagePipeline.ensureAvailable()
+                val m = Mat(); try { Utils.bitmapToMat(picture, m); ObjectCount.count(m, at.first, at.second, chosen, sensitivity) } finally { m.release() }
+            }.getOrNull()
         }
-        marks = result.centres; if (size == null) size = result.size; working = false
+        if (result != null) { marks = result.centres; if (chosen == null) measured = result.size }
+        working = false
     }
+    val size = chosen ?: measured ?: .05f
     val short = min(picture.width, picture.height).toFloat()
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.count_title, marks.size)) }, navigationIcon = { IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } })
@@ -76,11 +81,11 @@ fun CountScreen(picture: Bitmap, busy: Boolean, onBack: () -> Unit, onSave: (Byt
                     detectTapGestures { o ->
                         val (x, y) = toPicture(o); if (x !in 0f..1f || y !in 0f..1f) return@detectTapGestures
                         if (example == null) { example = x to y; return@detectTapGestures }
-                        val near = marks.indexOfFirst { (mx, my) -> hypot(((mx - x) * picture.width).toDouble(), ((my - y) * picture.height).toDouble()) < (size ?: .05f) * short / 2 }
+                        val near = marks.indexOfFirst { (mx, my) -> hypot(((mx - x) * picture.width).toDouble(), ((my - y) * picture.height).toDouble()) < (chosen ?: measured ?: .05f) * short / 2 }
                         marks = if (near >= 0) marks.filterIndexed { i, _ -> i != near } else marks + (x to y)
                     }
                 }) {
-                    val radius = ((size ?: .05f) * short / 2 * scale).coerceAtLeast(6f)
+                    val radius = (size * short / 2 * scale).coerceAtLeast(6f)
                     marks.forEach { (x, y) ->
                         val c = Offset(left + x * picture.width * scale, top + y * picture.height * scale)
                         drawCircle(Color(0xCC00B69D), radius * .35f, c); drawCircle(Color.White, radius * .35f, c, style = Stroke(2.dp.toPx()))
@@ -92,13 +97,13 @@ fun CountScreen(picture: Bitmap, busy: Boolean, onBack: () -> Unit, onSave: (Byt
             Column(Modifier.padding(horizontal = 16.dp)) {
                 Text(stringResource(if (example == null) R.string.count_hint else R.string.count_adjust), style = MaterialTheme.typography.bodySmall)
                 if (example != null) {
-                    ToolSlider(R.string.count_size, size ?: .05f, .01f.. .5f, "count-size") { size = it }
+                    ToolSlider(R.string.count_size, size, .01f.. .5f, "count-size") { chosen = it }
                     ToolSlider(R.string.count_sensitivity, sensitivity, .1f.. .8f, "count-sensitivity") { sensitivity = it }
                 }
                 Row {
-                    TextButton({ example = null; marks = emptyList(); size = null }, enabled = example != null) { Text(stringResource(R.string.count_again)) }
+                    TextButton({ example = null; marks = emptyList(); chosen = null; measured = null }, enabled = example != null) { Text(stringResource(R.string.count_again)) }
                     Spacer(Modifier.weight(1f))
-                    Button({ onSave(numbered(picture, marks, size ?: .05f), marks.size) }, enabled = marks.isNotEmpty() && !busy && !working, modifier = Modifier.testTag("count-save")) {
+                    Button({ onSave(marks, size) }, enabled = marks.isNotEmpty() && !busy && !working, modifier = Modifier.testTag("count-save")) {
                         Text(stringResource(R.string.count_save))
                     }
                 }
@@ -107,19 +112,15 @@ fun CountScreen(picture: Bitmap, busy: Boolean, onBack: () -> Unit, onSave: (Byt
     }
 }
 
-/** The picture with each mark numbered, as a JPEG. */
-private fun numbered(picture: Bitmap, marks: List<Pair<Float, Float>>, size: Float): ByteArray {
-    val out = picture.copy(Bitmap.Config.ARGB_8888, true)
-    try {
-        val canvas = Canvas(out); val short = min(out.width, out.height).toFloat(); val r = (size * short / 2 * .45f).coerceAtLeast(10f)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(220, 0, 182, 157) }
-        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; textAlign = Paint.Align.CENTER; textSize = r * 1.1f; isFakeBoldText = true }
-        marks.forEachIndexed { i, (x, y) ->
-            val cx = x * out.width; val cy = y * out.height
-            canvas.drawCircle(cx, cy, r, fill); canvas.drawText("${i + 1}", cx, cy - (text.ascent() + text.descent()) / 2, text)
-        }
-        val total = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; textSize = short * .05f; setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK) }
-        canvas.drawText("= ${marks.size}", short * .03f, short * .08f, total)
-        return ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
-    } finally { out.recycle() }
+/**
+ * The count as marks on the page (fractions of the upright photo): a ring around each thing and its number, so the
+ * photo stays as it was and the marks can be edited like any other.
+ */
+fun countMarks(marks: List<Pair<Float, Float>>, size: Float, width: Int, height: Int): Pair<List<com.docscan.rebuild.model.ShapeMark>, List<com.docscan.rebuild.model.TextMark>> {
+    val short = min(width, height).toFloat(); val rx = size * short / 2 / width; val ry = size * short / 2 / height
+    val rings = marks.map { (x, y) -> com.docscan.rebuild.model.ShapeMark(com.docscan.rebuild.model.ShapeKind.OVAL, com.docscan.rebuild.model.Vertex(x - rx, y - ry), com.docscan.rebuild.model.Vertex(x + rx, y + ry), 0x00B69D, .004f) }
+        .filter { it.valid() }
+    val numbers = marks.mapIndexed { i, (x, y) -> com.docscan.rebuild.model.TextMark("${i + 1}", x, y, (size * .45f).coerceIn(.012f, .08f), 0xD32F2F, com.docscan.rebuild.model.MarkFont.BOLD) }
+        .filter { it.valid() }
+    return rings to numbers
 }

@@ -173,7 +173,7 @@ object RecipeCodec {
                 if (p.size == 2) ShapeMark(kind, p[0], p[1], m.optInt("c", 0xD32F2F) and 0xFFFFFF, m.optDouble("w", .006).toFloat()).takeIf { it.valid() } else null
             },
             ink = list("ink", 500).mapNotNull { m -> InkStroke(points(m.optJSONArray("p")), m.optDouble("w", .01).toFloat(), m.optInt("c") and 0xFFFFFF, m.optInt("a", 255)).takeIf { it.valid() } },
-            texts = list("texts", 100).mapNotNull { m ->
+            texts = list("texts", 500).mapNotNull { m ->
                 TextMark(m.optString("t").take(500), m.optDouble("x", .5).toFloat(), m.optDouble("y", .5).toFloat(), m.optDouble("s", .04).toFloat(), m.optInt("c", 0x1A1A1A) and 0xFFFFFF, option(m, "f", MarkFont.PLAIN)).takeIf { it.valid() }
             },
             watermarkSpot = MarkSpot(o.optDouble("spotX", .5).toFloat(), o.optDouble("spotY", .5).toFloat(), o.optDouble("spotAngle", -45.0).toFloat()).takeIf { it.valid() } ?: MarkSpot(),
