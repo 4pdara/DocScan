@@ -13,7 +13,7 @@ class ScanApplication : Application() {
         super.onCreate()
         NativeCamScannerEnhancer.configureCache(cacheDir)
         PageMarks.install(this)
-        // DocScan's page network (generated into the assets at build time, checked by its digest); without it the
+        // DocScan's page network (in the assets, its digest checked at build time); without it the
         // detector works alone. Read here, before any detection (half a megabyte, a few milliseconds).
         PageNet.install(runCatching { assets.open(PageNet.ASSET).use { it.readBytes() } }.getOrNull())
     }

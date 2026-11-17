@@ -2,8 +2,8 @@
 
 רשת קטנה (כ־131 אלף משקלים) שמוצאת את גבולות הדף בתמונה. היא נבנתה ואומנה כאן, ורצה בטלפון דרך מודול ה־DNN של OpenCV. הקוד באפליקציה: `app/src/main/java/com/docscan/rebuild/imaging/PageNet.kt`.
 
-**מה לא נמצא בריפו:** קובץ הרשת, תמונות האימון והתמונות שעליהן נמדדה.
-- **קובץ הרשת:** מצורף ל־Release בתגית `pagenet-v1`. הבנייה מורידה אותו ובודקת את ה־SHA-256 שלו (`app/build.gradle.kts`).
+- **קובץ הרשת:** `app/src/main/assets/pagenet/pagenet-v1.onnx`. הבנייה בודקת את ה־SHA-256 שלו (`app/build.gradle.kts`).
+- **מה לא נמצא בריפו:** תמונות האימון והתמונות שעליהן הרשת נמדדה.
 - **ייחוס לנתוני האימון:** `app/src/main/assets/licenses/PageNet-training-data-CC-BY-4.0.txt`.
 
 ## מבנה הרשת

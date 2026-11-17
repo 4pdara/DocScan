@@ -156,24 +156,15 @@ val prepareOcrAssets by tasks.registering {
 android.sourceSets.getByName("main").assets.srcDir(ocrAssets)
 tasks.named("preBuild").configure { dependsOn(prepareOcrAssets) }
 
-// DocScan's own page network (tools/pagenet), published as a release asset, verified and generated outside Git.
-val pageNetAssets = layout.buildDirectory.dir("generated/pagenet-assets")
-val preparePageNet by tasks.registering {
-    val url = "https://github.com/4pdara/DocScan/releases/download/pagenet-v1/pagenet-v1.onnx"
+// DocScan's own page network (tools/pagenet): trained in this project and kept in the assets; the build checks that
+// the file is the one measured (docs/RELEASE_1.3.6_HE.md).
+val checkPageNet by tasks.registering {
+    val model = file("src/main/assets/pagenet/pagenet-v1.onnx")
     val expected = "68c625917d7c95af6aa8e0306570436a690644b70d6d0eb225d8916faa591951"
-    inputs.property("url", url); inputs.property("digest", expected)
-    outputs.dir(pageNetAssets)
+    inputs.file(model); inputs.property("digest", expected)
     doLast {
-        val file = pageNetAssets.get().dir("pagenet").asFile.apply { mkdirs() }.resolve("pagenet-v1.onnx")
-        fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
-        if (!file.isFile || digest(file.readBytes()) != expected) {
-            val connection = URI(url).toURL().openConnection()
-            connection.connectTimeout = 30000; connection.readTimeout = 60000
-            val bytes = connection.getInputStream().use { it.readBytes() }
-            check(digest(bytes) == expected) { "Page network digest mismatch" }
-            file.writeBytes(bytes)
-        }
+        val actual = MessageDigest.getInstance("SHA-256").digest(model.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+        check(actual == expected) { "Page network digest mismatch: $actual" }
     }
 }
-android.sourceSets.getByName("main").assets.srcDir(pageNetAssets)
-tasks.named("preBuild").configure { dependsOn(preparePageNet) }
+tasks.named("preBuild").configure { dependsOn(checkPageNet) }
