@@ -29,25 +29,30 @@ object PageStitch {
             Imgproc.resize(next, b, Size(work, max(8.0, next.rows() * fb)), 0.0, 0.0, Imgproc.INTER_AREA)
             Imgproc.cvtColor(a, ga, if (a.channels() == 4) Imgproc.COLOR_RGBA2GRAY else Imgproc.COLOR_RGB2GRAY)
             Imgproc.cvtColor(b, gb, if (b.channels() == 4) Imgproc.COLOR_RGBA2GRAY else Imgproc.COLOR_RGB2GRAY)
-            // The template: a quarter of the next photo's height from its top, without the outer 6% at the sides.
-            val margin = (work * .06).roundToInt(); val th = max(16, (gb.rows() * .25).roundToInt())
-            if (th >= gb.rows() || th >= ga.rows()) return null
-            val template = gb.submat(Rect(margin, 0, gb.cols() - 2 * margin, th))
-            // Searched in the lower 80% of the previous photo, allowing a sideways shift up to the margin.
-            val from = (ga.rows() * .2).roundToInt(); val area = ga.submat(Rect(0, from, ga.cols(), ga.rows() - from))
-            try {
-                if (area.rows() < template.rows()) return null
-                Imgproc.matchTemplate(area, template, result, Imgproc.TM_CCOEFF_NORMED)
-                val best = Core.minMaxLoc(result)
-                if (best.maxVal < .55) return null
-                // A clear winner: anything else that matches nearly as well must be the same place.
-                val values = FloatArray(result.rows() * result.cols()).also { result.get(0, 0, it) }
-                val by = best.maxLoc.y.toInt(); val bx = best.maxLoc.x.toInt()
-                var second = -1.0
-                for (y in 0 until result.rows()) for (x in 0 until result.cols()) if (kotlin.math.abs(y - by) > th / 3) second = max(second, values[y * result.cols() + x].toDouble())
-                if (second > best.maxVal - .08) return null
-                return Join(((from + by) / fa).roundToInt(), ((bx - margin) / fa).roundToInt(), best.maxVal)
-            } finally { template.release(); area.release() }
+            // The template: a strip from the next photo's top, without the outer 6% at the sides. A quarter of its height
+            // first; when the photos overlap less than that, shorter strips (16%, then 10%) still fit inside the overlap.
+            val margin = (work * .06).roundToInt()
+            for (share in doubleArrayOf(.25, .16, .1)) {
+                val th = max(16, (gb.rows() * share).roundToInt())
+                if (th >= gb.rows() || th >= ga.rows()) continue
+                val template = gb.submat(Rect(margin, 0, gb.cols() - 2 * margin, th))
+                // Searched in the lower 80% of the previous photo, allowing a sideways shift up to the margin.
+                val from = (ga.rows() * .2).roundToInt(); val area = ga.submat(Rect(0, from, ga.cols(), ga.rows() - from))
+                try {
+                    if (area.rows() < template.rows()) continue
+                    Imgproc.matchTemplate(area, template, result, Imgproc.TM_CCOEFF_NORMED)
+                    val best = Core.minMaxLoc(result)
+                    if (best.maxVal < .55) continue
+                    // A clear winner: anything else that matches nearly as well must be the same place.
+                    val values = FloatArray(result.rows() * result.cols()).also { result.get(0, 0, it) }
+                    val by = best.maxLoc.y.toInt(); val bx = best.maxLoc.x.toInt()
+                    var second = -1.0
+                    for (y in 0 until result.rows()) for (x in 0 until result.cols()) if (kotlin.math.abs(y - by) > th / 3) second = max(second, values[y * result.cols() + x].toDouble())
+                    if (second > best.maxVal - .08) continue
+                    return Join(((from + by) / fa).roundToInt(), ((bx - margin) / fa).roundToInt(), best.maxVal)
+                } finally { template.release(); area.release() }
+            }
+            return null
         } finally { listOf(a, b, ga, gb, result).forEach(Mat::release) }
     }
 
