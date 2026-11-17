@@ -474,6 +474,35 @@
     <string name="web_save">שמירה כמסמך</string>
     <plurals name="folder_documents"><item quantity="one">מסמך אחד</item><item quantity="two">%1$d מסמכים</item><item quantity="many">%1$d מסמכים</item><item quantity="other">%1$d מסמכים</item></plurals>
     <plurals name="folder_folders"><item quantity="one">תיקייה אחת</item><item quantity="two">%1$d תיקיות</item><item quantity="many">%1$d תיקיות</item><item quantity="other">%1$d תיקיות</item></plurals>
+    <string name="tool_bizcard">כרטיס ביקור</string>
+    <string name="tool_receipt">קבלה</string>
+    <string name="tool_longscan">סריקה ארוכה</string>
+    <string name="bizcard_hint">צלמו את כרטיס הביקור</string>
+    <string name="receipt_hint">צלמו את הקבלה</string>
+    <string name="longscan_hint">צלמו את הדף מלמעלה למטה, כך שכל צילום יחפוף בערך רבע מהקודם</string>
+    <string name="longscan_parts">%1$s – הצילומים של הסריקה הארוכה</string>
+    <string name="longscan_one">בסריקה ארוכה צריך לפחות שני צילומים</string>
+    <string name="bizcard_title">פרטי כרטיס הביקור</string>
+    <string name="bizcard_none">לא נמצאו פרטים בכרטיס. אפשר למלא אותם ידנית.</string>
+    <string name="contact_name">שם</string>
+    <string name="contact_company">חברה</string>
+    <string name="contact_job">תפקיד</string>
+    <string name="contact_phone">טלפון</string>
+    <string name="contact_phone2">טלפון נוסף</string>
+    <string name="contact_email">דוא״ל</string>
+    <string name="contact_website">אתר</string>
+    <string name="contact_address">כתובת</string>
+    <string name="add_to_contacts">הוספה לאנשי הקשר</string>
+    <string name="copy_vcard">העתקה כ־vCard</string>
+    <string name="no_contacts_app">אין בטלפון אפליקציית אנשי קשר</string>
+    <string name="close">סגירה</string>
+    <string name="receipt_title">פרטי הקבלה</string>
+    <string name="receipt_none">לא נמצא סכום לתשלום. אפשר למלא ידנית.</string>
+    <string name="receipt_shop">בית העסק</string>
+    <string name="receipt_date">תאריך</string>
+    <string name="receipt_total">סכום</string>
+    <string name="receipt_use_name">שימוש כשם המסמך</string>
+    <string name="receipts_tag">קבלות</string>
 </resources>
 
 
