@@ -166,12 +166,18 @@ object ImagePipeline {
         finally { bitmap.recycle(); rgba.release(); gray.release() }
     }
 
-    /** Page outline on a picture already in memory (Doc Radar's gallery thumbnails). */
-    fun detectBitmap(bitmap: Bitmap): Frame? {
+    /**
+     * Page outline on a picture already in memory (Doc Radar's gallery thumbnails). With [writing], an outline counts
+     * only when the page inside it carries writing ([DocumentLook]).
+     */
+    fun detectBitmap(bitmap: Bitmap, writing: Boolean = false): Frame? {
         ensureAvailable()
         val rgba = Mat(); val gray = Mat()
-        return try { Utils.bitmapToMat(bitmap, rgba); Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY); detectGray(gray, rgba) }
-        finally { rgba.release(); gray.release() }
+        return try {
+            Utils.bitmapToMat(bitmap, rgba); Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY)
+            val frame = detectGray(gray, rgba)
+            if (writing && frame != null && frame != Frame.FULL && frame.valid() && !DocumentLook.hasWriting(rgba, frame)) null else frame
+        } finally { rgba.release(); gray.release() }
     }
 
     fun detectGray(input: Mat, rgba: Mat? = null): Frame? {

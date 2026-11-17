@@ -640,8 +640,10 @@ class RebuildFlowTest {
         @Suppress("DEPRECATION") val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
         // Internet and package installation exist only for "check for updates"; nothing else (no location, contacts, ...).
         val platform = packageInfo.requestedPermissions.orEmpty().filter { it.startsWith("android.permission.") }.toSet()
-        // READ_EXTERNAL_STORAGE is implied by the legacy WRITE_EXTERNAL_STORAGE (gallery export up to Android 9).
+        // READ_EXTERNAL_STORAGE is implied by the legacy WRITE_EXTERNAL_STORAGE (gallery export up to Android 9), and with
+        // the newer photo permissions it lets Doc Radar (1.3.5) look through the gallery, after the user allows it.
         assertTrue("$platform", platform.all { it in setOf(android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE, android.Manifest.permission.READ_EXTERNAL_STORAGE,
+            "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
             android.Manifest.permission.INTERNET, android.Manifest.permission.REQUEST_INSTALL_PACKAGES) })
         assertEquals(0, context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)
         val name = "test-${System.nanoTime()}.db"

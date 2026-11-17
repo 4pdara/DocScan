@@ -48,7 +48,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Doc Radar (1.3.5): looks through the latest photos in the gallery, on the phone, for ones that show a document
- * (a page outline is found and covers at least a fifth of the photo), and lets them be imported in one go. Reading
+ * (a page outline is found, covers at least a fifth of the photo and has writing on it), and lets them be imported in one go. Reading
  * the gallery needs the photos permission, asked for here; nothing leaves the phone.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -148,7 +148,8 @@ internal fun look(context: Context, uri: Uri): Bitmap? {
     }
     // 10-bit and HDR photos give other pixel formats; detection works on ordinary 8-bit colour.
     val plain = if (small.config == Bitmap.Config.ARGB_8888) small else small.copy(Bitmap.Config.ARGB_8888, false).also { small.recycle() } ?: return null
-    val frame = runCatching { ImagePipeline.detectBitmap(plain) }.getOrNull()
+    // A page outline alone also turns up on photos with no document; the page must carry writing too.
+    val frame = runCatching { ImagePipeline.detectBitmap(plain, writing = true) }.getOrNull()
     if (frame == null || frame == Frame.FULL || frame.area() < .2f) { plain.recycle(); return null }
     // A small copy to show in the list.
     val f = 256f / maxOf(plain.width, plain.height)
