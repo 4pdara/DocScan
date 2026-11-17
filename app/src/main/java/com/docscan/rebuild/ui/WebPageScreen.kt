@@ -81,17 +81,23 @@ fun WebPageScreen(busy: Boolean, onBack: () -> Unit, onSave: (String, List<ByteA
     }
 }
 
-/** The whole page, top to bottom, in A4-shaped slices (at most 40) as JPEG pictures. */
+/**
+ * The whole page, top to bottom, in A4-shaped slices (at most 40) as JPEG pictures. For each slice the page is
+ * scrolled there first, so the slice is on screen and drawn, whatever WebView does with parts that are not.
+ */
+@Suppress("DEPRECATION")
 private fun slices(view: WebView): List<ByteArray> {
-    val width = view.width.coerceAtLeast(1)
+    val width = view.width.coerceAtLeast(1); val screen = view.height.coerceAtLeast(1)
     // The page's full height: the view measured with no height limit (its content's own height in pixels), and
     // never less than the content height in CSS pixels times the screen density.
     view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
     val measured = view.measuredHeight
     val dense = (view.contentHeight * view.resources.displayMetrics.density).toInt()
-    val total = maxOf(measured, dense, view.height, 1)
+    val total = maxOf(measured, dense, screen, 1)
     val slice = (width * 297f / 210f).toInt()
-    view.scrollTo(0, 0)
+    android.util.Log.i("DocScanWeb", "width $width screen $screen contentHeight ${view.contentHeight} scale ${view.scale} density ${view.resources.displayMetrics.density} measured $measured total $total slice $slice")
+    view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(screen, android.view.View.MeasureSpec.EXACTLY))
+    view.layout(view.left, view.top, view.left + width, view.top + screen)
     val out = ArrayList<ByteArray>()
     var top = 0
     while (top < total && out.size < 40) {
@@ -99,14 +105,21 @@ private fun slices(view: WebView): List<ByteArray> {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         try {
             val canvas = Canvas(bitmap); canvas.drawColor(Color.WHITE)
-            // With the page scrolled to its top, each slice is the page drawn shifted up by where the slice starts.
-            canvas.translate(0f, -top.toFloat())
-            view.draw(canvas)
+            // Drawn in strips the height of the screen, each scrolled into view; a view draws its content at the
+            // content's own position, so the canvas is moved up by where the strip starts.
+            var y = 0
+            while (y < height) {
+                val at = top + y
+                view.scrollTo(0, at)
+                canvas.save(); canvas.clipRect(0, y, width, minOf(height, y + screen)); canvas.translate(0f, -top.toFloat())
+                view.draw(canvas); canvas.restore()
+                y += screen
+            }
             out += ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
         } finally { bitmap.recycle() }
         top += height
     }
-    // Back to the size it has on screen.
-    view.requestLayout()
+    view.scrollTo(0, 0)
+    android.util.Log.i("DocScanWeb", "slices ${out.size}")
     return out
 }

@@ -212,6 +212,7 @@ class BookFeaturesTest {
             compose.waitUntil(30000){runBlocking{store.dao.snapshot(book.id).size>=2}}
             assertEquals("Web test",book.title)
             val pages=runBlocking{store.dao.snapshot(book.id)}
+            pages.forEachIndexed{i,p-> val b=BitmapFactory.decodeFile(store.source(p).path); try { android.util.Log.i("DocScanWebTest","page $i ${b.width}x${b.height} middle ${Integer.toHexString(b.getPixel(b.width/2,b.height/2))} end ${Integer.toHexString(b.getPixel(b.width/2,b.height-5))}") } finally { b.recycle() } }
             val first=BitmapFactory.decodeFile(store.source(pages.first()).path);val last=BitmapFactory.decodeFile(store.source(pages.last()).path)
             try {
                 assertTrue("A4 shaped: ${first.width} x ${first.height}",abs(first.height.toFloat()/first.width-297f/210f)<.02f)
