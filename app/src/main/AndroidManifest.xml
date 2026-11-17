@@ -3,6 +3,10 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Only for "check for updates", when the user asks: the release list and the APK from this app's GitHub releases. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Doc Radar (1.3.5) looks through the gallery for document photos, on the phone only. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <application android:name=".ScanApplication" android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:label="${docscanAppLabel}" android:icon="@drawable/ic_scan" android:supportsRtl="true" android:theme="@style/AppTheme">

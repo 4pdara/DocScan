@@ -160,6 +160,9 @@ fun ScanApp(store: ScanStore) {
     var retakeId by rememberSaveable { mutableStateOf<String?>(null) }
     // Scan modes from the Tools tab: book (split into two pages), whiteboard, slides, timestamp camera.
     var scanMode by rememberSaveable { mutableStateOf<String?>(null) }
+    // Counting (1.3.5): the photo being counted (kept to be saved unchanged) and an upright copy to count on.
+    var countPicture by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var countSource by rememberSaveable { mutableStateOf<String?>(null) }
     // Business card and receipt (1.3.4): read once the captured page is saved, then shown to check.
     var reading by rememberSaveable { mutableStateOf<String?>(null) }
     var contact by remember { mutableStateOf<BusinessCard.Contact?>(null) }
@@ -301,6 +304,16 @@ fun ScanApp(store: ScanStore) {
                 ?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: defaultTitle()
             val book=store.create(name.take(100)).id; folderStore.move(listOf(book),libraryFolder)
             store.textPages(book,com.docscan.rebuild.export.TextPages.decode(bytes)); bookId=book; route="document"
+        }
+    }
+    val countPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if(uri!=null)vm.perform {
+            // An upright copy, reduced (by powers of two) towards 2000 pixels on its long side, to count on.
+            val file=File(context.cacheDir,"count-${System.nanoTime()}")
+            try {
+                withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use { input -> file.outputStream().use { input.copyTo(it) } } }
+                countPicture=withContext(Dispatchers.Default) { ImagePipeline.decode(file,2000) }; countSource=uri.toString(); route="count"
+            } finally { file.delete() }
         }
     }
     val textSaver=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
@@ -525,6 +538,34 @@ fun ScanApp(store: ScanStore) {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "qr" -> QrScreen(onBack = { route = "library" })
+            "radar" -> DocRadarScreen(vm.busy, onBack = { route = "library" }) { uris ->
+                vm.perform(R.string.imported) {
+                    val book = store.create(defaultTitle()).id; folderStore.move(listOf(book), libraryFolder)
+                    // Each photo is kept unchanged and goes through what a new scan does: page crop, curved edges,
+                    // straightening and the filter for new scans.
+                    for (uri in uris) {
+                        val file = File(context.cacheDir, "radar-${System.nanoTime()}")
+                        withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use { input -> file.outputStream().use { input.copyTo(it) } } }
+                        vm.receive(book, file)
+                    }
+                    bookId = book; route = "document"
+                }
+            }
+            "count" -> {
+                val picture = countPicture; val source = countSource
+                if (picture == null || source == null) LaunchedEffect(Unit) { route = "library" }
+                else CountScreen(picture, vm.busy, onBack = { route = "library"; countPicture = null }) { found, size ->
+                    vm.perform(R.string.saved) {
+                        // The photo itself, unchanged, with the count drawn over it as marks that can be edited.
+                        val title = context.getString(R.string.count_title, found.size)
+                        val book = store.create(title).id; folderStore.move(listOf(book), libraryFolder)
+                        val page = store.import(book, android.net.Uri.parse(source))
+                        val (rings, numbers) = countMarks(found, size, picture.width, picture.height)
+                        store.save(page, page.edit().copy(shapes = rings, texts = numbers, footer = title))
+                        bookId = book; route = "document"; countPicture = null
+                    }
+                }
+            }
             "web" -> WebPageScreen(vm.busy, onBack = { route = "library" }) { title, slices ->
                 vm.perform(R.string.imported) {
                     val book = store.create(title.trim().take(100).ifEmpty { defaultTitle() }).id; folderStore.move(listOf(book), libraryFolder)
@@ -669,6 +710,7 @@ fun ScanApp(store: ScanStore) {
                     "book", "board", "slides" -> startScan(mode = tool); "stampscan" -> startScan(mode = "stamp"); "merge" -> merging = true
                     "idphoto" -> route = "idphoto"; "pdfsettings" -> pdfSettingsOpen = true
                     "txt2pdf" -> textImporter.launch(arrayOf("text/plain")); "web2pdf" -> route = "web"
+                    "radar" -> route = "radar"; "count" -> countPicker.launch("image/*")
                     "bizcard", "receipt" -> startScan(mode = tool); "longscan" -> startScan(mode = "long")
                     "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) },
                 onOpen = { id -> guarded(id) { bookId = id; route = "document" } }, tags = tagMap, locked = remember(lockChanges, folderChanges, books) { lock.lockedDocuments(books.map { it.book.id }) },
