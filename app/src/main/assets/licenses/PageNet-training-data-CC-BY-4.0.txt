@@ -1,0 +1,23 @@
+DocScan page network (pagenet-v1): training data attribution
+
+DocScan's page network is a small neural network trained by the DocScan project. It finds the page outline on a
+photo, on the phone. Its weights are DocScan's own; no other detector's models or outputs were used to train it.
+
+It was trained on two sources:
+
+1. Synthetic scenes drawn by DocScan's own generator (pages, covers and books on generated surfaces).
+
+2. "A New Image Dataset for Document Corner Localization"
+   Shima Dizaj, Mendeley Data, version 3 (2020).
+   https://doi.org/10.17632/x3nm4cxr83.3
+   Licence: Creative Commons Attribution 4.0 International (CC BY 4.0),
+   https://creativecommons.org/licenses/by/4.0/
+   The dataset's authors ask that the following paper be cited when it is used:
+   https://ieeexplore.ieee.org/abstract/document/9116896/
+
+Changes made to the dataset: the photos were reduced to 256 x 256 pixels, and their marked corners were drawn as a
+page region and a page outline at that size. The photos were split by a hash of their names: 60% were used for
+training (each one several times, with flips, turns and changes of brightness), and 40% were kept aside and used only
+to measure the result. No photo from the dataset is included in the app.
+
+The dataset's authors and Mendeley do not endorse DocScan or this use of the dataset.

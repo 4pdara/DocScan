@@ -58,12 +58,12 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 37
+        versionCode = 38
         versionName = when {
-            phoneRelease -> "1.3.5"
-            universalPreview -> "1.3.5-universal-preview"
-            camScannerNative -> "1.3.5-native-preview"
-            else -> "1.3.5-preview"
+            phoneRelease -> "1.3.6"
+            universalPreview -> "1.3.6-universal-preview"
+            camScannerNative -> "1.3.6-native-preview"
+            else -> "1.3.6-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk {
@@ -155,3 +155,16 @@ val prepareOcrAssets by tasks.registering {
 }
 android.sourceSets.getByName("main").assets.srcDir(ocrAssets)
 tasks.named("preBuild").configure { dependsOn(prepareOcrAssets) }
+
+// DocScan's own page network (tools/pagenet): trained in this project and kept in the assets; the build checks that
+// the file is the one measured (docs/RELEASE_1.3.6_HE.md).
+val checkPageNet by tasks.registering {
+    val model = file("src/main/assets/pagenet/pagenet-v1.onnx")
+    val expected = "68c625917d7c95af6aa8e0306570436a690644b70d6d0eb225d8916faa591951"
+    inputs.file(model); inputs.property("digest", expected)
+    doLast {
+        val actual = MessageDigest.getInstance("SHA-256").digest(model.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+        check(actual == expected) { "Page network digest mismatch: $actual" }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(checkPageNet) }

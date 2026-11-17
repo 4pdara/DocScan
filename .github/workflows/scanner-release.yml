@@ -1,8 +1,8 @@
-name: Build, verify and publish DocScan 1.3.5
+name: Build, verify and publish DocScan 1.3.6
 on:
   push:
     branches: [main]
-    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_1.3.5_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
+    paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_1.3.6_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +10,7 @@ concurrency:
   group: scanner-release-${{ github.ref }}
   cancel-in-progress: true
 env:
-  TAG: scanner-v1.3.5
+  TAG: scanner-v1.3.6
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -61,26 +61,26 @@ jobs:
       - name: Keep the universal build for the x86 emulators
         run: |
           mkdir -p release-apks/tests
-          cp app/build/outputs/apk/debug/app-debug.apk release-apks/tests/DocScan-1.3.5-universal.apk
-          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-1.3.5-tests.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-apks/tests/DocScan-1.3.6-universal.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk release-apks/tests/DocScan-1.3.6-tests.apk
       - name: Phone APK, ARM 32 and 64 bit libraries only
         run: ./gradlew -PphoneRelease=true -ParmOnly=true assembleDebug --stacktrace
       - name: Check the exact APKs before any device sees them
         run: |
           tools="$ANDROID_HOME/build-tools/35.0.0"
-          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-1.3.5.apk
-          apk=release-apks/DocScan-1.3.5.apk; universal=release-apks/tests/DocScan-1.3.5-universal.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-apks/DocScan-1.3.6.apk
+          apk=release-apks/DocScan-1.3.6.apk; universal=release-apks/tests/DocScan-1.3.6-universal.apk
           "$tools/apksigner" verify --verbose --print-certs "$apk" | tee release-apks/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' release-apks/signature.txt
           grep -q 'Signer #1 certificate DN: CN=DocScan Scanner, O=DocScan' release-apks/signature.txt
           # The installed 0.2.1 was signed with this certificate; any other key could not update it.
           grep -q 'Signer #1 certificate SHA-256 digest: 337893de08efbf6819d34a714cd81b0aed3ab07c124b01d8402f9a8cbcebe4b5' release-apks/signature.txt
           "$tools/apksigner" verify --print-certs "$universal" | grep -q 'SHA-256 digest: 337893de08efbf6819d34a714cd81b0aed3ab07c124b01d8402f9a8cbcebe4b5'
-          "$tools/apksigner" verify --print-certs release-apks/tests/DocScan-1.3.5-tests.apk | grep -q 'CN=DocScan Scanner, O=DocScan'
+          "$tools/apksigner" verify --print-certs release-apks/tests/DocScan-1.3.6-tests.apk | grep -q 'CN=DocScan Scanner, O=DocScan'
           "$tools/aapt" dump badging "$apk" | tee release-apks/badging.txt
           "$tools/aapt" dump badging "$universal" > release-apks/tests/badging-universal.txt
           for f in release-apks/badging.txt release-apks/tests/badging-universal.txt; do
-            grep -q "package: name='com.docscan.rebuild.scanner' versionCode='37' versionName='1.3.5'" "$f"
+            grep -q "package: name='com.docscan.rebuild.scanner' versionCode='38' versionName='1.3.6'" "$f"
           done
           phone_abis=$(grep '^native-code:' release-apks/badging.txt | grep -o "'[^']*'" | tr -d "'" | sort | tr '\n' ' ')
           [ "$phone_abis" = "arm64-v8a armeabi-v7a " ] || { echo "Phone APK carries $phone_abis"; exit 1; }
@@ -99,6 +99,10 @@ jobs:
                   raise SystemExit('Research engine libraries must not ship: ' + ', '.join(found))
               if any(z.getinfo(n).compress_type == zipfile.ZIP_STORED for n in libs):
                   raise SystemExit('Native libraries must be compressed for install-time extraction')
+              # DocScan's own page network (1.3.6), exactly the file that was measured.
+              import hashlib
+              if hashlib.sha256(z.read('assets/pagenet/pagenet-v1.onnx')).hexdigest() != '68c625917d7c95af6aa8e0306570436a690644b70d6d0eb225d8916faa591951':
+                  raise SystemExit('Unexpected page network in the APK')
           # Everything but the Intel libraries and the signature is byte for byte what the emulators test.
           def content(z, keep):
               return {i.filename: i.CRC for i in z.infolist() if not i.filename.startswith('META-INF/') and keep(i.filename)}
@@ -109,10 +113,10 @@ jobs:
           print(len(a), 'entries identical to the tested build;', len([n for n in a if n.startswith('lib/')]), 'ARM libraries')
           PY
           ls -l "$apk" "$universal"
-          ( cd release-apks && sha256sum DocScan-1.3.5.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
+          ( cd release-apks && sha256sum DocScan-1.3.6.apk > SHA256SUMS.txt && cat SHA256SUMS.txt )
       - uses: actions/upload-artifact@v4
         with:
-          name: DocScan-1.3.5-exact-apks
+          name: DocScan-1.3.6-exact-apks
           path: release-apks/
           retention-days: 30
       - uses: actions/upload-artifact@v4
@@ -196,7 +200,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@v4
         with:
-          name: DocScan-1.3.5-exact-apks
+          name: DocScan-1.3.6-exact-apks
           path: release-apks
       - name: Enable KVM
         run: |
@@ -234,7 +238,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: DocScan-1.3.5-exact-apks
+          name: DocScan-1.3.6-exact-apks
           path: release-apks
       - name: Publish only the exact APK that passed every check
         env:
@@ -246,20 +250,20 @@ jobs:
           cert=$(grep -m1 'Signer #1 certificate SHA-256 digest' signature.txt | awk '{print $NF}')
           python3 - "$cert" <<'PY'
           import hashlib, json, os, sys
-          apk = 'DocScan-1.3.5.apk'
-          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=37, version_name='1.3.5', minimum_android_api=26,
+          apk = 'DocScan-1.3.6.apk'
+          json.dump(dict(application_id='com.docscan.rebuild.scanner', version_code=38, version_name='1.3.6', minimum_android_api=26,
                          architectures=['arm64-v8a', 'armeabi-v7a'], research_engine_included=False,
                          certificate_sha256=sys.argv[1], apk_size=os.path.getsize(apk),
                          apk_sha256=hashlib.sha256(open(apk, 'rb').read()).hexdigest(),
                          source_commit=os.environ['GITHUB_SHA'], workflow_run=os.environ['GITHUB_RUN_ID']),
                       open('BUILD.json', 'w'), indent=2)
           PY
-          cp ../docs/RELEASE_1.3.5_HE.md notes.md
+          cp ../docs/RELEASE_1.3.6_HE.md notes.md
           printf '\n\n[ריצת הבנייה, הבדיקות והפרסום](%s/%s/actions/runs/%s)\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> notes.md
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to replace it"; exit 1
           fi
-          gh release create "$TAG" DocScan-1.3.5.apk SHA256SUMS.txt BUILD.json \
+          gh release create "$TAG" DocScan-1.3.6.apk SHA256SUMS.txt BUILD.json \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title 'DocScan 1.3.5 — Doc Radar וספירה' --notes-file notes.md
+            --title 'DocScan 1.3.6 — רשת זיהוי דף משלנו' --notes-file notes.md
           gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size) \(.digest)"'
