@@ -89,6 +89,12 @@ class RebuildFlowTest {
     }
 
     @Test fun cameraCapturesDurablePageAndDoneOpensReviewEditor() {
+        // 1.3.9: with "זמני זיהוי במצלמה" on, the editor shows how long each step after the shutter took.
+        val settings = ScanSettings(compose.activity); val timings = settings.showTimings; settings.showTimings = true
+        try { capturesDurablePageAndOpensReviewEditor() } finally { settings.showTimings = timings }
+    }
+
+    private fun capturesDurablePageAndOpensReviewEditor() {
         val store = (compose.activity.application as ScanApplication).store
         val existing = runBlocking { store.dao.library().first().map { it.book.id }.toSet() }
         compose.onNodeWithTag("new-scan").performClick()
@@ -110,6 +116,12 @@ class RebuildFlowTest {
         compose.waitUntil(10000) { compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("page-preview").assertIsDisplayed()
         compose.onNodeWithTag("review-counter").assertIsDisplayed()
+        // Several pages in a row: the steps end at saving the page (the review opens only when the user is done).
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("capture-timing").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf(R.string.timing_focus, R.string.timing_photo, R.string.timing_store, R.string.timing_detect, R.string.timing_edges, R.string.timing_flatten, R.string.timing_save),
+            com.docscan.rebuild.ui.CaptureTimes.steps.map { it.label })
+        assertEquals(page.id, com.docscan.rebuild.ui.CaptureTimes.pageId)
+        assertTrue(com.docscan.rebuild.ui.CaptureTimes.steps.all { it.ms >= 0 })
         screenshot("after-capture-review")
         compose.onNodeWithTag("save-edit").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }

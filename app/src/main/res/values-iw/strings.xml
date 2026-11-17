@@ -520,6 +520,15 @@
     <string name="radar_settings">פתיחת ההגדרות של האפליקציה</string>
     <string name="timing_network">רשת %1$d ms</string>
     <string name="timing_detector">גלאי %1$d ms</string>
+    <string name="timing_focus">מיקוד %1$d</string>
+    <string name="timing_photo">צילום %1$d</string>
+    <string name="timing_store">העתקה %1$d</string>
+    <string name="timing_detect">זיהוי %1$d</string>
+    <string name="timing_edges">קצוות %1$d</string>
+    <string name="timing_flatten">יישור %1$d</string>
+    <string name="timing_save">שמירה %1$d</string>
+    <string name="timing_editor">עורך %1$d</string>
+    <string name="timing_total">סה״כ %1$d ms</string>
     <string name="show_timings">זמני זיהוי במצלמה</string>
     <string name="show_timings_hint">מציג במצלמה כמה זמן לוקח לרשת הזיהוי ולגלאי למצוא את הדף בכל פריים. לבדיקת מהירות בטלפון הזה.</string>
 </resources>

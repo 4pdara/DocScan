@@ -71,12 +71,16 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             finally { busy = false }
         }
     }
-    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true, seen: Frame? = null): Sheet {
+    /** A new photo becomes a page; [timed] records its steps in [CaptureTimes] (a photo from the camera). */
+    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true, seen: Frame? = null, timed: Boolean = false): Sheet {
+        fun step(label: Int) { if (timed) CaptureTimes.step(label) }
         try {
             val page = store.captured(bookId, file)
+            step(R.string.timing_store)
             // The durable master already exists before proposing the crop.
             try {
                 val detected = if (detectBounds) withContext(Dispatchers.Default) { ImagePipeline.detect(store.source(page)) } else null
+                step(R.string.timing_detect)
                 // The page keeps the outline the user saw in the camera when the shot was taken. Detection on the full
                 // photo only refines it when both agree; otherwise it could crop a different shape than was shown.
                 val frame = Frame.choose(detected, seen?.takeIf { detectBounds })
@@ -84,16 +88,20 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
                 // a flat page or one without enough text keeps no correction. The editor can turn it off.
                 // A book page whose top or bottom edge bows is cropped along its curved edges.
                 val curved = if (frame == null) null else withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(store.source(page), frame) }.getOrNull() }
+                step(R.string.timing_edges)
                 val cropped = if (frame != null) page.edit().copy(frame = frame, edges = curved?.values.orEmpty()) else page.edit()
                 val flatten = if (frame == null) null else withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), cropped) }.getOrNull() }
+                step(R.string.timing_flatten)
                 // Marks chosen in Settings (off by default) go on new pages only, and so does the filter for new scans
                 // (Magic Color unless changed); the photo itself is kept as taken.
                 val recipe = MarkSettings(store.context).applyTo(if (flatten != null) cropped.copy(flatten = flatten.toList()) else cropped)
                     .copy(treatment = ScanSettings(store.context).treatment)
                 if (recipe != page.edit()) store.save(page, recipe)
+                step(R.string.timing_save)
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
             catch (e: Exception) { notices.send(R.string.processing_error) }
+            if (timed) CaptureTimes.saved(page.id)
             return store.dao.page(page.id) ?: page
         } finally { file.delete() }
     }
@@ -106,19 +114,19 @@ internal object PreviewCache {
 }
 
 @Composable
-fun PagePicture(store: ScanStore, page: Sheet, modifier: Modifier = Modifier, recipe: EditRecipe = page.edit(), edge: Int = 1800, description: String? = null, naturalHeight: Boolean = false) {
+fun PagePicture(store: ScanStore, page: Sheet, modifier: Modifier = Modifier, recipe: EditRecipe = page.edit(), edge: Int = 1800, description: String? = null, naturalHeight: Boolean = false, onShown: (() -> Unit)? = null) {
     val key = "${page.id}:$recipe:$edge"
     var failure by remember(key) { mutableIntStateOf(0) }
     var shownPage by remember { mutableStateOf<String?>(null) }
     val bitmap by produceState<Bitmap?>(null, key) {
         // While a new edit or a sharper version is drawn, the same page keeps showing; another page starts empty.
         val cached = PreviewCache.memory.get(key)
-        if (cached != null) { value = cached; shownPage = page.id; return@produceState }
+        if (cached != null) { value = cached; shownPage = page.id; onShown?.invoke(); return@produceState }
         if (shownPage != page.id) value = null
         run {
             try {
                 value = PreviewCache.slots.withPermit { withContext(Dispatchers.IO) { ImagePipeline.render(store.source(page), recipe, edge).also { PreviewCache.memory.put(key, it) } } }
-                shownPage = page.id
+                shownPage = page.id; onShown?.invoke()
             } catch (e: CancellationException) { throw e }
             catch (e: OutOfMemoryError) { failure = R.string.error_memory }
             catch (e: Exception) { failure = R.string.processing_error }
@@ -610,13 +618,13 @@ fun ScanApp(store: ScanStore) {
                         if (replacing != null) {
                             try {
                                 val old = requireNotNull(store.dao.page(replacing))
-                                val fresh = store.replace(old, vm.receive(id, file, detectBounds, seen))
+                                val fresh = store.replace(old, vm.receive(id, file, detectBounds, seen, timed = true))
                                 retakeId = null; ok = true; openEditor(fresh)
                             } finally { complete(ok) }
                             return@perform
                         }
                         try {
-                            val captured = applyMode(vm.receive(id, file, detectBounds, seen), scanMode)
+                            val captured = applyMode(vm.receive(id, file, detectBounds, seen, timed = true), scanMode)
                             if (scanMode == "bizcard" || scanMode == "receipt") reading = scanMode
                             val sides = if (idCard) store.dao.snapshot(id) else emptyList()
                             if (idCard && sides.size >= 2) {
@@ -624,6 +632,8 @@ fun ScanApp(store: ScanStore) {
                                 if (marks.active) store.save(card, marks.applyTo(card.edit()))
                                 idCard = false; draft = null; route = "document"
                             } else if (idCard) { /* the back is next */ } else if (!batch && scanMode != "long") { pageId = captured.id; scanMode = null; if (ocrMode) { ocrMode = false; ocrText = ""; ocrBack = "editor"; recognizeNow = captured.id; route = "ocr" } else { editorStart = "filters"; route = "editor" } }
+                            // The editor's first picture ends the timing only when the editor opens right after the photo.
+                            if (route != "editor") CaptureTimes.stop()
                             ok = true
                         } finally { complete(ok) }
                         // Text extraction from the home screen: the cropped page is recognized as soon as it is captured.
