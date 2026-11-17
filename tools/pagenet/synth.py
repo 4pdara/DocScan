@@ -13,6 +13,12 @@ HEB = 'אבגדהוזחטיכלמנסעפצקרשתםןץףך'
 LAT = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 DIG = '0123456789'
 TEXTURED = int(os.environ.get('TEXTURED', '0'))
+# Version 2 (pagenet-v2): photographed surfaces from a folder of CC0 textures (Poly Haven), an open book marked as the
+# one page the app outlines (as CamScanner does), and documents lying on a larger sheet.
+PHOTOS = os.environ.get('PHOTOS')
+PHOTO_FILES = sorted(os.path.join(PHOTOS, f) for f in os.listdir(PHOTOS) if f.endswith('.jpg')) if PHOTOS else []
+BOOKONE = int(os.environ.get('BOOKONE', '0'))
+STACKED = float(os.environ.get('STACKED', '0'))
 
 def rnd(a, b): return random.uniform(a, b)
 
@@ -54,7 +60,23 @@ def muted():
         grey = rnd(40, 230); c = c * rnd(.15, .5) + grey * (1 - rnd(.15, .5))
     return np.clip(c, 0, 255)
 
+def photo_surface(h, w):
+    """A photographed surface: a random part of a CC0 texture, turned, scaled and recoloured a little."""
+    tex = cv2.imread(random.choice(PHOTO_FILES), cv2.IMREAD_COLOR)
+    th, tw = tex.shape[:2]
+    f = rnd(.25, 1.0); ch, cw = int(th * f), int(tw * f)
+    y0, x0 = random.randint(0, th - ch), random.randint(0, tw - cw)
+    tex = tex[y0:y0 + ch, x0:x0 + cw]
+    k = random.randint(0, 3)
+    if k: tex = np.rot90(tex, k)
+    if random.random() < .5: tex = tex[:, ::-1]
+    img = cv2.resize(np.ascontiguousarray(tex), (w, h), interpolation=cv2.INTER_AREA).astype(np.float32)
+    img = img * rnd(.6, 1.25) + rnd(-25, 25)
+    img *= np.array([rnd(.85, 1.15), rnd(.9, 1.1), rnd(.85, 1.15)])[None, None, :]
+    return np.clip(img, 0, 255).astype(np.uint8)
+
 def surface(h, w):
+    if PHOTO_FILES and random.random() < .6: return photo_surface(h, w)
     _rc = random_colour
     kind = random.choice(['wood', 'wood', 'fabric', 'plain', 'plain', 'stone', 'gradient', 'cluttered', 'light', 'dark'] + ['carpet', 'carpet', 'carpet', 'linen', 'linen', 'marble', 'paperlike', 'paperlike'] * TEXTURED)
     random_colour_surface = muted
@@ -246,7 +268,36 @@ def compose(frame_w=384, frame_h=512):
         page, alpha = curl(page, rnd(.0, .05) if kind == 'book' else rnd(0, .02))
     else:
         alpha = np.full(page.shape[:2], 255, np.uint8)
-    M, pts = place(page, alpha, frame_w, frame_h)
+    label_alpha = alpha
+    if kind == 'book' and BOOKONE:
+        # The page the app outlines: one whole page, placed in view; the facing page lies beside it, often running
+        # off the picture. Only that page is the page region.
+        on_right = random.random() < .5
+        one = page[:, half:] if on_right else page[:, :half]
+        M1, pts1 = place(one, None, frame_w, frame_h)
+        shift = np.float64([[1, 0, -half if on_right else 0], [0, 1, 0], [0, 0, 1]])
+        M = M1 @ shift
+        spread = np.float32([[0, 0], [pw, 0], [pw, ph], [0, ph]]).reshape(-1, 1, 2)
+        pts = cv2.perspectiveTransform(spread, M).reshape(4, 2)
+        label_alpha = alpha.copy()
+        if on_right: label_alpha[:, :half] = 0
+        else: label_alpha[:, half:] = 0
+    else:
+        M, pts = place(page, alpha, frame_w, frame_h)
+    # A document lying on a larger sheet (a card on a letter, a receipt on a printout): the sheet is not the page.
+    if kind in ('card', 'receipt', 'text') and random.random() < STACKED:
+        c = pts.mean(0); grow = rnd(1.25, 2.2)
+        sheet = (pts - c) * grow + c + np.random.randn(1, 2).astype(np.float32) * frame_w * .05
+        ang = math.radians(rnd(-20, 20)); rot = np.float32([[math.cos(ang), -math.sin(ang)], [math.sin(ang), math.cos(ang)]])
+        sheet = (sheet - c) @ rot.T + c
+        tone = rnd(200, 245); col = (tone + rnd(-8, 8), tone + rnd(-8, 8), tone + rnd(-8, 8))
+        cv2.fillPoly(scene, [sheet.astype(np.int32)], col)
+        if random.random() < .6:
+            # Print on the sheet, seen around the document.
+            sh = (sheet - sheet.min(0)); bw, bh = int(sh[:, 0].max()) + 1, int(sh[:, 1].max()) + 1
+            for k in range(random.randint(5, 25)):
+                y = sheet[:, 1].min() + rnd(.05, .95) * bh; x0 = sheet[:, 0].min() + rnd(.05, .4) * bw
+                cv2.line(scene, (int(x0), int(y)), (int(x0 + rnd(.2, .5) * bw), int(y)), (60, 60, 60), random.randint(1, 3))
     # A book: the cover and page stack around the pages, which are not part of the page region.
     if kind == 'book' and random.random() < .8:
         grow = rnd(1.03, 1.12)
@@ -257,6 +308,7 @@ def compose(frame_w=384, frame_h=512):
         cv2.fillPoly(scene, [stack.astype(np.int32)], (225, 222, 210))
     warped = cv2.warpPerspective(page, M, (frame_w, frame_h), flags=cv2.INTER_AREA if random.random() < .5 else cv2.INTER_LINEAR)
     mask = cv2.warpPerspective(alpha, M, (frame_w, frame_h), flags=cv2.INTER_LINEAR)
+    label = cv2.warpPerspective(label_alpha, M, (frame_w, frame_h), flags=cv2.INTER_LINEAR) if label_alpha is not alpha else mask
     m = (mask.astype(np.float32) / 255)[..., None]
     img = scene * (1 - m) + warped.astype(np.float32) * m
     # A soft shadow of the page on the table.
@@ -292,7 +344,7 @@ def compose(frame_w=384, frame_h=512):
     img = np.clip(img.astype(np.float32) + np.random.randn(h, w, 1) * rnd(0, 6), 0, 255).astype(np.uint8)
     if random.random() < .7:
         ok, enc = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, random.randint(40, 95)]); img = cv2.imdecode(enc, 1)
-    page_mask = (mask > 127).astype(np.uint8) * 255
+    page_mask = (label > 127).astype(np.uint8) * 255
     outline = np.zeros((h, w), np.uint8)
     cnts, _ = cv2.findContours(page_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cv2.drawContours(outline, cnts, -1, 255, 3)

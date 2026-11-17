@@ -112,7 +112,12 @@ object PageNet {
     fun refine(detected: Frame?, rgba: Mat): Frame? {
         if (!available) return detected
         val look = look(rgba) ?: return detected
-        val mine = outline(look, rgba.cols(), rgba.rows()) ?: return detected
+        return choose(detected, look, outline(look, rgba.cols(), rgba.rows()))
+    }
+
+    /** The rule of [refine], given what the network saw ([look]) and the outline it found ([mine]). */
+    fun choose(detected: Frame?, look: Look, mine: Frame?): Frame? {
+        if (mine == null) return detected
         if (detected == null || detected == Frame.FULL) return mine
         if (overlap(detected, mine) >= AGREE) return detected
         // The network takes an open book's two pages as one; where its outline runs off the picture and the detector's

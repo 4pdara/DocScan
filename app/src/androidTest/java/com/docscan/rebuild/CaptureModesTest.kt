@@ -186,4 +186,46 @@ class CaptureModesTest {
             assertTrue("network time $ms ms", ms < 2000)
         } finally { rgba.release(); gray.release(); picture.recycle() }
     }
+
+    @Test fun cameraOutlineFollowsTheNetworkAtOnceAndTakesTheDetectorsWhenStill() {
+        // 1.3.7: in the camera the page network looks at every frame and the detector runs in the background.
+        ImagePipeline.ensureAvailable()
+        assertTrue(com.docscan.rebuild.imaging.PageNet.available)
+        val w = 900; val h = 1200
+        fun scene(dx: Float): Pair<Bitmap, com.docscan.rebuild.model.Frame> {
+            val corners = listOf(.14f + dx to .14f, .62f + dx to .17f, .6f + dx to .78f, .1f + dx to .75f)
+            val picture = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            Canvas(picture).apply {
+                drawColor(Color.rgb(70, 74, 82))
+                drawPath(Path().apply { corners.forEachIndexed { i, (x, y) -> if (i == 0) moveTo(x * w, y * h) else lineTo(x * w, y * h) }; close() }, Paint().apply { color = Color.rgb(238, 236, 228) })
+                val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(35, 35, 40); textSize = 22f }
+                for (i in 0 until 16) drawText("Moving page line $i", (corners[0].first + .05f) * w, 240f + i * 34, ink)
+            }
+            return picture to com.docscan.rebuild.model.Frame(corners.map { com.docscan.rebuild.model.Vertex(it.first, it.second) })
+        }
+        // The detector's runs wait in a queue the test empties itself, as a slow phone would leave them.
+        val queue = ArrayDeque<Runnable>()
+        var time = 0L
+        val live = com.docscan.rebuild.imaging.LiveDetection({ queue.addLast(it) }, clock = { time })
+        fun look(picture: Bitmap): com.docscan.rebuild.model.Frame? {
+            val rgba = org.opencv.core.Mat(); val gray = org.opencv.core.Mat()
+            try {
+                org.opencv.android.Utils.bitmapToMat(picture, rgba); org.opencv.imgproc.Imgproc.cvtColor(rgba, gray, org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY)
+                return live.outline(gray, rgba)
+            } finally { rgba.release(); gray.release() }
+        }
+        val (first, truth) = scene(0f); val (moved, movedTruth) = scene(.25f)
+        try {
+            // The first frame: the network's outline at once, before the detector has run.
+            val quick = requireNotNull(look(first)); assertEquals(1, queue.size)
+            assertTrue("network outline $quick", quick.motion(truth) < .05f)
+            // The detector finishes; while the page stays, the outline is the detector's (they agree).
+            queue.removeFirst().run(); time += 150
+            val still = requireNotNull(look(first)); assertTrue("still $still", still.motion(truth) < .04f)
+            assertNotNull(live.timing.networkMs); assertNotNull(live.timing.detectorMs)
+            // The page moves a quarter of the view; the detector has not looked again, yet the outline follows it.
+            time += 150
+            val following = requireNotNull(look(moved)); assertTrue("followed $following", following.motion(movedTruth) < .05f)
+        } finally { first.recycle(); moved.recycle(); while (queue.isNotEmpty()) queue.removeFirst().run() }
+    }
 }

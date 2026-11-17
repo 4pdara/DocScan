@@ -518,6 +518,10 @@
     <plurals name="radar_import"><item quantity="one">Import %1$d document</item><item quantity="other">Import %1$d documents</item></plurals>
     <plurals name="radar_found"><item quantity="one">%1$d document found in the latest %2$d photos</item><item quantity="other">%1$d documents found in the latest %2$d photos</item></plurals>
     <string name="radar_settings">Open the app settings</string>
+    <string name="timing_network">Network %1$d ms</string>
+    <string name="timing_detector">Detector %1$d ms</string>
+    <string name="show_timings">Detection times in the camera</string>
+    <string name="show_timings_hint">Shows in the camera how long the page network and the detector take to find the page on each frame. For checking speed on this phone.</string>
 </resources>
 
 
