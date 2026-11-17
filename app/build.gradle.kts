@@ -58,12 +58,12 @@ android {
         }
         minSdk = 26
         targetSdk = 36
-        versionCode = 37
+        versionCode = 38
         versionName = when {
-            phoneRelease -> "1.3.5"
-            universalPreview -> "1.3.5-universal-preview"
-            camScannerNative -> "1.3.5-native-preview"
-            else -> "1.3.5-preview"
+            phoneRelease -> "1.3.6"
+            universalPreview -> "1.3.6-universal-preview"
+            camScannerNative -> "1.3.6-native-preview"
+            else -> "1.3.6-preview"
         }
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk {
@@ -160,7 +160,7 @@ tasks.named("preBuild").configure { dependsOn(prepareOcrAssets) }
 val pageNetAssets = layout.buildDirectory.dir("generated/pagenet-assets")
 val preparePageNet by tasks.registering {
     val url = "https://github.com/4pdara/DocScan/releases/download/pagenet-v1/pagenet-v1.onnx"
-    val expected = "PAGENET_SHA256"
+    val expected = "68c625917d7c95af6aa8e0306570436a690644b70d6d0eb225d8916faa591951"
     inputs.property("url", url); inputs.property("digest", expected)
     outputs.dir(pageNetAssets)
     doLast {
