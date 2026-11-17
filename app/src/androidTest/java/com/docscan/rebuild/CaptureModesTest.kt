@@ -151,4 +151,39 @@ class CaptureModesTest {
             assertNull("a plain photo is not", com.docscan.rebuild.ui.look(context, plain))
         } finally { context.contentResolver.delete(document, null, null); context.contentResolver.delete(plain, null, null) }
     }
+
+    @Test fun ownPageNetworkIsInstalledAndFindsAPageWithTheDetector() {
+        // 1.3.6: DocScan's page network ships in the app (checked by its digest at build time) and runs on the phone.
+        ImagePipeline.ensureAvailable()
+        assertTrue("page network installed", com.docscan.rebuild.imaging.PageNet.available)
+        val w = 900; val h = 1200
+        val corners = listOf(.18f to .14f, .84f to .19f, .8f to .88f, .13f to .84f)
+        val picture = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        Canvas(picture).apply {
+            drawColor(Color.rgb(122, 86, 58))
+            for (y in 0 until h step 14) drawRect(0f, y.toFloat(), w.toFloat(), y + 5f, Paint().apply { color = Color.rgb(110, 76, 50) })
+            drawPath(Path().apply { corners.forEachIndexed { i, (x, y) -> if (i == 0) moveTo(x * w, y * h) else lineTo(x * w, y * h) }; close() }, Paint().apply { color = Color.rgb(240, 238, 230) })
+            val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(35, 35, 40); textSize = 26f }
+            save(); rotate(4f, w / 2f, h / 2f)
+            for (i in 0 until 20) drawText("Line $i of the page network test, printed text", 210f, 250f + i * 38, ink)
+            restore()
+        }
+        val rgba = org.opencv.core.Mat(); val gray = org.opencv.core.Mat()
+        try {
+            org.opencv.android.Utils.bitmapToMat(picture, rgba); org.opencv.imgproc.Imgproc.cvtColor(rgba, gray, org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY)
+            val truth = com.docscan.rebuild.model.Frame(corners.map { com.docscan.rebuild.model.Vertex(it.first, it.second) })
+            val started = System.nanoTime()
+            val look = requireNotNull(com.docscan.rebuild.imaging.PageNet.look(rgba))
+            val ms = (System.nanoTime() - started) / 1e6
+            android.util.Log.i("DocScanRebuild", "Page network: %.0f ms".format(ms))
+            val seen = requireNotNull(com.docscan.rebuild.imaging.PageNet.outline(look, w, h)) { "the network found no page" }
+            assertTrue("network outline $seen", seen.motion(truth) < .05f)
+            // The page's sides lie on the outline the network sees.
+            assertTrue(com.docscan.rebuild.imaging.PageNet.onOutline(truth, look) > .3)
+            // Detection with the network: the same page, the detector's outline kept where both agree.
+            val found = requireNotNull(ImagePipeline.detectGray(gray, rgba))
+            assertTrue("detected $found", found.motion(truth) < .04f)
+            assertTrue("network time $ms ms", ms < 2000)
+        } finally { rgba.release(); gray.release(); picture.recycle() }
+    }
 }

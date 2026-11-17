@@ -180,8 +180,16 @@ object ImagePipeline {
         } finally { rgba.release(); gray.release() }
     }
 
+    /**
+     * The page outline: the detector's, checked against DocScan's own network ([PageNet]) when the picture's colours are
+     * given and the network is installed. A failure in the network leaves the detector's outline.
+     */
     fun detectGray(input: Mat, rgba: Mat? = null): Frame? {
         ensureAvailable()
-        return BoundaryDetector.detect(input, rgba)
+        val detected = BoundaryDetector.detect(input, rgba)
+        if (rgba == null || !PageNet.available) return detected
+        return try { PageNet.refine(detected, rgba) }
+        catch (e: Exception) { android.util.Log.w("DocScanRebuild", "Page network unavailable", e); detected }
+        catch (e: LinkageError) { android.util.Log.w("DocScanRebuild", "Page network unavailable", e); detected }
     }
 }

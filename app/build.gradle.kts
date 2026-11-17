@@ -155,3 +155,25 @@ val prepareOcrAssets by tasks.registering {
 }
 android.sourceSets.getByName("main").assets.srcDir(ocrAssets)
 tasks.named("preBuild").configure { dependsOn(prepareOcrAssets) }
+
+// DocScan's own page network (tools/pagenet), published as a release asset, verified and generated outside Git.
+val pageNetAssets = layout.buildDirectory.dir("generated/pagenet-assets")
+val preparePageNet by tasks.registering {
+    val url = "https://github.com/4pdara/DocScan/releases/download/pagenet-v1/pagenet-v1.onnx"
+    val expected = "PAGENET_SHA256"
+    inputs.property("url", url); inputs.property("digest", expected)
+    outputs.dir(pageNetAssets)
+    doLast {
+        val file = pageNetAssets.get().dir("pagenet").asFile.apply { mkdirs() }.resolve("pagenet-v1.onnx")
+        fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+        if (!file.isFile || digest(file.readBytes()) != expected) {
+            val connection = URI(url).toURL().openConnection()
+            connection.connectTimeout = 30000; connection.readTimeout = 60000
+            val bytes = connection.getInputStream().use { it.readBytes() }
+            check(digest(bytes) == expected) { "Page network digest mismatch" }
+            file.writeBytes(bytes)
+        }
+    }
+}
+android.sourceSets.getByName("main").assets.srcDir(pageNetAssets)
+tasks.named("preBuild").configure { dependsOn(preparePageNet) }
