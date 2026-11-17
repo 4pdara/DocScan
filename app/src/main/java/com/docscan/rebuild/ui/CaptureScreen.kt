@@ -81,15 +81,16 @@ fun CaptureScreen(store: ScanStore, pages: List<Sheet>, busy: Boolean, snack: Sn
     fun shoot() {
         val imageCapture = capture ?: return
         if (busy || !capturing.compareAndSet(false, true)) return
-        taking = true; gate.markCaptured(observation.signature)
+        taking = true; gate.markCaptured(observation.signature); CaptureTimes.start()
         val cropCaptured = detectBounds; val batchCaptured = batch; val seen = observation.frame
         val file = File(context.cacheDir, "capture-${UUID.randomUUID()}.jpg")
-        fun takeNow() = imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
+        fun takeNow() { CaptureTimes.step(R.string.timing_focus); imageCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), main, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                CaptureTimes.step(R.string.timing_photo)
                 latestCaptured(file, cropCaptured, batchCaptured, seen) { success -> taking = false; capturing.set(false); if (!success) gate.failed() }
             }
-            override fun onError(exception: ImageCaptureException) { file.delete(); taking = false; capturing.set(false); gate.failed(); error = true }
-        })
+            override fun onError(exception: ImageCaptureException) { CaptureTimes.stop(); file.delete(); taking = false; capturing.set(false); gate.failed(); error = true }
+        }) }
         // Focus and exposure on the page first (the middle of the view, or the detected page's centre), so the text
         // is sharp; the photo is taken when focus settles, or after a second at most.
         val control = camera?.cameraControl

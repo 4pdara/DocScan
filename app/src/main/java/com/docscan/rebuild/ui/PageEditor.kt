@@ -111,6 +111,9 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     var zoom by remember(page.id) { mutableFloatStateOf(1f) }; var pan by remember(page.id) { mutableStateOf(Offset.Zero) }
     val currentEdit by rememberUpdatedState(edit)
     val scope = rememberCoroutineScope(); val context = LocalContext.current
+    // The steps from the shutter to this editor for a page just photographed, when "זמני זיהוי במצלמה" is on (1.3.9).
+    val showTimings = remember { ScanSettings(context).showTimings }
+    var captureSteps by remember(page.id) { mutableStateOf(if (CaptureTimes.pageId == page.id) CaptureTimes.steps else emptyList()) }
     var flattening by remember(page.id) { mutableStateOf(false) }
     val numberWords = stringResource(R.string.page_number_words, pageIndex + 1, pageCount.coerceAtLeast(1))
     BackHandler(!busy) { if (tool != null && startTool == null) tool = null else if (saveOnBack) onSave(edit) else onBack() }
@@ -367,7 +370,13 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                         }
                     }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, if (original) EditRecipe() else edit,
                         // Zoomed in, the page is drawn from the full-resolution photo so small print stays sharp.
-                        edge = if (zoom > 1.25f) 4096 else 1800)
+                        edge = if (zoom > 1.25f) 4096 else 1800,
+                        onShown = { CaptureTimes.shown(page.id); if (CaptureTimes.pageId == page.id) captureSteps = CaptureTimes.steps })
+                }
+                if (showTimings && captureSteps.isNotEmpty()) {
+                    val parts = captureSteps.map { stringResource(it.label, it.ms) } + stringResource(R.string.timing_total, captureSteps.sumOf { it.ms })
+                    Text(parts.joinToString(" · "), Modifier.align(Alignment.TopStart).padding(8.dp).background(Color.Black.copy(alpha = .6f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp).testTag("capture-timing"), color = Color.White, style = MaterialTheme.typography.labelSmall)
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
