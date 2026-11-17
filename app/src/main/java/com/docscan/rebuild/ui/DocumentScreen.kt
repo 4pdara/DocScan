@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +45,7 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
     onLongImage: () -> Unit = {}, onWord: () -> Unit = {}, startTool: String? = null, onToolStarted: () -> Unit = {},
     onOpen: (Sheet) -> Unit = onEdit, onDeletePages: (Set<String>) -> Unit = {}, onPageTool: (String) -> Unit = {}, onEraseColor: () -> Unit = {}, onEmail: () -> Unit = {},
     tags: List<String> = emptyList(), allTags: List<String> = emptyList(), onTags: (List<String>) -> Unit = {}, locked: Boolean = false, onLock: (Boolean) -> Unit = {},
-    onCollage: (List<String>, Int, Int) -> Unit = { _, _, _ -> }) {
+    onCollage: (List<String>, Int, Int) -> Unit = { _, _, _ -> }, suggestName: (suspend () -> String?)? = null) {
     var reorder by rememberSaveable { mutableStateOf(false) }
     var pdfChoice by rememberSaveable { mutableStateOf(false) }
     var protecting by remember { mutableStateOf(false) }
@@ -119,8 +120,21 @@ fun DocumentScreen(store: ScanStore, title: String, pages: List<Sheet>, onBack: 
     var actions by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var newTitle by remember(title) { mutableStateOf(title) }
+    var suggesting by remember { mutableStateOf(false) }
+    var noSuggestion by remember { mutableStateOf(false) }
+    val nameScope = rememberCoroutineScope()
     if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) },
-        text = { OutlinedTextField(newTitle, { newTitle = it }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true) },
+        text = { Column {
+            OutlinedTextField(newTitle, { newTitle = it }, label = { Text(stringResource(R.string.document_name)) }, singleLine = true, modifier = Modifier.testTag("document-name"))
+            // A name from the first page's text: the line printed largest near its top.
+            if (suggestName != null && pages.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton({ suggesting = true; noSuggestion = false
+                    nameScope.launch { val name = runCatching { suggestName() }.getOrNull(); suggesting = false; if (name != null) newTitle = name else noSuggestion = true }
+                }, enabled = !suggesting, modifier = Modifier.testTag("suggest-name")) { Icon(Icons.Outlined.AutoAwesome, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.name_from_text)) }
+                if (suggesting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+            if (noSuggestion) Text(stringResource(R.string.name_from_text_none), style = MaterialTheme.typography.bodySmall)
+        } },
         confirmButton = { TextButton(onClick = { if (newTitle.isNotBlank()) { onRename(newTitle); rename = false } }) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
     if (actions) ModalBottomSheet(onDismissRequest = { actions = false }, containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.testTag("document-more-sheet")) {

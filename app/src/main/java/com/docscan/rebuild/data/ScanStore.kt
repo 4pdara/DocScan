@@ -232,6 +232,14 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
         }
     }.getOrDefault(false)
     suspend fun captured(id: String, file: File): Sheet = withContext(Dispatchers.IO) { file.inputStream().use { store(id, it) } }
+    /** A picture made in the app (a web page slice) as a new page. */
+    suspend fun picture(id: String, bytes: ByteArray): Sheet = withContext(Dispatchers.IO) { store(id, bytes.inputStream()) }
+    /** A text file's pages (TXT to PDF): each page a PNG original, with the text printed on it kept as its recognised text. */
+    suspend fun textPages(id: String, text: String): List<Sheet> = withContext(Dispatchers.IO) {
+        val rendered = ArrayList<Pair<ByteArray, String>>()
+        com.docscan.rebuild.export.TextPages.render(text) { bitmap, t -> rendered += java.io.ByteArrayOutputStream().also { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }.toByteArray() to t }
+        rendered.map { (bytes, t) -> coroutineContext.ensureActive(); store(id, bytes.inputStream()).also { check(dao.recognized(it.id, t, it.recipe) == 1) } }
+    }
     /** Commit bytes atomically before inserting metadata. No recompression, resizing or EXIF rewriting. */
     private suspend fun store(bookId: String, input: InputStream): Sheet = lock.withLock {
         requireNotNull(dao.book(bookId))

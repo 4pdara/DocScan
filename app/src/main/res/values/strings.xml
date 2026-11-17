@@ -458,6 +458,22 @@
     <string name="shape_arrow">Arrow</string>
     <string name="shape_line">Line</string>
     <string name="shape_hint">Drag on the page to draw. An arrow points to where the drag ends.</string>
+    <string name="folder_new">New folder</string>
+    <string name="folder_delete">Delete folder</string>
+    <string name="folder_delete_message">The folder %1$s will be deleted. The documents and folders in it move up to the folder above, and no document is deleted.</string>
+    <string name="folder_lock">Lock folder</string>
+    <string name="folder_unlock">Unlock folder</string>
+    <string name="move_to_folder">Move to folder</string>
+    <string name="folder_top">My documents (no folder)</string>
+    <string name="name_from_text">Name from text</string>
+    <string name="name_from_text_none">No title found on the first page</string>
+    <string name="txt_to_pdf">Text to PDF</string>
+    <string name="web_to_pdf">Web page to PDF</string>
+    <string name="web_address">Page address</string>
+    <string name="web_open">Open</string>
+    <string name="web_save">Save as document</string>
+    <plurals name="folder_documents"><item quantity="one">%1$d document</item><item quantity="other">%1$d documents</item></plurals>
+    <plurals name="folder_folders"><item quantity="one">%1$d folder</item><item quantity="other">%1$d folders</item></plurals>
 </resources>
 
 

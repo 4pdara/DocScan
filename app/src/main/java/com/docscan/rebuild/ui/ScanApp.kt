@@ -172,6 +172,15 @@ fun ScanApp(store: ScanStore) {
     val lock = remember { DocumentLock(context) }
     val lockChanges by DocumentLock.changes.collectAsState()
     val lockedIds = remember(lockChanges) { lock.lockedIds() }
+    // Folders (1.3.3): where each document is, and the folder the library shows; new documents go into it.
+    val folderStore = remember { DocumentFolders(context) }
+    val folderChanges by DocumentFolders.changes.collectAsState()
+    val folderList = remember(folderChanges) { folderStore.folders() }
+    val placement = remember(folderChanges) { folderStore.placement() }
+    val lockedFolders = remember(lockChanges, folderChanges) { lock.lockedFolders() }
+    var libraryFolder by rememberSaveable { mutableStateOf<String?>(null) }
+    var unlockingFolder by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var settingFolderCode by rememberSaveable { mutableStateOf<String?>(null) }
     var unlocking by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     var settingCode by rememberSaveable { mutableStateOf<String?>(null) }
     var pdfSettingsOpen by rememberSaveable { mutableStateOf(false) }
@@ -204,7 +213,7 @@ fun ScanApp(store: ScanStore) {
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) vm.perform(R.string.imported) {
-            val target = importBook ?: store.create(defaultTitle()).id
+            val target = importBook ?: store.create(defaultTitle()).id.also { folderStore.move(listOf(it), libraryFolder) }
             if (target == draft) draft = null
             bookId = target; route = "document"
             val marks = MarkSettings(context)
@@ -274,6 +283,20 @@ fun ScanApp(store: ScanStore) {
     val backupLoader=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null)vm.perform(R.string.backup_restored) {
             withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use { LibraryBackup(store).restore(it) } }
+        }
+    }
+    // TXT to PDF (1.3.3): a text file becomes a document of A4 pages, each keeping its own text.
+    val textImporter=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null)vm.perform(R.string.imported) {
+            val bytes=withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use { input ->
+                // Up to 4 MB of text (about 2,000 pages).
+                val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(65536);var total=0
+                while(true) { val n=input.read(buffer); if(n<0) break; total+=n; require(total<=4*1024*1024) { "Text file too large" }; out.write(buffer,0,n) }
+                out.toByteArray() } }
+            val name=runCatching { context.contentResolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { c -> if(c.moveToFirst()) c.getString(0) else null } }.getOrNull()
+                ?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: defaultTitle()
+            val book=store.create(name.take(100)).id; folderStore.move(listOf(book),libraryFolder)
+            store.textPages(book,com.docscan.rebuild.export.TextPages.decode(bytes)); bookId=book; route="document"
         }
     }
     val textSaver=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
@@ -407,7 +430,7 @@ fun ScanApp(store: ScanStore) {
             else -> page
         }
     }
-    fun startScan(recognize: Boolean = false, card: Boolean = false, mode: String? = null) { vm.perform { val created = store.create(if (card) context.getString(R.string.id_card) else defaultTitle()).id; bookId = created; draft = created; ocrMode = recognize; idCard = card; scanMode = mode; editorStart = "filters"; route = "camera" } }
+    fun startScan(recognize: Boolean = false, card: Boolean = false, mode: String? = null) { vm.perform { val created = store.create(if (card) context.getString(R.string.id_card) else defaultTitle()).id; folderStore.move(listOf(created), libraryFolder); bookId = created; draft = created; ocrMode = recognize; idCard = card; scanMode = mode; editorStart = "filters"; route = "camera" } }
     fun discardDraft() { val id = draft ?: return; confirmDiscard = false; vm.perform { store.discard(id); draft = null; ocrMode = false; idCard = false; scanMode = null; bookId = null; pageId = null; route = "library" } }
     /** Leaving an unsaved scan: nothing captured is removed silently; captured pages need confirmation. */
     fun leaveDraft() { if (pages.isEmpty()) discardDraft() else confirmDiscard = true }
@@ -458,6 +481,12 @@ fun ScanApp(store: ScanStore) {
     unlocking?.let { (id, action) ->
         PinDialog(R.string.lock_enter, confirm = false, onDismiss = { unlocking = null }, check = { lock.check(it) }) { lock.opened(id); unlocking = null; action() }
     }
+    unlockingFolder?.let { (id, action) ->
+        PinDialog(R.string.lock_enter, confirm = false, onDismiss = { unlockingFolder = null }, check = { lock.check(it) }) { lock.openedFolder(id); unlockingFolder = null; action() }
+    }
+    settingFolderCode?.let { id ->
+        PinDialog(R.string.lock_new_code, confirm = true, onDismiss = { settingFolderCode = null }) { code -> lock.setCode(code); lock.setFolderLocked(id, true); lock.openedFolder(id); settingFolderCode = null }
+    }
     settingCode?.let { id ->
         PinDialog(R.string.lock_new_code, confirm = true, onDismiss = { settingCode = null }) { code -> lock.setCode(code); lock.setLocked(id, true); lock.opened(id); settingCode = null }
     }
@@ -482,6 +511,12 @@ fun ScanApp(store: ScanStore) {
     Box(Modifier.fillMaxSize()) {
         when (route) {
             "qr" -> QrScreen(onBack = { route = "library" })
+            "web" -> WebPageScreen(vm.busy, onBack = { route = "library" }) { title, slices ->
+                vm.perform(R.string.imported) {
+                    val book = store.create(title.trim().take(100).ifEmpty { defaultTitle() }).id; folderStore.move(listOf(book), libraryFolder)
+                    slices.forEach { store.picture(book, it) }; bookId = book; route = "document"
+                }
+            }
             "idphoto" -> IdPhotoScreen(vm.busy, onBack = { route = "library" }) { file, crop, size, backdrop ->
                 vm.perform(R.string.idphoto_created) {
                     val book = store.create(context.getString(R.string.idphoto_title, DateFormat.getDateInstance(DateFormat.SHORT).format(Date())))
@@ -584,6 +619,10 @@ fun ScanApp(store: ScanStore) {
                 locked = bookId?.let { it in lockedIds } == true,
                 onLock = { lockIt -> bookId?.let { id -> if (!lockIt) lock.setLocked(id, false) else if (lock.hasCode) { lock.setLocked(id, true); lock.opened(id) } else settingCode = id } },
                 onCollage = { ids, columns, rows -> bookId?.let { id -> vm.perform(R.string.collage_created) { store.collage(id, ids.mapNotNull { store.dao.page(it) }, columns, rows, rightToLeft) } } },
+                suggestName = { pages.firstOrNull()?.let { first ->
+                    val text = OfflineOcr(store).layout(first, first.edit(), ocrLanguage + "+eng".takeIf { ocrLanguage == "heb" }.orEmpty())
+                    if (text.width <= 0 || text.height <= 0) null else DocumentName.suggest(text.words.map { TextBox(it.text, it.left.toFloat() / text.width, it.top.toFloat() / text.height, it.right.toFloat() / text.width, it.bottom.toFloat() / text.height) })
+                } },
                 onPrint = { bookId?.let(::printDocument) }, onWord = { wordSaver.launch(fileName(currentTitle, "docx")) },
                 onExcel = { excelSaver.launch(fileName(currentTitle, "xlsx")) }, onPowerPoint = { powerPointSaver.launch(fileName(currentTitle, "pptx")) }, onLongImage = { longImageSaver.launch(fileName(currentTitle, "jpg")) },
                 onWatermark = { route = "watermark" }, onHeader = { choice -> applyHeader(choice) },
@@ -604,8 +643,16 @@ fun ScanApp(store: ScanStore) {
                 onTool = { tool -> when (tool) { "scan" -> startScan(); "ocr" -> startScan(recognize = true); "idcard" -> startScan(card = true); "qr" -> route = "qr"
                     "book", "board", "slides" -> startScan(mode = tool); "stampscan" -> startScan(mode = "stamp"); "merge" -> merging = true
                     "idphoto" -> route = "idphoto"; "pdfsettings" -> pdfSettingsOpen = true
+                    "txt2pdf" -> textImporter.launch(arrayOf("text/plain")); "web2pdf" -> route = "web"
                     "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) },
-                onOpen = { id -> guarded(id) { bookId = id; route = "document" } }, tags = tagMap, locked = lockedIds,
+                onOpen = { id -> guarded(id) { bookId = id; route = "document" } }, tags = tagMap, locked = remember(lockChanges, folderChanges, books) { lock.lockedDocuments(books.map { it.book.id }) },
+                folders = folderList, placement = placement, lockedFolders = lockedFolders,
+                folderActions = FolderActions(create = { name, parent -> folderStore.create(name, parent) }, rename = { id, name -> folderStore.rename(id, name) },
+                    delete = { id -> lock.setFolderLocked(id, false); folderStore.delete(id) }, move = { ids, target -> folderStore.move(ids, target) },
+                    // Unlocking a folder needs its code unless it is open; locking needs a code to be set first.
+                    toggleLock = { id -> when { id in lock.lockedFolders() -> if (lock.folderOpen(id)) lock.setFolderLocked(id, false) else unlockingFolder = id to { lock.setFolderLocked(id, false) }
+                        lock.hasCode -> { lock.setFolderLocked(id, true); lock.openedFolder(id) }; else -> settingFolderCode = id } },
+                    open = { id, then -> if (lock.folderOpen(id)) then() else unlockingFolder = id to then }, shown = { libraryFolder = it }),
                 onShare = { id -> guarded(id) { sharePdf(id) } }, onPdf = { id -> guarded(id) {
                     bookId = id
                     val title = books.firstOrNull { it.book.id == id }?.book?.title ?: context.getString(R.string.document)

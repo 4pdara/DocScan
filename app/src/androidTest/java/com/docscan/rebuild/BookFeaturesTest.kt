@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.docscan.rebuild.data.*
 import com.docscan.rebuild.imaging.*
 import com.docscan.rebuild.model.*
+import com.docscan.rebuild.export.TextPages
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -98,6 +99,126 @@ class BookFeaturesTest {
                 assertTrue(shaped.withoutMarks().shapes.isEmpty()&&shaped.withoutMarks().hides.size==1&&shaped.marked)
             } finally { plain.recycle();mosaic.recycle();drawn.recycle() }
         } finally { input.recycle() }
+    }
+    @Test fun foldersNestLockAndComeBackFromABackup():Unit=runBlocking {
+        // 1.3.3: folders inside folders, a locked folder locks what is in it, and backups keep folders.
+        val store=(compose.activity.application as ScanApplication).store
+        val folders=DocumentFolders(context);val lock=DocumentLock(context);val stamp=System.nanoTime()
+        val a=store.create("Folder doc A $stamp");val b=store.create("Folder doc B $stamp")
+        store.captured(a.id,fixture("folder",400,300));store.captured(b.id,fixture("folder",400,300))
+        val work=folders.create("Work $stamp",null);val tax=folders.create("Tax $stamp",work.id)
+        val hadCode=lock.hasCode
+        try {
+            folders.move(listOf(a.id),tax.id)
+            assertEquals(tax.id,folders.folderOf(a.id));assertNull(folders.folderOf(b.id))
+            assertEquals(listOf(work.id,tax.id),folders.path(tax.id).map{it.id})
+            assertEquals(listOf(tax.id,work.id),folders.chainOf(a.id))
+            // The library shows the folder; inside it the folder within it, and inside that the document.
+            compose.onNodeWithTag("home-tab-files").performClick()
+            compose.waitUntil(10000){compose.onAllNodesWithTag("folder-Work $stamp").fetchSemanticsNodes().isNotEmpty()}
+            assertTrue(compose.onAllNodesWithText("Folder doc A $stamp").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("folder-Work $stamp").performClick()
+            compose.waitUntil(10000){compose.onAllNodesWithTag("folder-Tax $stamp").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithTag("folder-Tax $stamp").performClick()
+            compose.waitUntil(10000){compose.onAllNodesWithText("Folder doc A $stamp").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithTag("folder-up").performClick();compose.onNodeWithTag("folder-up").performClick()
+            compose.waitUntil(10000){compose.onAllNodesWithTag("folder-Work $stamp").fetchSemanticsNodes().isNotEmpty()}
+            // Locking the outer folder locks the document inside it, and only that one.
+            if(!hadCode) lock.setCode("4321")
+            lock.setFolderLocked(work.id,true);DocumentLock.closeAll()
+            assertTrue(lock.locked(a.id) && !lock.isOpen(a.id) && !lock.folderOpen(tax.id))
+            assertFalse(lock.locked(b.id));assertTrue(lock.isOpen(b.id))
+            assertEquals(setOf(a.id),lock.lockedDocuments(listOf(a.id,b.id)))
+            compose.waitUntil(10000){compose.onAllNodesWithTag("folder-locked-Work $stamp").fetchSemanticsNodes().isNotEmpty()}
+            lock.openedFolder(tax.id);assertTrue(lock.isOpen(a.id) && lock.folderOpen(tax.id))
+            lock.setFolderLocked(work.id,false)
+            // A backup brings the folders back with the document in its place.
+            val zip=File(context.cacheDir,"folders-$stamp.zip")
+            try {
+                zip.outputStream().use{LibraryBackup(store).export(it)}
+                val existing=store.dao.allBooks().map{it.id}.toSet()
+                zip.inputStream().use{LibraryBackup(store).restore(it)}
+                // The restore adds a copy of every document; only those copies are removed again.
+                val added=store.dao.allBooks().map{it.id}.filter{it !in existing}.toSet()
+                try {
+                    val copy=store.dao.allBooks().single{it.title=="Folder doc A $stamp" && it.id in added}
+                    assertEquals(listOf("Work $stamp","Tax $stamp"),folders.path(folders.folderOf(copy.id)).map{it.name})
+                } finally { store.trash(added,false);store.deleteForever(added) }
+            } finally { zip.delete() }
+            // Deleting a folder moves what was in it up; nothing is deleted.
+            folders.delete(work.id)
+            assertNull(folders.folders().single{it.id==tax.id}.parent);assertEquals(tax.id,folders.folderOf(a.id))
+            folders.delete(tax.id);assertNull(folders.folderOf(a.id));assertNotNull(store.dao.book(a.id))
+        } finally {
+            if(!hadCode && lock.hasCode) lock.removeCode()
+            folders.folders().filter{it.name.endsWith("$stamp")}.forEach{folders.delete(it.id)}
+            store.trash(setOf(a.id,b.id),false);store.deleteForever(setOf(a.id,b.id))
+        }
+    }
+    @Test fun textFilesBecomePagesWithTheirTextAndAPageTitleNamesTheDocument():Unit=runBlocking {
+        // 1.3.3: TXT to PDF, and a name from the first page's text.
+        val store=(compose.activity.application as ScanApplication).store
+        assertEquals("שלום",TextPages.decode(byteArrayOf(0xEF.toByte(),0xBB.toByte(),0xBF.toByte())+"שלום".toByteArray(Charsets.UTF_8)))
+        assertEquals("שלום",TextPages.decode(byteArrayOf(0xF9.toByte(),0xEC.toByte(),0xE5.toByte(),0xED.toByte())))
+        assertEquals("a\nb\nc",TextPages.decode("a\r\nb\rc".toByteArray()))
+        val book=store.create("Text ${System.nanoTime()}")
+        try {
+            val text=(1..90).joinToString("\n"){ i -> if(i%2==0) "שורה מספר $i בעברית, מימין לשמאל" else "Line number $i in English, left to right" }
+            val pages=store.textPages(book.id,text)
+            assertTrue("pages: ${pages.size}",pages.size>=2)
+            val stored=store.dao.snapshot(book.id)
+            assertTrue(stored.all{it.ocrText!=null && it.ocrRecipe==it.recipe})
+            assertTrue(stored[0].ocrText!!.startsWith("Line number 1 in English"))
+            assertTrue(stored.joinToString("\n"){it.ocrText!!}.contains("שורה מספר 90"))
+            // Each paragraph in its own direction: English starts at the left margin, Hebrew at the right one.
+            val page=BitmapFactory.decodeFile(store.source(stored[0]).path)
+            try {
+                fun darkX(y0:Int,y1:Int):List<Int> { val xs=ArrayList<Int>(); for(y in y0 until y1) for(x in 0 until page.width) if(Color.red(page.getPixel(x,y))<100) xs+=x; return xs }
+                // Line 1 (English) is at y 118-145, line 2 (Hebrew) at 146-173.
+                val english=darkX(120,140);val hebrew=darkX(150,170)
+                assertTrue("English from the left: ${english.minOrNull()}",english.isNotEmpty() && english.min()<200 && english.max()<page.width-200)
+                assertTrue("Hebrew from the right: ${hebrew.maxOrNull()}",hebrew.isNotEmpty() && hebrew.max()>page.width-200 && hebrew.min()>200)
+            } finally { page.recycle() }
+            // A page whose title is printed large: the suggested name is that title.
+            val file=fixture("title",1400,1800){canvas->
+                val big=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=110f;typeface=Typeface.DEFAULT_BOLD}
+                val small=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=40f}
+                canvas.drawText("Annual Report",150f,300f,big)
+                for(i in 0 until 12) canvas.drawText("Sales grew in every region during the year $i",150f,480f+i*70,small)
+            }
+            try {
+                val sheet=store.captured(book.id,file)
+                val words=OfflineOcr(store).layout(sheet,sheet.edit(),"eng")
+                val name=DocumentName.suggest(words.words.map{TextBox(it.text,it.left.toFloat()/words.width,it.top.toFloat()/words.height,it.right.toFloat()/words.width,it.bottom.toFloat()/words.height)})
+                assertEquals("Annual Report",name)
+            } finally { file.delete() }
+        } finally { store.dao.snapshot(book.id).forEach{store.source(it).delete()};store.trash(setOf(book.id),false);store.deleteForever(setOf(book.id)) }
+    }
+    @Test fun aWebPageIsSavedAsADocumentOfA4Pages() {
+        // 1.3.3: web page to PDF, from a page given in the address itself (no network needed).
+        val store=(compose.activity.application as ScanApplication).store
+        val before=runBlocking{store.dao.allBooks().map{it.id}.toSet()}
+        compose.onNodeWithTag("home-tab-tools").performClick()
+        compose.onNodeWithTag("tools-${R.string.web_to_pdf}").performScrollTo().performClick()
+        compose.waitUntil(10000){compose.onAllNodesWithTag("web-url").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("web-url").performTextInput("data:text/html,<html><head><title>Web test</title></head><body style=\"margin:0\"><div style=\"height:2600px;background:%23c00000\"></div><div style=\"height:600px;background:%230000c0\"></div></body></html>")
+        compose.onNodeWithTag("web-load").performClick()
+        compose.waitUntil(30000){runCatching{compose.onNodeWithTag("web-save").assertIsEnabled();true}.getOrDefault(false)}
+        compose.onNodeWithTag("web-save").performClick()
+        compose.waitUntil(30000){runBlocking{store.dao.allBooks().any{it.id !in before}}}
+        val book=runBlocking{store.dao.allBooks().single{it.id !in before}}
+        try {
+            compose.waitUntil(30000){runBlocking{store.dao.snapshot(book.id).size>=2}}
+            assertEquals("Web test",book.title)
+            val pages=runBlocking{store.dao.snapshot(book.id)}
+            val first=BitmapFactory.decodeFile(store.source(pages.first()).path);val last=BitmapFactory.decodeFile(store.source(pages.last()).path)
+            try {
+                assertTrue("A4 shaped: ${first.width} x ${first.height}",abs(first.height.toFloat()/first.width-297f/210f)<.02f)
+                val top=first.getPixel(first.width/2,first.height/2);val end=last.getPixel(last.width/2,last.height-5)
+                assertTrue("red top ${Integer.toHexString(top)}",Color.red(top)>150 && Color.blue(top)<80)
+                assertTrue("blue end ${Integer.toHexString(end)}",Color.blue(end)>150 && Color.red(end)<80)
+            } finally { first.recycle();last.recycle() }
+        } finally { runBlocking{store.dao.snapshot(book.id).forEach{store.source(it).delete()};store.trash(setOf(book.id),false);store.deleteForever(setOf(book.id))} }
     }
     @Test fun texturedCoversWithGlareAndBrokenCornersKeepTheirOuterBoundary() {
         val expected=Frame(listOf(Vertex(.15f,.12f),Vertex(.83f,.18f),Vertex(.89f,.88f),Vertex(.1f,.81f)))

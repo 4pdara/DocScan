@@ -27,9 +27,10 @@ class LibraryBackup(private val store: ScanStore) {
         require(books.all { it.title.length<=1000 } && pages.all { it.recipe.length<=65536 && (it.ocrText?.length?:0)<=2_000_000 }) { "Library metadata exceeds backup limits" }
         val sources=pages.distinctBy { it.source }.map { store.source(it) }
         require(sources.all { it.length()<=100L*1024*1024 } && sources.sumOf { it.length() }<=8L*1024*1024*1024) { "Library exceeds backup size limit" }
-        val tags=DocumentTags(store.context)
+        val tags=DocumentTags(store.context);val folders=DocumentFolders(store.context);val placement=folders.placement()
         val manifest=JSONObject().put("format","docscan-backup").put("version",1)
-            .put("books",JSONArray(books.map { b -> JSONObject().put("id",b.id).put("title",b.title).put("created",b.created).put("trashedAt",b.trashedAt?:JSONObject.NULL).put("tags",JSONArray(tags.of(b.id))) }))
+            .put("books",JSONArray(books.map { b -> JSONObject().put("id",b.id).put("title",b.title).put("created",b.created).put("trashedAt",b.trashedAt?:JSONObject.NULL).put("tags",JSONArray(tags.of(b.id))).put("folder",placement[b.id]?:JSONObject.NULL) }))
+            .put("folders",JSONArray(folders.folders().map { f -> JSONObject().put("id",f.id).put("name",f.name).put("parent",f.parent?:JSONObject.NULL) }))
             .put("pages",JSONArray(pages.map { p ->
                 val file=store.source(p);check(file.isFile)
                 JSONObject().put("id",p.id).put("book",p.notebookId).put("position",p.position).put("source",p.source)
@@ -106,6 +107,19 @@ class LibraryBackup(private val store: ScanStore) {
                 val tags=DocumentTags(store.context)
                 for(i in 0 until books.length()) { val b=books.getJSONObject(i); val list=b.optJSONArray("tags")?:continue
                     tags.set(mapping.getValue(b.getString("id")),(0 until minOf(list.length(),20)).map { list.optString(it) }) }
+                // Folders (added in 1.3.3) are made again, each under its restored parent, and take their documents back.
+                val saved=manifest.optJSONArray("folders")
+                if(saved!=null) {
+                    val folders=DocumentFolders(store.context);val made=HashMap<String,String>()
+                    val list=(0 until minOf(saved.length(),1000)).map { saved.getJSONObject(it) }
+                    var left=list
+                    repeat(64) { if(left.isEmpty()) return@repeat
+                        val ready=left.filter { it.isNull("parent") || made.containsKey(it.getString("parent")) || list.none { o -> o.getString("id")==it.getString("parent") } }
+                        ready.forEach { o -> made[o.getString("id")]=folders.create(o.getString("name"),if(o.isNull("parent")) null else made[o.getString("parent")]).id }
+                        left=left-ready.toSet() }
+                    for(i in 0 until books.length()) { val b=books.getJSONObject(i); if(b.isNull("folder")) continue
+                        made[b.optString("folder")]?.let { folders.move(listOf(mapping.getValue(b.getString("id"))),it) } }
+                }
             } }
             books.length()
         } finally { if(!committed)copied.forEach { it.delete() };stage.deleteRecursively() }
