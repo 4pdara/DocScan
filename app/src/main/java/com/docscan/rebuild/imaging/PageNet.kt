@@ -24,8 +24,9 @@ import kotlin.math.roundToInt
  * at 128 x 128, how likely each point is to be on the page and on the page's outline. It runs on the phone through
  * OpenCV's DNN module; nothing leaves the phone.
  *
- * It does not replace the detector: [refine] keeps the detector's outline when the two agree, and otherwise takes the
- * one whose four sides lie better on the outline the network sees. The rule and its settings were chosen on half of
+ * It does not replace the detector: [refine] keeps the detector's outline when the two agree, or when the network's runs
+ * off the picture around it (one page of an open book), and otherwise takes the one whose four sides lie better on the
+ * outline the network sees. The rule and its settings were chosen on half of
  * the held-out Mendeley photos and checked on the other half and on DocScan's own photo sets.
  */
 object PageNet {
@@ -114,7 +115,28 @@ object PageNet {
         val mine = outline(look, rgba.cols(), rgba.rows()) ?: return detected
         if (detected == null || detected == Frame.FULL) return mine
         if (overlap(detected, mine) >= AGREE) return detected
+        // The network takes an open book's two pages as one; where its outline runs off the picture and the detector's
+        // lies inside it, the detector chose one page on purpose (the whole page of an open book whose facing page
+        // runs off the frame, as CamScanner does), and that is kept.
+        if (runsOff(mine) && within(detected, mine) >= AGREE) return detected
         return if (onOutline(mine, look) > onOutline(detected, look)) mine else detected
+    }
+
+    /** A side of [frame] lies along the picture's border (both its corners within 2% of the same edge). */
+    private fun runsOff(frame: Frame): Boolean = frame.points.indices.any { i ->
+        val a = frame.points[i]; val b = frame.points[(i + 1) % 4]
+        (a.x <= .02f && b.x <= .02f) || (a.x >= .98f && b.x >= .98f) || (a.y <= .02f && b.y <= .02f) || (a.y >= .98f && b.y >= .98f)
+    }
+
+    /** The share of [inner]'s area that lies inside [outer], on a 500 x 500 grid. */
+    private fun within(inner: Frame, outer: Frame): Double {
+        val mi = Mat.zeros(500, 500, CvType.CV_8U); val mo = Mat.zeros(500, 500, CvType.CV_8U); val both = Mat()
+        try {
+            fun draw(m: Mat, f: Frame) = Imgproc.fillPoly(m, listOf(MatOfPoint(*f.points.map { Point((it.x * 500).toInt().toDouble(), (it.y * 500).toInt().toDouble()) }.toTypedArray())), Scalar(1.0))
+            draw(mi, inner); draw(mo, outer)
+            Core.bitwise_and(mi, mo, both)
+            return Core.countNonZero(both).toDouble() / maxOf(1, Core.countNonZero(mi))
+        } finally { mi.release(); mo.release(); both.release() }
     }
 
     /** Overlap (intersection over union) of two outlines, drawn on a 500 x 500 grid. */
