@@ -66,7 +66,13 @@ fun WebPageScreen(busy: Boolean, onBack: () -> Unit, onSave: (String, List<ByteA
                     settings.allowFileAccess = false; settings.allowContentAccess = false
                     setBackgroundColor(Color.WHITE)
                     webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView, url: String?) { loading = false; loaded = true }
+                        // Loaded is not yet drawn (older WebView versions report it first): the page can be saved once
+                        // its content has been drawn.
+                        override fun onPageFinished(view: WebView, url: String?) {
+                            view.postVisualStateCallback(System.nanoTime(), object : WebView.VisualStateCallback() {
+                                override fun onComplete(requestId: Long) { loading = false; loaded = true }
+                            })
+                        }
                     }
                     web = this
                 }

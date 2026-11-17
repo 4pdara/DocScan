@@ -209,7 +209,9 @@ class BookFeaturesTest {
         compose.waitUntil(30000){runBlocking{store.dao.allBooks().any{it.id !in before}}}
         val book=runBlocking{store.dao.allBooks().single{it.id !in before}}
         try {
-            compose.waitUntil(30000){runBlocking{store.dao.snapshot(book.id).size>=2}}
+            // All the pages are stored before the document opens.
+            compose.waitUntil(60000){compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty()}
+            assertTrue(runBlocking{store.dao.snapshot(book.id).size>=2})
             assertEquals("Web test",book.title)
             val pages=runBlocking{store.dao.snapshot(book.id)}
             pages.forEachIndexed{i,p-> val b=BitmapFactory.decodeFile(store.source(p).path); try { android.util.Log.i("DocScanWebTest","page $i ${b.width}x${b.height} middle ${Integer.toHexString(b.getPixel(b.width/2,b.height/2))} end ${Integer.toHexString(b.getPixel(b.width/2,b.height-5))}") } finally { b.recycle() } }
