@@ -474,6 +474,50 @@
     <string name="web_save">Save as document</string>
     <plurals name="folder_documents"><item quantity="one">%1$d document</item><item quantity="other">%1$d documents</item></plurals>
     <plurals name="folder_folders"><item quantity="one">%1$d folder</item><item quantity="other">%1$d folders</item></plurals>
+    <string name="tool_bizcard">Business card</string>
+    <string name="tool_receipt">Receipt</string>
+    <string name="tool_longscan">Long scan</string>
+    <string name="bizcard_hint">Photograph the business card</string>
+    <string name="receipt_hint">Photograph the receipt</string>
+    <string name="longscan_hint">Photograph the page from top to bottom, each photo overlapping about a quarter of the one before</string>
+    <string name="longscan_parts">%1$s – photos of the long scan</string>
+    <string name="longscan_one">A long scan needs at least two photos</string>
+    <string name="bizcard_title">Business card details</string>
+    <string name="bizcard_none">No details were found on the card. You can fill them in.</string>
+    <string name="contact_name">Name</string>
+    <string name="contact_company">Company</string>
+    <string name="contact_job">Job title</string>
+    <string name="contact_phone">Phone</string>
+    <string name="contact_phone2">Other phone</string>
+    <string name="contact_email">E-mail</string>
+    <string name="contact_website">Website</string>
+    <string name="contact_address">Address</string>
+    <string name="add_to_contacts">Add to contacts</string>
+    <string name="copy_vcard">Copy as vCard</string>
+    <string name="no_contacts_app">There is no contacts app on this phone</string>
+    <string name="close">Close</string>
+    <string name="receipt_title">Receipt details</string>
+    <string name="receipt_none">No total was found. You can fill it in.</string>
+    <string name="receipt_shop">Shop</string>
+    <string name="receipt_date">Date</string>
+    <string name="receipt_total">Total</string>
+    <string name="receipt_use_name">Use as document name</string>
+    <string name="receipts_tag">Receipts</string>
+    <string name="doc_radar">Doc Radar</string>
+    <string name="radar_permission">To find documents in the gallery, the app needs permission to read photos. The check is done on the phone only.</string>
+    <string name="radar_allow">Allow</string>
+    <string name="radar_looking">Checking the latest photos: %1$d of %2$d</string>
+    <string name="tool_count">Count</string>
+    <string name="count_title">Count: %1$d</string>
+    <string name="count_hint">Tap one of the things to count</string>
+    <string name="count_adjust">Tap a mark to remove it, or elsewhere to add one. Size and sensitivity can be changed.</string>
+    <string name="count_size">Size</string>
+    <string name="count_sensitivity">Sensitivity</string>
+    <string name="count_again">New example</string>
+    <string name="count_save">Save as document</string>
+    <plurals name="radar_import"><item quantity="one">Import %1$d document</item><item quantity="other">Import %1$d documents</item></plurals>
+    <plurals name="radar_found"><item quantity="one">%1$d document found in the latest %2$d photos</item><item quantity="other">%1$d documents found in the latest %2$d photos</item></plurals>
+    <string name="radar_settings">Open the app settings</string>
 </resources>
 
 

@@ -51,6 +51,7 @@ interface ScanQueries {
     @Query("DELETE FROM sheets WHERE id=:id") suspend fun deletePage(id: String)
     @Query("DELETE FROM notebooks WHERE id=:id") suspend fun deleteBook(id: String)
     @Query("SELECT COUNT(*) FROM sheets WHERE source=:source") suspend fun sourceUses(source: String): Int
+    @Query("UPDATE sheets SET notebookId=:book, position=:position WHERE id=:id") suspend fun relocate(id: String, book: String, position: Int)
     @Query("SELECT id FROM notebooks WHERE trashedAt IS NULL AND created < :before AND id NOT IN (SELECT notebookId FROM sheets)") suspend fun emptyBooks(before: Long): List<String>
 }
 @Database(entities = [Notebook::class, Sheet::class], version = 3, exportSchema = true)
@@ -172,7 +173,7 @@ object RecipeCodec {
                 if (p.size == 2) ShapeMark(kind, p[0], p[1], m.optInt("c", 0xD32F2F) and 0xFFFFFF, m.optDouble("w", .006).toFloat()).takeIf { it.valid() } else null
             },
             ink = list("ink", 500).mapNotNull { m -> InkStroke(points(m.optJSONArray("p")), m.optDouble("w", .01).toFloat(), m.optInt("c") and 0xFFFFFF, m.optInt("a", 255)).takeIf { it.valid() } },
-            texts = list("texts", 100).mapNotNull { m ->
+            texts = list("texts", 500).mapNotNull { m ->
                 TextMark(m.optString("t").take(500), m.optDouble("x", .5).toFloat(), m.optDouble("y", .5).toFloat(), m.optDouble("s", .04).toFloat(), m.optInt("c", 0x1A1A1A) and 0xFFFFFF, option(m, "f", MarkFont.PLAIN)).takeIf { it.valid() }
             },
             watermarkSpot = MarkSpot(o.optDouble("spotX", .5).toFloat(), o.optDouble("spotY", .5).toFloat(), o.optDouble("spotAngle", -45.0).toFloat()).takeIf { it.valid() } ?: MarkSpot(),
@@ -477,6 +478,41 @@ class ScanStore(val context: Context, val database: ScanDatabase) {
     }
 
     /** Recoverable removal: never deletes original files, recipes or page order. */
+    /**
+     * Long scan (1.3.4): [parts], each cropped and straightened as edited, joined top to bottom into one new page of
+     * [bookId] with the first part's filter. The separate shots are not deleted: they move, unchanged, to a document
+     * named [partsTitle] in the trash, from where they can be restored.
+     */
+    suspend fun longScan(bookId: String, parts: List<Sheet>, partsTitle: String): Sheet {
+        require(parts.size >= 2)
+        val bytes = withContext(Dispatchers.Default) {
+            com.docscan.rebuild.imaging.ImagePipeline.ensureAvailable()
+            val mats = ArrayList<org.opencv.core.Mat>()
+            try {
+                for (p in parts) {
+                    coroutineContext.ensureActive()
+                    val plain = p.edit().copy(treatment = Treatment.ORIGINAL, brightness = 0f, contrast = 1f, detail = 0f).withoutMarks().copy(hides = emptyList())
+                    val bitmap = com.docscan.rebuild.imaging.ImagePipeline.render(source(p), plain, 2400)
+                    try { mats += org.opencv.core.Mat().also { org.opencv.android.Utils.bitmapToMat(bitmap, it) } } finally { bitmap.recycle() }
+                }
+                val joined = com.docscan.rebuild.imaging.PageStitch.stitch(mats)
+                try {
+                    val bitmap = android.graphics.Bitmap.createBitmap(joined.cols(), joined.rows(), android.graphics.Bitmap.Config.ARGB_8888)
+                    try { org.opencv.android.Utils.matToBitmap(joined, bitmap); java.io.ByteArrayOutputStream().also { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)) }.toByteArray() }
+                    finally { bitmap.recycle() }
+                } finally { joined.release() }
+            } finally { mats.forEach { it.release() } }
+        }
+        val page = withContext(Dispatchers.IO) { store(bookId, bytes.inputStream()) }
+        save(page, EditRecipe(treatment = parts.first().edit().treatment))
+        withContext(Dispatchers.IO) {
+            lock.withLock { database.withTransaction {
+                val now = System.currentTimeMillis(); val holder = Notebook(UUID.randomUUID().toString(), partsTitle, now, now)
+                dao.insert(holder); parts.forEachIndexed { i, p -> dao.relocate(p.id, holder.id, i) }
+            } }
+        }
+        return requireNotNull(dao.page(page.id))
+    }
     suspend fun trash(ids: Set<String>, restore: Boolean = false) = withContext(Dispatchers.IO) {
         lock.withLock { database.withTransaction { dao.trash(ids.toList(), if (restore) null else System.currentTimeMillis()) } }
     }

@@ -160,6 +160,10 @@ fun ScanApp(store: ScanStore) {
     var retakeId by rememberSaveable { mutableStateOf<String?>(null) }
     // Scan modes from the Tools tab: book (split into two pages), whiteboard, slides, timestamp camera.
     var scanMode by rememberSaveable { mutableStateOf<String?>(null) }
+    // Business card and receipt (1.3.4): read once the captured page is saved, then shown to check.
+    var reading by rememberSaveable { mutableStateOf<String?>(null) }
+    var contact by remember { mutableStateOf<BusinessCard.Contact?>(null) }
+    var receipt by remember { mutableStateOf<Receipt.Summary?>(null) }
     var ocrBack by rememberSaveable { mutableStateOf("editor") }
     var merging by rememberSaveable { mutableStateOf(false) }
     // Signing one page from the page view.
@@ -481,6 +485,16 @@ fun ScanApp(store: ScanStore) {
     unlocking?.let { (id, action) ->
         PinDialog(R.string.lock_enter, confirm = false, onDismiss = { unlocking = null }, check = { lock.check(it) }) { lock.opened(id); unlocking = null; action() }
     }
+    contact?.let { found -> ContactDialog(found, onDismiss = { contact = null }) }
+    receipt?.let { found ->
+        ReceiptDialog(found, onDismiss = { receipt = null }) { name ->
+            receipt = null
+            bookId?.let { id -> vm.perform(R.string.saved) {
+                if (name.isNotBlank()) store.dao.rename(id, name.take(100))
+                tagStore.set(id, (tagStore.of(id) + context.getString(R.string.receipts_tag)).distinct())
+            } }
+        }
+    }
     unlockingFolder?.let { (id, action) ->
         PinDialog(R.string.lock_enter, confirm = false, onDismiss = { unlockingFolder = null }, check = { lock.check(it) }) { lock.openedFolder(id); unlockingFolder = null; action() }
     }
@@ -532,6 +546,10 @@ fun ScanApp(store: ScanStore) {
                     val captured = store.dao.snapshot(id)
                     if (retakeId != null) { retakeId = null; route = "editor" }
                     else if (captured.isEmpty() && id == draft) { store.discard(id); draft = null; ocrMode = false; idCard = false; bookId = null; route = "library" }
+                    else if (scanMode == "long" && captured.size >= 2) {
+                        val joined = store.longScan(id, captured, context.getString(R.string.longscan_parts, currentTitle))
+                        scanMode = null; editorStart = "filters"; pageId = joined.id; route = "review"
+                    }
                     else if (idCard && captured.size == 1) {
                         // Finished after the front only: a one-sided card page.
                         val card = store.idCard(id, captured[0], null); val marks = MarkSettings(context)
@@ -541,7 +559,8 @@ fun ScanApp(store: ScanStore) {
                     else { idCard = false; scanMode = null; editorStart = "filters"; pageId = captured.firstOrNull()?.id; route = if (captured.isNotEmpty()) "review" else "document" }
                 } }, onImport = { importBook = bookId; importer.launch(arrayOf("image/*", "application/pdf")) },
                 prompt = if (retakeId != null) R.string.retake_hint else if (idCard) (if (pages.isEmpty()) R.string.id_card_front else R.string.id_card_back)
-                    else when (scanMode) { "book" -> R.string.book_hint; "board" -> R.string.tool_whiteboard; "slides" -> R.string.tool_slides; "stamp" -> R.string.timestamp_camera; else -> null },
+                    else when (scanMode) { "book" -> R.string.book_hint; "board" -> R.string.tool_whiteboard; "slides" -> R.string.tool_slides; "stamp" -> R.string.timestamp_camera
+                        "bizcard" -> R.string.bizcard_hint; "receipt" -> R.string.receipt_hint; "long" -> R.string.longscan_hint; else -> null },
                 onCaptured = { file, detectBounds, batch, seen, complete ->
                     if (vm.busy) { file.delete(); complete(false) }
                     else vm.perform {
@@ -557,12 +576,13 @@ fun ScanApp(store: ScanStore) {
                         }
                         try {
                             val captured = applyMode(vm.receive(id, file, detectBounds, seen), scanMode)
+                            if (scanMode == "bizcard" || scanMode == "receipt") reading = scanMode
                             val sides = if (idCard) store.dao.snapshot(id) else emptyList()
                             if (idCard && sides.size >= 2) {
                                 val card = store.idCard(id, sides[0], sides[1]); val marks = MarkSettings(context)
                                 if (marks.active) store.save(card, marks.applyTo(card.edit()))
                                 idCard = false; draft = null; route = "document"
-                            } else if (idCard) { /* the back is next */ } else if (!batch) { pageId = captured.id; scanMode = null; if (ocrMode) { ocrMode = false; ocrText = ""; ocrBack = "editor"; recognizeNow = captured.id; route = "ocr" } else { editorStart = "filters"; route = "editor" } }
+                            } else if (idCard) { /* the back is next */ } else if (!batch && scanMode != "long") { pageId = captured.id; scanMode = null; if (ocrMode) { ocrMode = false; ocrText = ""; ocrBack = "editor"; recognizeNow = captured.id; route = "ocr" } else { editorStart = "filters"; route = "editor" } }
                             ok = true
                         } finally { complete(ok) }
                         // Text extraction from the home screen: the cropped page is recognized as soon as it is captured.
@@ -578,7 +598,12 @@ fun ScanApp(store: ScanStore) {
                         recipe.copy(edges = withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(store.source(page), recipe.frame) }.getOrNull() }?.values.orEmpty()) else recipe
                     val fresh = if (edged.flatten.isNotEmpty() && moved)
                         edged.copy(flatten = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(store.source(page), edged) }.getOrNull() }?.toList().orEmpty()) else edged
-                    store.save(page, fresh); draft = null; route = "document" } },
+                    store.save(page, fresh); draft = null; route = "document"
+                    reading?.let { kind ->
+                        reading = null
+                        val text = OfflineOcr(store).recognize(requireNotNull(store.dao.page(page.id)), "heb+eng")
+                        if (kind == "bizcard") contact = BusinessCard.parse(text) else receipt = Receipt.parse(text)
+                    } } },
                     onExportImage = { recipe -> imagePage = page.id; imageRecipe = RecipeCodec.encode(recipe); imageSaver.launch("scan-${page.position + 1}.jpg") },
                     onGallery = { recipe -> requestGallery(page, recipe) },
                     onOriginal = { val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(page.mime) ?: "img"; sourceSaver.launch("original-${page.position + 1}.$extension") },
@@ -644,6 +669,7 @@ fun ScanApp(store: ScanStore) {
                     "book", "board", "slides" -> startScan(mode = tool); "stampscan" -> startScan(mode = "stamp"); "merge" -> merging = true
                     "idphoto" -> route = "idphoto"; "pdfsettings" -> pdfSettingsOpen = true
                     "txt2pdf" -> textImporter.launch(arrayOf("text/plain")); "web2pdf" -> route = "web"
+                    "bizcard", "receipt" -> startScan(mode = tool); "longscan" -> startScan(mode = "long")
                     "import" -> { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) }; else -> pickFor = tool } }, onImport = { importBook = null; importer.launch(arrayOf("image/*", "application/pdf")) },
                 onOpen = { id -> guarded(id) { bookId = id; route = "document" } }, tags = tagMap, locked = remember(lockChanges, folderChanges, books) { lock.lockedDocuments(books.map { it.book.id }) },
                 folders = folderList, placement = placement, lockedFolders = lockedFolders,
