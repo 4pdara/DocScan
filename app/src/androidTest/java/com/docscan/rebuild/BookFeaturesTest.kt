@@ -129,7 +129,8 @@ class BookFeaturesTest {
             assertTrue(lock.locked(a.id) && !lock.isOpen(a.id) && !lock.folderOpen(tax.id))
             assertFalse(lock.locked(b.id));assertTrue(lock.isOpen(b.id))
             assertEquals(setOf(a.id),lock.lockedDocuments(listOf(a.id,b.id)))
-            compose.waitUntil(10000){compose.onAllNodesWithTag("folder-locked-Work $stamp").fetchSemanticsNodes().isNotEmpty()}
+            // The lock sits inside the folder's clickable row, so it is found in the unmerged tree.
+            compose.waitUntil(10000){compose.onAllNodesWithTag("folder-locked-Work $stamp",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty()}
             lock.openedFolder(tax.id);assertTrue(lock.isOpen(a.id) && lock.folderOpen(tax.id))
             lock.setFolderLocked(work.id,false)
             // A backup brings the folders back with the document in its place.
