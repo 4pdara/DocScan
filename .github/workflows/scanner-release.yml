@@ -222,6 +222,8 @@ jobs:
           path: scanner-device-results/
   publish:
     needs: [build, device]
+    # Releases come only from main; a run started on a work branch builds and tests the next version without publishing.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
