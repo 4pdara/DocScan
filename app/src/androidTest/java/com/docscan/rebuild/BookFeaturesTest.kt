@@ -82,10 +82,12 @@ class BookFeaturesTest {
             val drawn=ImagePipeline.transform(input,EditRecipe(shapes=listOf(ShapeMark(ShapeKind.RECT,Vertex(.1f,.1f),Vertex(.9f,.9f),0xD32F2F,.01f),ShapeMark(ShapeKind.ARROW,Vertex(.2f,.8f),Vertex(.5f,.5f),0x1E88E5,.01f))))
             try {
                 val a=pixels(plain);val m=pixels(mosaic);val d=pixels(drawn)
-                fun detail(p:IntArray):Long { var s=0L; for(y in 130 until 230) for(x in 40 until 560) s+=abs(lum(p[y*600+x])-lum(p[y*600+x+1])); return s }
-                assertTrue("print under the mosaic: ${detail(a)} -> ${detail(m)}",detail(m)<detail(a)/5)
-                // 10-pixel tiles (2.5% of the short side, 400): neighbours inside a tile are equal.
-                assertEquals(m[150*600+16],m[150*600+17])
+                // Tiles 10 pixels wide (2.5% of the short side, 400) from the left edge: along a row, every pixel inside a
+                // tile is the same; and the dark print is gone (averaged with the paper around it).
+                var inside=0; for(y in 120 until 240) for(x in 0 until 599) if(x%10!=9 && m[y*600+x]!=m[y*600+x+1]) inside++
+                assertEquals("pixels differing inside a tile",0,inside)
+                fun dark(p:IntArray)=(120*600 until 240*600).count{lum(p[it])<100}
+                assertTrue("dark print under the mosaic: ${dark(a)} -> ${dark(m)}",dark(a)>300 && dark(m)<dark(a)/10)
                 assertTrue("outside the mosaic nothing changes",(0 until 600*110).all{a[it]==m[it]})
                 val border=d[40*600+300];val arrow=d[(400*.65f).toInt()*600+(600*.35f).toInt()]
                 assertTrue("red rectangle edge: ${Integer.toHexString(border)}",Color.red(border)>180&&Color.green(border)<90)
