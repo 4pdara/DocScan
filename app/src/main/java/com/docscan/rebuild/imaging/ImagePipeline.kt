@@ -166,6 +166,14 @@ object ImagePipeline {
         finally { bitmap.recycle(); rgba.release(); gray.release() }
     }
 
+    /** Page outline on a picture already in memory (Doc Radar's gallery thumbnails). */
+    fun detectBitmap(bitmap: Bitmap): Frame? {
+        ensureAvailable()
+        val rgba = Mat(); val gray = Mat()
+        return try { Utils.bitmapToMat(bitmap, rgba); Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY); detectGray(gray, rgba) }
+        finally { rgba.release(); gray.release() }
+    }
+
     fun detectGray(input: Mat, rgba: Mat? = null): Frame? {
         ensureAvailable()
         return BoundaryDetector.detect(input, rgba)

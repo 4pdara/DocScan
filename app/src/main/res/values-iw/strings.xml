@@ -458,6 +458,22 @@
     <string name="shape_arrow">חץ</string>
     <string name="shape_line">קו</string>
     <string name="shape_hint">גוררים על הדף כדי לצייר. חץ מצביע לנקודה שבה הגרירה נגמרת.</string>
+    <string name="folder_new">תיקייה חדשה</string>
+    <string name="folder_delete">מחיקת התיקייה</string>
+    <string name="folder_delete_message">התיקייה %1$s תימחק. המסמכים והתיקיות שבתוכה יעברו לתיקייה שמעליה, ואף מסמך לא יימחק.</string>
+    <string name="folder_lock">נעילת התיקייה</string>
+    <string name="folder_unlock">ביטול נעילת התיקייה</string>
+    <string name="move_to_folder">העברה לתיקייה</string>
+    <string name="folder_top">המסמכים שלי (בלי תיקייה)</string>
+    <string name="name_from_text">שם לפי הטקסט</string>
+    <string name="name_from_text_none">לא נמצאה כותרת בעמוד הראשון</string>
+    <string name="txt_to_pdf">טקסט ל־PDF</string>
+    <string name="web_to_pdf">דף אינטרנט ל־PDF</string>
+    <string name="web_address">כתובת הדף</string>
+    <string name="web_open">פתיחה</string>
+    <string name="web_save">שמירה כמסמך</string>
+    <plurals name="folder_documents"><item quantity="one">מסמך אחד</item><item quantity="two">%1$d מסמכים</item><item quantity="many">%1$d מסמכים</item><item quantity="other">%1$d מסמכים</item></plurals>
+    <plurals name="folder_folders"><item quantity="one">תיקייה אחת</item><item quantity="two">%1$d תיקיות</item><item quantity="many">%1$d תיקיות</item><item quantity="other">%1$d תיקיות</item></plurals>
 </resources>
 
 

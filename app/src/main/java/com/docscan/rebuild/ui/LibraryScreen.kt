@@ -9,7 +9,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +47,9 @@ fun LibraryScreen(
     onShare: (String) -> Unit, onPdf: (String) -> Unit,
     onTrash: (Set<String>, Boolean) -> Unit, snack: SnackbarHostState, onBackup: () -> Unit = {}, onRestoreBackup: () -> Unit = {},
     onDeleteForever: (Set<String>) -> Unit = {}, onTool: (String) -> Unit = {},
-    tags: Map<String, List<String>> = emptyMap(), locked: Set<String> = emptySet()
+    tags: Map<String, List<String>> = emptyMap(), locked: Set<String> = emptySet(),
+    folders: List<DocumentFolders.Folder> = emptyList(), placement: Map<String, String> = emptyMap(), lockedFolders: Set<String> = emptySet(),
+    folderActions: FolderActions? = null
 ) {
     var search by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("home") }
@@ -53,19 +58,42 @@ fun LibraryScreen(
     var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    // The folder shown in "files" (null: the top level); a folder that is gone shows the top level.
+    var folder by rememberSaveable { mutableStateOf<String?>(null) }
+    if (folder != null && folders.none { it.id == folder }) folder = null
+    var naming by remember { mutableStateOf<Pair<String?, String>?>(null) }   // (folder being renamed or null for new, name)
+    var removing by remember { mutableStateOf<DocumentFolders.Folder?>(null) }
+    var moving by remember { mutableStateOf(false) }
+    val inFolders = section == "files" && !inTrash && folderActions != null
+    // New scans and imports go into the folder being looked at.
+    LaunchedEffect(folder, inFolders) { folderActions?.shown?.invoke(if (inFolders) folder else null) }
     val allTags = entries.flatMap { tags[it.book.id].orEmpty() }.distinct().sorted()
     LaunchedEffect(allTags) { if (tagFilter != null && tagFilter !in allTags) tagFilter = null }
     // Search finds titles and tags; a chosen tag shows only its documents.
     val visible = (if (inTrash) trash else entries).filter { e -> e.book.title.contains(search, true) || tags[e.book.id].orEmpty().any { it.contains(search, true) } }
         .filter { e -> tagFilter == null || tagFilter in tags[e.book.id].orEmpty() }
+        // In "files" the current folder's documents; a search or a tag looks through every folder.
+        .filter { e -> !inFolders || search.isNotBlank() || tagFilter != null || placement[e.book.id] == folder }
+    val subfolders = if (inFolders && search.isBlank() && tagFilter == null) folders.filter { it.parent == folder }.sortedBy { it.name.lowercase() } else emptyList()
     fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id; selection = true }
     fun clear() { selection = false; selected = emptyList() }
     fun files() { section = "files"; inTrash = false; clear() }
     fun trash() { section = "files"; inTrash = !inTrash; clear() }
     LaunchedEffect(entries, trash, inTrash, search) { selected = selected.filter { id -> visible.any { it.book.id == id } } }
     BackHandler(selection || inTrash || section != "home") {
-        when { selection -> clear(); inTrash -> inTrash = false; else -> section = "home" }
+        when { selection -> clear(); inTrash -> inTrash = false; inFolders && folder != null -> folder = folders.firstOrNull { it.id == folder }?.parent; else -> section = "home" }
     }
+    naming?.let { (id, initial) ->
+        TextDialog(if (id == null) R.string.folder_new else R.string.rename, initial, singleLine = true, limit = 60, onDismiss = { naming = null }) { name ->
+            naming = null; if (name.isNotBlank()) { if (id == null) folderActions?.create?.invoke(name, folder) else folderActions?.rename?.invoke(id, name) }
+        }
+    }
+    removing?.let { f ->
+        AlertDialog(onDismissRequest = { removing = null }, title = { Text(stringResource(R.string.folder_delete)) }, text = { Text(stringResource(R.string.folder_delete_message, f.name)) },
+            confirmButton = { TextButton({ removing = null; folderActions?.delete?.invoke(f.id) }, modifier = Modifier.testTag("confirm-delete-folder")) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton({ removing = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+    if (moving) FolderPicker(folders, lockedFolders, onDismiss = { moving = false }) { target -> moving = false; folderActions?.move?.invoke(selected.toSet(), target); clear() }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
         title = { Text(pluralStringResource(R.plurals.delete_forever_title, selected.size, selected.size)) },
@@ -101,6 +129,9 @@ fun LibraryScreen(
                     IconButton(onClick = { onTrash(selected.toSet(), inTrash); clear() }, enabled = selected.isNotEmpty()) {
                         Icon(if (inTrash) Icons.Outlined.RestoreFromTrash else Icons.Outlined.DeleteOutline,
                             stringResource(if (inTrash) R.string.restore else R.string.move_to_trash))
+                    }
+                    if (!inTrash && folderActions != null) IconButton(onClick = { moving = true }, enabled = selected.isNotEmpty(), modifier = Modifier.testTag("move-to-folder")) {
+                        Icon(Icons.AutoMirrored.Outlined.DriveFileMove, stringResource(R.string.move_to_folder))
                     }
                     if (inTrash) IconButton(onClick = { confirmDelete = true }, enabled = selected.isNotEmpty(), modifier = Modifier.testTag("delete-forever")) {
                         Icon(Icons.Outlined.DeleteForever, stringResource(R.string.delete_forever), tint = MaterialTheme.colorScheme.error)
@@ -142,8 +173,13 @@ fun LibraryScreen(
                     }
                     item(key = "heading") {
                         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(if (inTrash) R.string.trash else if (section == "home") R.string.recent_documents else R.string.my_documents),
-                                Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+                            val here = folders.firstOrNull { it.id == folder }
+                            if (inFolders && here != null) IconButton({ folder = here.parent }, modifier = Modifier.testTag("folder-up")) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) }
+                            Text(if (inFolders && here != null) here.name else stringResource(if (inTrash) R.string.trash else if (section == "home") R.string.recent_documents else R.string.my_documents),
+                                Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (inFolders && !selection) IconButton({ naming = Pair(null, "") }, modifier = Modifier.testTag("new-folder")) {
+                                Icon(Icons.Outlined.CreateNewFolder, stringResource(R.string.folder_new), tint = HomeGreen)
+                            }
                             if (section == "home" && !selection) TextButton(onClick = ::files) {
                                 Text(stringResource(R.string.show_all), color = HomeMuted)
                                 Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(17.dp), tint = HomeMuted)
@@ -156,7 +192,12 @@ fun LibraryScreen(
                             allTags.forEach { tag -> FilterChip(tagFilter == tag, { tagFilter = if (tagFilter == tag) null else tag }, label = { Text(tag) }, modifier = Modifier.testTag("tag-filter-$tag")) }
                         }
                     }
-                    if (visible.isEmpty()) item(key = "empty") {
+                    items(subfolders, key = { "folder-${it.id}" }) { f ->
+                        FolderRow(f, f.id in lockedFolders, documents = entries.count { placement[it.book.id] == f.id }, folders = folders.count { it.parent == f.id },
+                            onOpen = { folderActions?.open?.invoke(f.id) { folder = f.id } }, onRename = { naming = f.id to f.name }, onDelete = { removing = f },
+                            onLock = { folderActions?.toggleLock?.invoke(f.id) })
+                    }
+                    if (visible.isEmpty() && subfolders.isEmpty()) item(key = "empty") {
                         Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Outlined.DocumentScanner, null, Modifier.size(54.dp), tint = HomeGreen)
                             Spacer(Modifier.height(14.dp))
@@ -181,6 +222,52 @@ fun LibraryScreen(
             }
         }
     }
+}
+
+/** What the library can do with folders; [open] runs its action once a locked folder's code is entered. */
+class FolderActions(val create: (String, String?) -> Unit, val rename: (String, String) -> Unit, val delete: (String) -> Unit,
+    val move: (Set<String>, String?) -> Unit, val toggleLock: (String) -> Unit, val open: (String, () -> Unit) -> Unit, val shown: (String?) -> Unit = {})
+
+@Composable
+private fun FolderRow(folder: DocumentFolders.Folder, locked: Boolean, documents: Int, folders: Int, onOpen: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, onLock: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 12.dp, vertical = 8.dp).testTag("folder-${folder.name}"), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(6.dp)).background(HomeTile), contentAlignment = Alignment.Center) {
+            Icon(if (locked) Icons.Outlined.FolderSpecial else Icons.Outlined.Folder, null, Modifier.size(34.dp), tint = HomeGreen)
+            if (locked) Icon(Icons.Outlined.Lock, stringResource(R.string.locked), Modifier.size(16.dp).align(Alignment.BottomEnd).testTag("folder-locked-${folder.name}"), tint = HomeMuted)
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Text(folder.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(pluralStringResource(R.plurals.folder_documents, documents, documents) + if (folders > 0) " · " + pluralStringResource(R.plurals.folder_folders, folders, folders) else "",
+                style = MaterialTheme.typography.labelSmall, color = HomeMuted)
+        }
+        Box {
+            IconButton({ menu = true }, modifier = Modifier.testTag("folder-menu-${folder.name}")) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.more_actions)) }
+            DropdownMenu(menu, { menu = false }) {
+                DropdownMenuItem({ Text(stringResource(R.string.rename)) }, { menu = false; onRename() }, leadingIcon = { Icon(Icons.Outlined.Edit, null) })
+                DropdownMenuItem({ Text(stringResource(if (locked) R.string.folder_unlock else R.string.folder_lock)) }, { menu = false; onLock() },
+                    leadingIcon = { Icon(if (locked) Icons.Outlined.LockOpen else Icons.Outlined.Lock, null) }, modifier = Modifier.testTag("folder-lock"))
+                DropdownMenuItem({ Text(stringResource(R.string.folder_delete)) }, { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Outlined.FolderDelete, null) }, modifier = Modifier.testTag("folder-delete"))
+            }
+        }
+    }
+}
+
+/** Where to move documents: the top level or any folder, shown as a tree. */
+@Composable
+private fun FolderPicker(folders: List<DocumentFolders.Folder>, locked: Set<String>, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
+    fun branch(parent: String?, depth: Int): List<Pair<DocumentFolders.Folder, Int>> =
+        folders.filter { it.parent == parent }.sortedBy { it.name.lowercase() }.flatMap { listOf(it to depth) + branch(it.id, depth + 1) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.move_to_folder)) }, text = {
+        LazyColumn(Modifier.heightIn(max = 380.dp).testTag("folder-picker")) {
+            item { TextButton({ onPick(null) }, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Home, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.folder_top), Modifier.weight(1f)) } }
+            items(branch(null, 0), key = { it.first.id }) { (f, depth) ->
+                TextButton({ onPick(f.id) }, Modifier.fillMaxWidth().padding(start = (depth * 18).dp).testTag("pick-folder-${f.name}")) {
+                    Icon(if (f.id in locked) Icons.Outlined.FolderSpecial else Icons.Outlined.Folder, null); Spacer(Modifier.width(8.dp)); Text(f.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }, confirmButton = {}, dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 @Composable
@@ -307,7 +394,8 @@ private fun ToolsSections(onTool: (String) -> Unit, onFiles: () -> Unit, onTrash
         R.string.tools_import to listOf(Tool(R.string.import_images, Icons.Outlined.Image, blue) { onTool("import") }, Tool(R.string.import_pdf, Icons.Outlined.FileOpen, blue) { onTool("import") }),
         R.string.tools_convert to listOf(Tool(R.string.to_word, Icons.Outlined.Description, blue) { onTool("word") }, Tool(R.string.to_excel, Icons.Outlined.TableChart, HomeGreen) { onTool("excel") },
             Tool(R.string.to_powerpoint, Icons.Outlined.Slideshow, red) { onTool("powerpoint") }, Tool(R.string.pdf_to_images, Icons.Outlined.PhotoLibrary, HomeGreen) { onTool("images") },
-            Tool(R.string.long_image, Icons.Outlined.ViewDay, HomeGreen) { onTool("long") }),
+            Tool(R.string.long_image, Icons.Outlined.ViewDay, HomeGreen) { onTool("long") }, Tool(R.string.txt_to_pdf, Icons.AutoMirrored.Outlined.TextSnippet, blue) { onTool("txt2pdf") },
+            Tool(R.string.web_to_pdf, Icons.Outlined.Language, red) { onTool("web2pdf") }),
         R.string.tools_edit to listOf(Tool(R.string.signature, Icons.Outlined.Draw, blue) { onTool("signature") }, Tool(R.string.watermark, Icons.Outlined.WaterDrop, blue) { onTool("watermark") },
             Tool(R.string.smart_erase, Icons.Outlined.AutoFixHigh, HomeGreen) { onTool("erase") }, Tool(R.string.colour_marks_short, Icons.Outlined.FormatColorReset, blue) { onTool("erasecolor") },
             Tool(R.string.edit_text, Icons.Outlined.TextFields, HomeGreen) { onTool("text") }, Tool(R.string.header_short, Icons.Outlined.FormatListNumbered, blue) { onTool("footer") },
