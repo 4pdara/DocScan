@@ -82,10 +82,14 @@ fun WebPageScreen(busy: Boolean, onBack: () -> Unit, onSave: (String, List<ByteA
 }
 
 /** The whole page, top to bottom, in A4-shaped slices (at most 40) as JPEG pictures. */
-@Suppress("DEPRECATION")
 private fun slices(view: WebView): List<ByteArray> {
     val width = view.width.coerceAtLeast(1)
-    val total = (view.contentHeight * view.scale).toInt().coerceAtLeast(view.height).coerceAtLeast(1)
+    // The page's full height: the view measured with no height limit (its content's own height in pixels), and
+    // never less than the content height in CSS pixels times the screen density.
+    view.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+    val measured = view.measuredHeight
+    val dense = (view.contentHeight * view.resources.displayMetrics.density).toInt()
+    val total = maxOf(measured, dense, view.height, 1)
     val slice = (width * 297f / 210f).toInt()
     view.scrollTo(0, 0)
     val out = ArrayList<ByteArray>()
@@ -102,5 +106,7 @@ private fun slices(view: WebView): List<ByteArray> {
         } finally { bitmap.recycle() }
         top += height
     }
+    // Back to the size it has on screen.
+    view.requestLayout()
     return out
 }
