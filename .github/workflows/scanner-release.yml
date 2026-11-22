@@ -1,7 +1,7 @@
 name: Build, verify and publish DocScan 1.4.0
 on:
   push:
-    branches: [main]
+    branches: [main, release/scanner-1.4.0]
     paths: [app/**, gradle/**, build.gradle.kts, settings.gradle.kts, gradle.properties, docs/RELEASE_1.4.0_HE.md, .github/scanner-device-check.sh, .github/workflows/scanner-release.yml]
   workflow_dispatch:
 permissions:
@@ -226,8 +226,9 @@ jobs:
           path: scanner-device-results/
   publish:
     needs: [build, device]
-    # Releases come only from main; a run started on a work branch builds and tests the next version without publishing.
-    if: github.ref == 'refs/heads/main'
+    # Releases come from main, or from the version's own release branch when the owner asks for one (1.4.0, owner's
+    # request of 22 November 2026); a run started on a work branch builds and tests the next version without publishing.
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/scanner-1.4.0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
