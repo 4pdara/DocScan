@@ -28,17 +28,17 @@ printf '%s\n' "$actual_page" > "$out/page-size.txt"
 install_args=(-r)
 # The ARM64 run installs the APK phones download (ARM libraries only); the x86 emulators need the universal build of
 # the same code (the build job checks that the two differ only in the Intel libraries).
-apk="$root/tests/DocScan-1.4.0-universal.apk"
-if [[ -n "$forced_abi" ]]; then install_args+=(--abi "$forced_abi"); apk="$root/DocScan-1.4.0.apk"; fi
+apk="$root/tests/DocScan-1.4.1-universal.apk"
+if [[ -n "$forced_abi" ]]; then install_args+=(--abi "$forced_abi"); apk="$root/DocScan-1.4.1.apk"; fi
 echo "Installing $apk" | tee "$out/apk.txt"
 adb install "${install_args[@]}" "$apk" | tee "$out/app-install.txt"
 grep -q '^Success' "$out/app-install.txt"
 adb shell dumpsys package "$app" > "$out/package.txt"
-grep -q "versionName=1.4.0" "$out/package.txt"
+grep -q "versionName=1.4.1" "$out/package.txt"
 if [[ -n "$forced_abi" ]]; then grep -q "primaryCpuAbi=$forced_abi" "$out/package.txt"; fi
 adb shell am start -W -n "$app/com.docscan.rebuild.MainActivity" | tee "$out/launch.txt"
 grep -q 'Status: ok' "$out/launch.txt"
-adb install -r -t "$root/tests/DocScan-1.4.0-tests.apk"
+adb install -r -t "$root/tests/DocScan-1.4.1-tests.apk"
 args=()
 if [[ "$suite" == 'smoke' ]]; then
   # The 19-test set the 0.1.8 release pipeline used, plus the original-filter and detection measurements, on Android 8 and 16 KB images (storage, processing, editing,

@@ -631,6 +631,39 @@ class RebuildFlowTest {
         assertNull(store.dao.book(kept.id)); assertFalse(store.source(keptPage).exists())
     }
 
+    @Test fun quickCaptureSavesTheCameraOutlineThenRefinesItInTheBackground() {
+        // 1.4.1: a single photo is saved at once with the outline shown in the camera, so the editor opens about 1.5
+        // seconds sooner on the owner's phone; detection, curved edges and straightening follow in the background, and a
+        // crop the user changed meanwhile is kept. Mirrors docs/RELEASE_1.4.1_HE.md.
+        val store = (compose.activity.application as ScanApplication).store
+        val vm = com.docscan.rebuild.ui.ScanViewModel(store)
+        val probe = fixture("quick-probe.jpg")
+        val detected = try { requireNotNull(ImagePipeline.detect(probe)) } finally { probe.delete() }
+        // What the camera showed: the page, two percent to the right of where the full photo finds it.
+        val seen = Frame(detected.points.map { Vertex(it.x + .02f, it.y) })
+        val book = runBlocking { store.create("Quick ${System.nanoTime()}") }
+        val first = runBlocking { vm.receive(book.id, fixture("quick-1.jpg"), seen = seen, quick = true) }
+        val second = runBlocking { vm.receive(book.id, fixture("quick-2.jpg"), seen = seen, quick = true) }
+        // Saved at once with the camera's outline and the filter for new scans, nothing measured yet.
+        for (page in listOf(first, second)) {
+            assertEquals(seen, page.edit().frame); assertTrue(page.edit().edges.isEmpty() && page.edit().flatten.isEmpty())
+            assertEquals(ScanSettings(context).treatment, page.edit().treatment)
+        }
+        // The user moves the second page's crop before its turn in the background comes (one refinement at a time).
+        val manual = Frame(seen.points.map { Vertex(it.x, it.y + .03f) })
+        runBlocking { store.save(second, second.edit().copy(frame = manual)) }
+        val began = System.currentTimeMillis()
+        compose.waitUntil(60000) { runBlocking { store.dao.page(first.id)?.edit()?.frame } != seen }
+        // The full photo agrees with the camera within 4%, so its sharper outline is taken.
+        val refined = runBlocking { requireNotNull(store.dao.page(first.id)).edit() }
+        assertTrue("refined ${refined.frame} vs detected $detected", refined.frame.motion(detected) < .005f)
+        assertEquals(ScanSettings(context).treatment, refined.treatment)
+        // The second page's refinement has run by now too; the user's crop stays.
+        Thread.sleep(maxOf(4000L, 3 * (System.currentTimeMillis() - began)))
+        assertEquals(manual, runBlocking { requireNotNull(store.dao.page(second.id)).edit().frame })
+        runBlocking { store.discard(book.id) }
+    }
+
     @Test fun singleCaptureOpensEditorWithDurableOriginal() {
         val store = (compose.activity.application as ScanApplication).store
         compose.onNodeWithTag("new-scan").performClick()

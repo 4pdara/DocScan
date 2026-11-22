@@ -71,12 +71,30 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             finally { busy = false }
         }
     }
-    /** A new photo becomes a page; [timed] records its steps in [CaptureTimes] (a photo from the camera). */
-    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true, seen: Frame? = null, timed: Boolean = false): Sheet {
+    /**
+     * A new photo becomes a page; [timed] records its steps in [CaptureTimes] (a photo from the camera).
+     *
+     * With [quick] and an outline [seen] in the camera, the page is saved at once with that outline and the editor can
+     * open; detection on the full photo, the curved edges and the straightening follow in the background ([refine]).
+     * On the owner's phone they took about 1.5 of the 4 seconds from the shutter to the editor (1.3.9, docs/RELEASE_1.4.0_HE.md).
+     */
+    suspend fun receive(bookId: String, file: File, detectBounds: Boolean = true, seen: Frame? = null, timed: Boolean = false, quick: Boolean = false): Sheet {
         fun step(label: Int) { if (timed) CaptureTimes.step(label) }
         try {
             val page = store.captured(bookId, file)
             step(R.string.timing_store)
+            val shown = seen?.takeIf { quick && detectBounds && it != Frame.FULL && it.valid() }
+            if (shown != null) {
+                try {
+                    store.save(page, MarkSettings(store.context).applyTo(page.edit().copy(frame = shown)).copy(treatment = ScanSettings(store.context).treatment))
+                    step(R.string.timing_save)
+                } catch (e: CancellationException) { throw e }
+                catch (e: OutOfMemoryError) { notices.send(R.string.error_memory) }
+                catch (e: Exception) { notices.send(R.string.processing_error) }
+                if (timed) CaptureTimes.saved(page.id)
+                viewModelScope.launch { refining.withPermit { refine(page.id, shown, timed) } }
+                return store.dao.page(page.id) ?: page
+            }
             // The durable master already exists before proposing the crop.
             try {
                 val detected = if (detectBounds) withContext(Dispatchers.Default) { ImagePipeline.detect(store.source(page)) } else null
@@ -104,6 +122,40 @@ class ScanViewModel(val store: ScanStore) : ViewModel() {
             if (timed) CaptureTimes.saved(page.id)
             return store.dao.page(page.id) ?: page
         } finally { file.delete() }
+    }
+
+    /** One background refinement at a time, so photos taken one after another do not compete for the processor. */
+    private val refining = Semaphore(1)
+
+    /**
+     * The steps [receive] left for later on page [id], saved with the camera's outline [seen]: detection on the full
+     * photo (which refines the outline only where both agree, as before), the curved edges and the straightening.
+     * Nothing is changed if the outline was moved in the meantime: the user's crop wins. The editor takes the result
+     * in while it is open (PageEditor).
+     */
+    private suspend fun refine(id: String, seen: Frame, timed: Boolean) {
+        fun step(label: Int) { if (timed) CaptureTimes.laterStep(id, label) }
+        if (timed) CaptureTimes.laterStart(id)
+        try {
+            val page = store.dao.page(id) ?: return
+            val source = store.source(page)
+            val detected = withContext(Dispatchers.Default) { runCatching { ImagePipeline.detect(source) }.getOrNull() }
+            step(R.string.timing_detect)
+            val frame = Frame.choose(detected, seen) ?: seen
+            val curved = withContext(Dispatchers.Default) { runCatching { ImagePipeline.pageEdges(source, frame) }.getOrNull() }
+            step(R.string.timing_edges)
+            val cropped = page.edit().copy(frame = frame, edges = curved?.values.orEmpty())
+            val flatten = withContext(Dispatchers.Default) { runCatching { PageFlattener.estimate(source, cropped) }.getOrNull() }
+            step(R.string.timing_flatten)
+            val current = store.dao.page(id) ?: return
+            val now = current.edit()
+            if (now.frame != seen || now.edges.isNotEmpty() || now.flatten.isNotEmpty()) return
+            val refined = now.copy(frame = frame, edges = cropped.edges, flatten = flatten?.toList().orEmpty())
+            if (refined != now) store.save(current, refined)
+            step(R.string.timing_save)
+        } catch (e: CancellationException) { throw e }
+        catch (e: OutOfMemoryError) { android.util.Log.e("DocScanRebuild", "Background refinement ran out of memory", e) }
+        catch (e: Exception) { android.util.Log.e("DocScanRebuild", "Background refinement failed", e) }
     }
 }
 
@@ -624,7 +676,10 @@ fun ScanApp(store: ScanStore) {
                             return@perform
                         }
                         try {
-                            val captured = applyMode(vm.receive(id, file, detectBounds, seen, timed = true), scanMode)
+                            // A single photo that opens the editor right away takes the quick path; a batch, a scan mode, an ID card and text
+                            // extraction keep measuring everything first, since what follows uses the finished crop.
+                            val quick = !batch && scanMode == null && !idCard && !ocrMode
+                            val captured = applyMode(vm.receive(id, file, detectBounds, seen, timed = true, quick = quick), scanMode)
                             if (scanMode == "bizcard" || scanMode == "receipt") reading = scanMode
                             val sides = if (idCard) store.dao.snapshot(id) else emptyList()
                             if (idCard && sides.size >= 2) {
