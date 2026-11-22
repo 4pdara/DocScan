@@ -887,6 +887,43 @@ class RebuildFlowTest {
             }
         } finally { cases.forEach { it.first.recycle() } }
     }
+    @Test fun filterThumbnailsKeepTheCoverTheEditorKeeps() {
+        // Owner's report on 1.3.9: the Magic Color and Pro thumbnails whitened a grey-green cover with thin gold
+        // lettering that the editor kept dark. Drawn at 160 pixels the lettering blurs into the cover, which then looks
+        // as even as paper. The paper-or-cover choice is now made once per page at one size. Mirrors docs/RELEASE_1.4.0_HE.md.
+        ImagePipeline.ensureAvailable()
+        Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
+        fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+        // Rows of thin light bars on a grey-green cover: a cover at full size, paper once sampled down to 160 pixels.
+        val cover = Bitmap.createBitmap(1500, 2000, Bitmap.Config.ARGB_8888).also { bitmap ->
+            Canvas(bitmap).apply {
+                drawColor(Color.rgb(116, 142, 138))
+                val gold = Paint().apply { color = Color.rgb(236, 218, 164) }
+                for (row in 0 until 10) { var x = 260; while (x < 1500 - 260 - 4) { drawRect(x.toFloat(), 500f + row * 110, x + 4f, 550f + row * 110, gold); x += 26 } }
+            }
+        }
+        val file = File(context.cacheDir, "thin-lettering-cover.png").also { f -> f.outputStream().use { check(cover.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+        // Above the lettering: the cover itself.
+        fun ground(b: Bitmap) = lum(b.getPixel(b.width / 2, (b.height * .15f).toInt()))
+        try {
+            for (treatment in listOf(Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_PRO_LOCAL)) {
+                val recipe = EditRecipe(treatment = treatment)
+                // The cause, on a thumbnail-sized page sampled as the phone decoder does: judged on its own it is paper;
+                // with the page's own decision it stays a cover.
+                val small = Bitmap.createScaledBitmap(cover, 188, 250, false)
+                val alone = ImagePipeline.transform(small, recipe); val decided = ImagePipeline.transform(small, recipe, paper = false)
+                try {
+                    assertTrue("$treatment: the small page alone should read as paper (${ground(alone)}), or this test shows nothing", ground(alone) > 200)
+                    assertTrue("$treatment whitened the cover even with the decision: ${ground(decided)}", ground(decided) < 150)
+                } finally { small.recycle(); alone.recycle(); decided.recycle() }
+                // Through the app's own path: thumbnail, editor and saved file make the same choice, a cover.
+                for (edge in listOf(160, 1800, null)) {
+                    val out = ImagePipeline.render(file, recipe, edge)
+                    try { assertTrue("$treatment at ${edge ?: "full size"} whitened the cover: ${ground(out)}", ground(out) < 150) } finally { out.recycle() }
+                }
+            }
+        } finally { cover.recycle(); file.delete() }
+    }
     @Test fun magicColourAndProKeepAPhotoCoverPrintedToItsEdges() {
         // Owner's 1.2.6 report: Magic Color turned a book cover photograph (a face in front of a warm orange backdrop,
         // a dark hat and coat, a white shirt) pale and purple, where CamScanner keeps its colours. The cover is light,

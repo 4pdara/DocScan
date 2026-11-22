@@ -25,15 +25,19 @@ internal object OriginalFilters {
      */
     private const val PAPER_LIGHTNESS = 128.0
 
-    fun apply(current: Mat, treatment: Treatment, result: Mat) {
+    /**
+     * [paper], when given, is the paper-or-cover choice already made for this page at one fixed size
+     * ([ImagePipeline.paperDecision]), so that every size it is drawn at gets the same answer.
+     */
+    fun apply(current: Mat, treatment: Treatment, result: Mat, paper: Boolean? = null) {
         val rgb = Mat()
         try {
             Imgproc.cvtColor(current, rgb, Imgproc.COLOR_RGBA2RGB)
             when (treatment) {
                 Treatment.PAPER -> cleanPaper(rgb, result)
                 Treatment.NATIVE_NO_SHADOW -> removeShadows(rgb, result)
-                Treatment.NATIVE_MAGIC_COLOR -> magicColor(rgb, result)
-                Treatment.NATIVE_PRO_LOCAL -> pro(rgb, result)
+                Treatment.NATIVE_MAGIC_COLOR -> magicColor(rgb, result, paper)
+                Treatment.NATIVE_PRO_LOCAL -> pro(rgb, result, paper)
                 Treatment.NATIVE_INVERT -> { cleanPaper(rgb, result); Core.bitwise_not(result, result) }
                 Treatment.NATIVE_BOARD -> board(rgb, result, paper = false)
                 Treatment.NATIVE_BOARD_PAPER -> board(rgb, result, paper = true)
@@ -68,7 +72,7 @@ internal object OriginalFilters {
     }
 
     /** Bright white page, deeper text and livelier colour for colour documents. */
-    private fun magicColor(rgb: Mat, out: Mat) = byDocumentTone(rgb, out) { paperLike ->
+    private fun magicColor(rgb: Mat, out: Mat, paper: Boolean?) = byDocumentTone(rgb, out, paper) { paperLike ->
         val paper = paperBackground(rgb)
         try {
             divide(rgb, paper.background, paperLike, 255.0)
@@ -80,7 +84,7 @@ internal object OriginalFilters {
     }
 
     /** Strongest cleanup: denoise, uniform white background, crisp ink, moderate colour. */
-    private fun pro(rgb: Mat, out: Mat) = byDocumentTone(rgb, out) { paperLike ->
+    private fun pro(rgb: Mat, out: Mat, paper: Boolean?) = byDocumentTone(rgb, out, paper) { paperLike ->
         val paper = paperBackground(rgb)
         val denoised = Mat()
         try {
@@ -100,16 +104,17 @@ internal object OriginalFilters {
      * Their colours are kept and only made clearer: their own range stretched, a little more colour and contrast,
      * sharper detail.
      */
-    private fun byDocumentTone(rgb: Mat, out: Mat, paperFilter: (Mat) -> Unit) {
-        if (isPaper(rgb)) paperFilter(out) else richColour(rgb, out)
+    private fun byDocumentTone(rgb: Mat, out: Mat, paper: Boolean?, paperFilter: (Mat) -> Unit) {
+        if (paper ?: isPaper(rgb)) paperFilter(out) else richColour(rgb, out)
     }
 
     /**
      * Paper is light even in shade (the 75th percentile of lightness inside the document, a tenth of its size away
      * from each edge), and once its print is closed over, most of it is one even tint: white, cream or yellowed, lit
-     * warm or cool. A picture's surface keeps changing colour.
+     * warm or cool. A picture's surface keeps changing colour. Measured on about 400 pixels: on a much smaller picture
+     * thin light lettering blurs into the cover, and a cover near the line looks as even as paper.
      */
-    private fun isPaper(rgb: Mat): Boolean {
+    fun isPaper(rgb: Mat): Boolean {
         val small = Mat(); val gray = Mat(); val surface = Mat(); val lab = Mat(); var kernel: Mat? = null
         try {
             val scale = min(1.0, 400.0 / max(rgb.cols(), rgb.rows()))
