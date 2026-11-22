@@ -84,7 +84,7 @@ python3 - "$out/instrumentation.txt" "$suite" <<'PY'
 from pathlib import Path
 import re, sys
 text = Path(sys.argv[1]).read_text()
-expected = 46 if sys.argv[2] == 'smoke' else 62
+expected = 46 if sys.argv[2] == 'smoke' else 63
 if not re.search(r'^OK \((\d+) tests\)', text, re.M) or re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|INSTRUMENTATION_ABORTED', text):
     raise SystemExit('Exact APK instrumentation suite did not pass')
 count = int(re.search(r'^OK \((\d+) tests\)', text, re.M).group(1))
