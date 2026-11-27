@@ -10,7 +10,7 @@ CamScanner research (screenshots, screen recordings and analysis) was used only 
 
 The third-party components listed below remain their authors' work under their own licenses. Text recognition uses Tesseract and the tessdata_fast models; only the code that integrates them is DocScan's.
 
-The one exception is the optional local native research profile described below. Its two JNI declaration files in com/intsig/nativelib reproduce CamScanner's package name and method signatures, so that they can bind to binaries the owner supplies locally. Those binaries are never stored in Git, and the build refuses to include them in the phone release.
+The native research mode is not part of the application. It is a separate research tool, used only to compare DocScan with CamScanner; the application does not use it, and the build refuses to include it in the phone release. Its only files in the repository are two small JNI declaration files in com/intsig/nativelib, which connect the research tool to CamScanner binaries. Those binaries are not stored in Git.
 
 # Third-party components
 
