@@ -47,10 +47,41 @@ object ImagePipeline {
             ExifInterface(file).getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, 0.0)
                 .takeIf { it > 0.0 }?.div(hypot(36.0, 24.0))
         }.getOrNull()
-        return try { transform(bitmap, recipe, focalToDiagonal) } finally { bitmap.recycle() }
+        // Magic Color and Pro choose between paper and a cover from the page itself, and on a page near the line the
+        // answer changed with the size it was drawn at: the 160-pixel filter thumbnails whitened a cover that the editor
+        // kept dark (owner's report on 1.3.9). The choice is now made once per page, on the page drawn at
+        // [DECISION_EDGE], and the thumbnails, the editor and the saved files all follow it.
+        val paper = if (recipe.treatment in TONE_FILTERS && !referenceEngineAvailable)
+            runCatching { paperDecision(file, recipe, focalToDiagonal) }.getOrNull() else null
+        return try { transform(bitmap, recipe, focalToDiagonal, paper) } finally { bitmap.recycle() }
     }
 
-    fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null): Bitmap {
+    /** The size the paper-or-cover choice is made at ([OriginalFilters.isPaper] measures about 400 pixels inside it). */
+    private const val DECISION_EDGE = 800
+    private val TONE_FILTERS = setOf(Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_PRO_LOCAL)
+    private val paperDecisions = android.util.LruCache<String, Boolean>(64)
+
+    /**
+     * Paper or cover for the page [recipe] cuts from the photo in [file], decided on the page drawn at [DECISION_EDGE]
+     * with its crop only: the curved edges and the straightening hardly change the page's tones but would add to the
+     * time the editor takes to open (Magic Color is the filter a new scan starts with). Cached by the photo and the crop,
+     * so a page's thumbnails, editor view and export share one decision; one decision is worked out at a time, so the
+     * others wait for it and reuse it.
+     */
+    internal fun paperDecision(file: File, recipe: EditRecipe, focalToDiagonal: Double?): Boolean = synchronized(paperDecisions) {
+        val before = EditRecipe(frame = recipe.frame, outputAspect = recipe.outputAspect)
+        val key = "${file.path}:${file.length()}:${file.lastModified()}:$before"
+        paperDecisions.get(key)?.let { return it }
+        val bitmap = decode(file, DECISION_EDGE)
+        val page = try { transform(bitmap, before, focalToDiagonal) } finally { bitmap.recycle() }
+        val rgba = Mat(); val rgb = Mat()
+        try {
+            Utils.bitmapToMat(page, rgba); Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
+            OriginalFilters.isPaper(rgb).also { paperDecisions.put(key, it) }
+        } finally { page.recycle(); rgba.release(); rgb.release() }
+    }
+
+    fun transform(bitmap: Bitmap, recipe: EditRecipe, focalToDiagonal: Double? = null, paper: Boolean? = null): Bitmap {
         ensureAvailable(); require(recipe.frame.valid() && recipe.curvature.valid())
         val source = Mat(); val current = Mat(); val result = Mat(); val alpha = Mat()
         try {
@@ -121,7 +152,7 @@ object ImagePipeline {
                             NativeCamScannerEnhancer.applyInPlace(work, recipe.treatment)
                             Utils.bitmapToMat(work, result)
                         } finally { work.recycle() }
-                    } else OriginalFilters.apply(current, recipe.treatment, result)
+                    } else OriginalFilters.apply(current, recipe.treatment, result, paper)
                 }
             }
             if (recipe.brightness != 0f || recipe.contrast != 1f) result.convertTo(result, -1, recipe.contrast.toDouble(), recipe.brightness.toDouble())

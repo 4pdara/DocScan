@@ -92,6 +92,17 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
     var encoded by rememberSaveable(page.id) { mutableStateOf(page.recipe) }
     val edit = RecipeCodec.decode(encoded)
     fun change(recipe: EditRecipe) { encoded = RecipeCodec.encode(recipe) }
+    // A new photo opens with the camera's outline while detection, the curved edges and the straightening finish in the
+    // background (1.4.1). When the saved page changes under the editor, its crop is taken in, unless the crop was
+    // changed here meanwhile; everything else chosen here (filter, marks, ...) stays.
+    var saved by remember(page.id) { mutableStateOf(page.recipe) }
+    LaunchedEffect(page.recipe) {
+        if (page.recipe == saved) return@LaunchedEffect
+        val before = RecipeCodec.decode(saved); val after = page.edit(); val mine = RecipeCodec.decode(encoded)
+        if (mine.frame == before.frame && mine.edges == before.edges && mine.flatten == before.flatten && mine.outputAspect == before.outputAspect)
+            encoded = RecipeCodec.encode(mine.copy(frame = after.frame, edges = after.edges, flatten = after.flatten))
+        saved = page.recipe
+    }
     val fullTools = setOf("erase", "text", "brush", "addtext", "watermark", "hide", "shapes")
     var tool by rememberSaveable(page.id) { mutableStateOf(startTool?.takeIf { it !in fullTools }) }
     var full by rememberSaveable(page.id) { mutableStateOf(startTool?.takeIf { it in fullTools }) }
@@ -375,7 +386,10 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
                 }
                 if (showTimings && captureSteps.isNotEmpty()) {
                     val parts = captureSteps.map { stringResource(it.label, it.ms) } + stringResource(R.string.timing_total, captureSteps.sumOf { it.ms })
-                    Text(parts.joinToString(" · "), Modifier.align(Alignment.TopStart).padding(8.dp).background(Color.Black.copy(alpha = .6f), RoundedCornerShape(6.dp))
+                    // The steps that ran after the editor opened (1.4.1), on their own line.
+                    val later = if (CaptureTimes.pageId == page.id) CaptureTimes.later else emptyList()
+                    val laterLine = if (later.isEmpty()) "" else "\n" + stringResource(R.string.timing_later, later.map { stringResource(it.label, it.ms) }.joinToString(" · "))
+                    Text(parts.joinToString(" · ") + laterLine, Modifier.align(Alignment.TopStart).padding(8.dp).background(Color.Black.copy(alpha = .6f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp).testTag("capture-timing"), color = Color.White, style = MaterialTheme.typography.labelSmall)
                 }
             }

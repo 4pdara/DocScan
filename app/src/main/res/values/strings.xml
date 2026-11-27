@@ -529,6 +529,7 @@
     <string name="timing_save">Save %1$d</string>
     <string name="timing_editor">Editor %1$d</string>
     <string name="timing_total">Total %1$d ms</string>
+    <string name="timing_later">In the background: %1$s</string>
     <string name="show_timings">Detection times in the camera</string>
     <string name="show_timings_hint">Shows in the camera how long the page network and the detector take to find the page on each frame. For checking speed on this phone.</string>
 </resources>
