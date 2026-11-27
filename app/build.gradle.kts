@@ -8,70 +8,25 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
-val camScannerNativeDir = providers.gradleProperty("camScannerNativeDir").orNull
-val camScannerNative = camScannerNativeDir != null
-val universalPreview = providers.gradleProperty("universalPreview").orNull?.toBooleanStrict() ?: false
-require(!universalPreview || camScannerNative) { "Universal preview requires the optional ARM64 research input" }
-val standaloneNativePreview = providers.gradleProperty("standaloneNativePreview").orNull?.toBooleanStrict() ?: false
-require(!standaloneNativePreview || camScannerNative) { "Standalone Native preview requires camScannerNativeDir" }
 // Public phone release: original code and licensed components only, under its own package and signing identity.
 val phoneRelease = providers.gradleProperty("phoneRelease").orNull?.toBooleanStrict() ?: false
 // The APK published for phones carries only ARM libraries (32 and 64 bit: every Android 8+ phone). The Intel copies
 // are needed only by the x86 emulators that test each release, which install a separate universal build.
 val armOnly = providers.gradleProperty("armOnly").orNull?.toBooleanStrict() ?: false
-require(!phoneRelease || !camScannerNative) { "The public phone release never bundles the optional research engine" }
-if (camScannerNative) {
-    val expected = mapOf(
-        "libopencv.so" to "9df94cd8f94f0f6818ce700104b6337259c7c95eb95cd98552d27105d5d8320a",
-        "libncnn.so" to "b1841e5a3ea32d7120bbd0cd53e9609c2181441414a961d55fd0c422c11e1dc0",
-        "libMNN.so" to "e03bbcbc0f26b7f2753a2284580b0feab1ac92a629f138fd214c8a5a12f049e9",
-        "libCVNN.so" to "81634fe554a8622eb238dca6a200c18c3e95730fe24474302f809ade12277ddd",
-        "libmagicenhancer.so" to "4fecd50628352cc4d88fba220ee1059e8104857166014f8b5d6e8a13e9c92599",
-        "libimageprocessor.so" to "0ccf18b6323ff23a076dc860dcd76e84097d031427ab056b52a4c7d8ffa28353"
-    )
-    expected.forEach { (name, digest) ->
-        val library = file("$camScannerNativeDir/arm64-v8a/$name")
-        require(library.isFile) { "Missing research engine library: $name" }
-        val actual = MessageDigest.getInstance("SHA-256")
-            .digest(library.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
-        require(actual == digest) { "Unexpected research engine library: $name" }
-    }
-}
 
 android {
     namespace = "com.docscan.rebuild"
     compileSdk = 36
     defaultConfig {
-        applicationId = when {
-            phoneRelease -> "com.docscan.rebuild.scanner"
-            standaloneNativePreview -> "com.docscan.rebuild.csnative.preview"
-            camScannerNative -> "com.docscan.rebuild.csnative"
-            else -> "com.docscan.rebuild"
-        }
-        buildConfigField("boolean", "CAMSCANNER_NATIVE", camScannerNative.toString())
-        buildConfigField("boolean", "UNIVERSAL_PREVIEW", universalPreview.toString())
-        manifestPlaceholders["docscanAppLabel"] = when {
-            phoneRelease -> "@string/release_app_name"
-            standaloneNativePreview -> "@string/native_preview_app_name"
-            camScannerNative -> "@string/native_app_name"
-            else -> "@string/app_name"
-        }
+        applicationId = if (phoneRelease) "com.docscan.rebuild.scanner" else "com.docscan.rebuild"
+        manifestPlaceholders["docscanAppLabel"] = if (phoneRelease) "@string/release_app_name" else "@string/app_name"
         minSdk = 26
         targetSdk = 36
         versionCode = 41
-        versionName = when {
-            phoneRelease -> "1.3.9"
-            universalPreview -> "1.3.9-universal-preview"
-            camScannerNative -> "1.3.9-native-preview"
-            else -> "1.3.9-preview"
-        }
+        versionName = if (phoneRelease) "1.3.9" else "1.3.9-preview"
         testInstrumentationRunner = "com.docscan.rebuild.LocaleTestRunner"
         ndk {
-            abiFilters += when {
-                camScannerNative && !universalPreview -> listOf("arm64-v8a")
-                armOnly -> listOf("arm64-v8a", "armeabi-v7a")
-                else -> listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-            }
+            abiFilters += if (armOnly) listOf("arm64-v8a", "armeabi-v7a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
         }
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
     }
@@ -87,11 +42,10 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
-    if (camScannerNative) sourceSets.getByName("main").jniLibs.srcDir(requireNotNull(camScannerNativeDir))
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         // Compressed libraries extracted at install time, the packaging the owner's phone accepted in 0.1.7.1.
-        if (universalPreview || phoneRelease) jniLibs.useLegacyPackaging = true
+        if (phoneRelease) jniLibs.useLegacyPackaging = true
     }
     testOptions { animationsDisabled = true }
     lint { abortOnError = true }

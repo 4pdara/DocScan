@@ -1,6 +1,5 @@
 package com.docscan.rebuild.imaging
 
-import com.docscan.rebuild.BuildConfig
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -15,7 +14,6 @@ import kotlin.math.*
 
 /** All edits are derived from the immutable master; only previews are sampled. */
 object ImagePipeline {
-    val referenceEngineAvailable: Boolean get() = NativeCamScannerEnhancer.available
     private val available by lazy { OpenCVLoader.initLocal() }
     fun ensureAvailable() { check(available) { "OpenCV initialization failed" } }
 
@@ -114,14 +112,7 @@ object ImagePipeline {
                 Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW,
                 Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.NATIVE_BOARD,
                 Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD -> {
-                    if (referenceEngineAvailable) {
-                        val work = Bitmap.createBitmap(current.cols(), current.rows(), Bitmap.Config.ARGB_8888)
-                        try {
-                            Utils.matToBitmap(current, work)
-                            NativeCamScannerEnhancer.applyInPlace(work, recipe.treatment)
-                            Utils.bitmapToMat(work, result)
-                        } finally { work.recycle() }
-                    } else OriginalFilters.apply(current, recipe.treatment, result)
+                    OriginalFilters.apply(current, recipe.treatment, result)
                 }
             }
             if (recipe.brightness != 0f || recipe.contrast != 1f) result.convertTo(result, -1, recipe.contrast.toDouble(), recipe.brightness.toDouble())

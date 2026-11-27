@@ -111,11 +111,14 @@ object Flattening {
     }
 }
 
-/** [referenceEngineVariant]: the private research profile can route this filter to its engine; every build has an original implementation. */
-enum class Treatment(val referenceEngineVariant: Boolean = false) {
+/**
+ * Every filter is DocScan's own ([com.docscan.rebuild.imaging.OriginalFilters] and the pipeline). The NATIVE_ names are
+ * kept only because saved edits store the filter by name; renaming them would change existing installations' data.
+ */
+enum class Treatment {
     ORIGINAL, COLOR, GRAY, INK, PAPER,
-    NATIVE_MAGIC_COLOR(true), NATIVE_NO_SHADOW(true), NATIVE_INVERT(true), NATIVE_PRO_LOCAL(true),
-    LIGHTEN, ECO, NATIVE_BOARD(true), NATIVE_BOARD_PAPER(true), NATIVE_INVERT_BOARD(true)
+    NATIVE_MAGIC_COLOR, NATIVE_NO_SHADOW, NATIVE_INVERT, NATIVE_PRO_LOCAL,
+    LIGHTEN, ECO, NATIVE_BOARD, NATIVE_BOARD_PAPER, NATIVE_INVERT_BOARD
 }
 /**
  * [watermark]: text drawn across the page in [watermarkStyle]; [stamp]: a date and time; [footer]: a line of the
