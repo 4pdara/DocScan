@@ -65,8 +65,11 @@
     <string name="title_scan">Scan %1$s</string>
     <plurals name="pages"><item quantity="one">%1$d page</item><item quantity="other">%1$d pages</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d page saved</item><item quantity="other">%1$d pages saved</item></plurals>
+    <string name="native_app_name">DocScan Native Test</string>
+    <string name="native_preview_app_name">DocScan Native 0.1.7</string>
     <string name="release_app_name">DocScan Scanner</string>
     <string name="clean_paper">Clean paper</string>
+    <string name="native_paper">CamScanner</string>
     <string name="save_gallery">Save images to gallery</string>
     <string name="gallery_saved">Images saved to the DocScan album in your gallery</string>
     <string name="gallery_permission_denied">Storage permission is needed to save to the gallery on this Android version.</string>
@@ -124,6 +127,7 @@
     <string name="local_profile_hint">Documents and edits are saved on this device. Originals are kept separately at their captured resolution.</string>
     <string name="previous_page">Previous page</string>
     <string name="next_page">Next page</string>
+    <string name="local_processing_active">Local image processing is active on this device</string>
     <string name="crop_corner">Crop corner %1$d</string>
     <string name="crop_edge">Crop side %1$d</string>
     <string name="move_left">Move left</string>

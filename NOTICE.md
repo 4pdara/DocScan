@@ -10,7 +10,7 @@ CamScanner research (screenshots, screen recordings and analysis) was used only 
 
 The third-party components listed below remain their authors' work under their own licenses. Text recognition uses Tesseract and the tessdata_fast models; only the code that integrates them is DocScan's.
 
-The application code contains no binding to CamScanner. The optional native research profile, which called CamScanner binaries supplied locally, was removed from main on 27 November 2026. It is kept only as research documentation on the rebuild/camscanner-reference branch and in the native-v* tags, and it was never part of the phone release.
+The one exception is the optional local native research profile described below. Its two JNI declaration files in com/intsig/nativelib reproduce CamScanner's package name and method signatures, so that they can bind to binaries the owner supplies locally. Those binaries are never stored in Git, and the build refuses to include them in the phone release.
 
 # Third-party components
 
@@ -24,7 +24,7 @@ Coroutines: https://github.com/Kotlin/kotlinx.coroutines
 
 The bundled assets/licenses directory includes OpenCV's license and notices for its embedded third-party code. The dependency inventory must be reviewed before a store release.
 
-The build contains no CamScanner native libraries, models or bindings. No implementation, resources, database schema or build infrastructure were copied from the earlier DocScan project.
+The standard build contains no CamScanner native libraries or models. The optional local native research profile bundles six externally supplied binaries from the user's reference package after hash verification: libopencv.so, libncnn.so, libMNN.so, libCVNN.so, libmagicenhancer.so and libimageprocessor.so. These binaries and the models embedded in them are not stored in Git and are not covered by the repository's public dependency notices. Their respective rights remain with their owners. The profile invokes measured Bitmap entry points for shadow removal, Magic Color, inversion and local SilverBullet processing; it is not a complete transfer of CamScanner's engine or cloud services. No activation keys or modified verification results are used. See docs/JNI_ENGINE_RESEARCH_HE.md and docs/FILTER_CATALOG_HE.md for provenance, scope and validation limits. No implementation, resources, database schema or build infrastructure were copied from the earlier DocScan project.
 
 
 ## Offline OCR (0.1.8)

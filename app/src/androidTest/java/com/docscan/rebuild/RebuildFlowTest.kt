@@ -66,6 +66,9 @@ class RebuildFlowTest {
 
     @Test fun localProcessingWorksWhenTheOptionalArm64EngineIsUnavailable() {
         ImagePipeline.ensureAvailable()
+        if (BuildConfig.UNIVERSAL_PREVIEW && Build.SUPPORTED_ABIS.first().startsWith("x86")) {
+            assertFalse("Universal x86 installation must use its local processor", ImagePipeline.referenceEngineAvailable)
+        }
         val input = Bitmap.createBitmap(321, 479, Bitmap.Config.ARGB_8888)
         Canvas(input).apply {
             drawColor(Color.rgb(155, 165, 145))
@@ -834,7 +837,7 @@ class RebuildFlowTest {
         val before = IntArray(240 * 320).also { input.getPixels(it, 0, 240, 0, 0, 240, 320) }
         val outputs = mutableMapOf<Treatment, IntArray>()
         try {
-            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.name.startsWith("NATIVE_") }) {
+            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.referenceEngineVariant }) {
                 val recipe = EditRecipe(treatment = treatment, brightness = 6f, outputAspect = .75f)
                 assertEquals(recipe, RecipeCodec.decode(RecipeCodec.encode(recipe)))
                 val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
@@ -855,6 +858,7 @@ class RebuildFlowTest {
         // CamScanner's Magic Color keeps it dark. 1.2.5 report: the same cover came out bleached and pink when the crop
         // took in a thin strip of the light chair, or the camera exposed it brighter. Mirrors docs/FILTERS_1.2.6_HE.md.
         ImagePipeline.ensureAvailable()
+        Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
         fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
         fun cover(leather: Int, sheen: Int, strip: Int) = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888).also { bitmap ->
             Canvas(bitmap).apply {
@@ -888,6 +892,7 @@ class RebuildFlowTest {
         // a dark hat and coat, a white shirt) pale and purple, where CamScanner keeps its colours. The cover is light,
         // so lightness alone took it for paper. Mirrors docs/DETECTION_1.2.8_HE.md.
         ImagePipeline.ensureAvailable()
+        Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
         val cover = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
         Canvas(cover).apply {
             fun rect(l: Float, t: Float, r: Float, b: Float, c: Int) = drawRect(l, t, r, b, Paint().apply { color = c })
@@ -911,6 +916,7 @@ class RebuildFlowTest {
     }
     @Test fun originalFiltersRemoveShadowsKeepInkColourAndSeparateBoardStrokes() {
         ImagePipeline.ensureAvailable()
+        Assume.assumeFalse("Measures DocScan's own filters, not the research engine", ImagePipeline.referenceEngineAvailable)
         fun lum(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
         // Page photo: warm paper, a strong shadow over the left third, black text in and out of it, a red stamp.
         val page = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
@@ -1032,6 +1038,156 @@ class RebuildFlowTest {
             val after = IntArray(320 * 480).also { input.getPixels(it, 0, 320, 0, 0, 320, 480) }
             assertArrayEquals(before, after)
         } finally { input.recycle(); store.source(page).delete(); file.delete(); db.close() }
+    }
+
+    @Test fun nativeProPreservesPageDimensionsAndOriginalPixels() {
+        Assume.assumeTrue("Requires the ARM64 Native profile", ImagePipeline.referenceEngineAvailable)
+        val failures = mutableListOf<String>()
+        for ((width, height) in listOf(1970 to 1440, 1440 to 1970, 321 to 479)) {
+            val input = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
+            canvas.drawRect(width * .1f, height * .4f, width * .9f, height * .45f, Paint().apply { color = Color.BLACK })
+            val before = IntArray(width * height).also { input.getPixels(it, 0, width, 0, 0, width, height) }
+            try {
+                val output = ImagePipeline.transform(input, EditRecipe(treatment = Treatment.NATIVE_PRO_LOCAL))
+                try {
+                    assertEquals(width, output.width); assertEquals(height, output.height)
+                    assertEquals(255, Color.alpha(output.getPixel(width - 1, height - 1)))
+                    val paper = output.getPixel(width / 2, height / 4)
+                    val ink = output.getPixel(width / 2, (height * .42f).toInt())
+                    val directory = File(compose.activity.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+                    File(directory, "pro-source-$width-$height.png").outputStream().use { input.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    File(directory, "pro-result-$width-$height.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    val darkRows = (0 until height).filter { Color.red(output.getPixel(width / 2, it)) < 80 }
+                    val detail = "$width x $height paper=${Color.red(paper)} ink=${Color.red(ink)} darkRows=${darkRows.take(8)}..${darkRows.takeLast(8)}"
+                    android.util.Log.i("DocScanProRegression", detail)
+                    if (Color.red(paper) - Color.red(ink) <= 80) failures.add(detail)
+                } finally { output.recycle() }
+                val after = IntArray(width * height).also { input.getPixels(it, 0, width, 0, 0, width, height) }
+                assertArrayEquals(before, after)
+            } finally { input.recycle() }
+        }
+        assertTrue("Pro lost the original stroke: ${failures.joinToString()}", failures.isEmpty())
+    }
+
+    @Test fun referenceNativeSmokePreservesDimensionsAlphaAndSource() {
+        Assume.assumeTrue("Requires the private ARM64 reference profile", ImagePipeline.referenceEngineAvailable)
+        ImagePipeline.ensureAvailable()
+        val delay = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
+        if (delay > 0) android.os.SystemClock.sleep(delay)
+        val input = Bitmap.createBitmap(96, 128, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(input); canvas.drawColor(Color.rgb(155, 165, 145))
+        val paint = Paint().apply { color = Color.rgb(25, 30, 20) }
+        repeat(8) { canvas.drawRect(10f, 12f + it * 12, 85f, 15f + it * 12, paint) }
+        val before = IntArray(96 * 128).also { input.getPixels(it, 0, 96, 0, 0, 96, 128) }
+        try {
+            for (treatment in listOf(Treatment.PAPER) + Treatment.entries.filter { it.referenceEngineVariant }) {
+                val output = ImagePipeline.transform(input, EditRecipe(treatment = treatment))
+                try {
+                    assertEquals(96, output.width); assertEquals(128, output.height)
+                    var changed = false
+                    for (y in 0 until 128) for (x in 0 until 96) {
+                        val color = output.getPixel(x, y)
+                        assertEquals(255, Color.alpha(color))
+                        if (color != before[y * 96 + x]) changed = true
+                    }
+                    assertTrue("No effect from $treatment", changed)
+                } finally { output.recycle() }
+            }
+            val after = IntArray(96 * 128).also { input.getPixels(it, 0, 96, 0, 0, 96, 128) }
+            assertArrayEquals(before, after)
+        } finally { input.recycle() }
+    }
+
+    /** Research-only entry point: each invocation can run one filter in a fresh Android process. */
+    @Test fun referenceNativeIsolatedMatrix() {
+        Assume.assumeTrue("Requires the private ARM64 reference profile", ImagePipeline.referenceEngineAvailable)
+        val args = androidx.test.platform.app.InstrumentationRegistry.getArguments()
+        val caseId = args.getString("researchCaseId", "manual")
+        require(caseId.matches(Regex("[A-Za-z0-9_-]{1,100}")))
+        val allowed = listOf(Treatment.PAPER) + Treatment.entries.filter { it.referenceEngineVariant }
+        val selected = args.getString("researchTreatments")?.split(",")?.map { Treatment.valueOf(it) } ?: allowed
+        require(selected.isNotEmpty() && selected.all { it in allowed })
+        val width = (args.getString("researchWidth")?.toIntOrNull() ?: 96).also { require(it in setOf(96, 320, 1280)) }
+        val height = if (width == 96) 128 else width * 3 / 2
+        val boundary = args.getString("researchBoundary", "pipeline")
+        require(boundary in setOf("pipeline", "direct"))
+        if (boundary == "pipeline") ImagePipeline.ensureAvailable()
+        val delay = args.getString("researchDelayMs")?.toLongOrNull()?.coerceIn(0, 30000) ?: 0
+        if (delay > 0) android.os.SystemClock.sleep(delay)
+        listOf("opencv", "ncnn", "MNN", "CVNN", "magicenhancer").forEach(System::loadLibrary)
+        val source = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(source)
+        val fixtureKind = args.getString("researchFixture", "gradient")
+        require(fixtureKind in setOf("flat", "gradient", "legacy", "board", "blank"))
+        if (fixtureKind == "board") canvas.drawColor(Color.rgb(40, 65, 50))
+        else if (fixtureKind == "blank") canvas.drawColor(Color.WHITE)
+        else if (fixtureKind in setOf("flat", "legacy")) canvas.drawColor(Color.rgb(155, 165, 145)) else {
+            val background = Paint().apply { shader = LinearGradient(0f, 0f, width.toFloat(), 0f, Color.rgb(130, 138, 118), Color.rgb(240, 248, 228), Shader.TileMode.CLAMP) }
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), background)
+        }
+        val paint = Paint().apply { color = if (fixtureKind == "board") Color.rgb(240, 242, 230) else Color.rgb(25, 30, 20) }
+        if (fixtureKind == "legacy") {
+            require(width == 96)
+            repeat(8) { canvas.drawRect(10f, 12f + it * 12, 85f, 15f + it * 12, paint) }
+        } else if (fixtureKind != "blank") repeat(8) { canvas.drawRect(width * .1f, height * (.1f + it * .1f), width * .9f, height * (.12f + it * .1f), paint) }
+        val before = IntArray(width * height).also { source.getPixels(it, 0, width, 0, 0, width, height) }
+        val failures = mutableListOf<String>()
+        try {
+            for (treatment in selected) {
+                val start = android.os.SystemClock.elapsedRealtime()
+                android.util.Log.i("DocScanFilterProbe", org.json.JSONObject().put("case_id", caseId).put("boundary", boundary).put("event", "case_start").put("treatment", treatment.name).put("width", width).put("height", height).toString())
+                val row = org.json.JSONObject().put("case_id", caseId).put("fixture", fixtureKind).put("boundary", boundary).put("event", "case_result").put("treatment", treatment.name).put("width", width).put("height", height)
+                try {
+                    if (args.getString("researchClassify", "true") == "true") row.put("shadow_class", com.intsig.nativelib.MagicEnhancer.classifyShadowTypeBitmap(source))
+                    val forcedShadowType = args.getString("researchShadowType")?.toIntOrNull()?.also { require(it in 1..3) }
+                    val expectedNativeStatus = args.getString("researchExpectedNativeStatus")?.toIntOrNull()
+                    require(expectedNativeStatus == null || forcedShadowType != null)
+                    val output = if (forcedShadowType != null && treatment == Treatment.NATIVE_NO_SHADOW) {
+                        val copy = source.copy(Bitmap.Config.ARGB_8888, true)
+                        try {
+                            val status = com.intsig.nativelib.MagicEnhancer.deshadowBitmap(copy, forcedShadowType)
+                            row.put("native_status", status).put("forced_shadow_type", forcedShadowType)
+                            if (expectedNativeStatus != null) assertEquals(expectedNativeStatus, status)
+                            else check(status >= 0) { "Forced shadow processing failed: $status" }
+                            copy
+                        } catch (failure: Throwable) { copy.recycle(); throw failure }
+                    } else if (boundary == "pipeline") ImagePipeline.transform(source, EditRecipe(treatment = treatment)) else {
+                        val copy = source.copy(Bitmap.Config.ARGB_8888, true)
+                        try { com.docscan.rebuild.imaging.NativeCamScannerEnhancer.applyInPlace(copy, treatment); copy }
+                        catch (failure: Throwable) { copy.recycle(); throw failure }
+                    }
+                    try {
+                        assertEquals(width, output.width); assertEquals(height, output.height)
+                        val actual = IntArray(width * height).also { output.getPixels(it, 0, width, 0, 0, width, height) }
+                        if (expectedNativeStatus != null && expectedNativeStatus < 0) {
+                            assertArrayEquals("Rejected native call changed its working bitmap", before, actual)
+                            row.put("expected_rejection", true)
+                        } else assertTrue("Filter had no effect", actual.indices.any { actual[it] != before[it] })
+                        assertTrue("Output alpha changed", actual.all { Color.alpha(it) == 255 })
+                        if (fixtureKind == "board" && treatment == Treatment.NATIVE_BOARD_PAPER) {
+                            assertEquals("Board background should become white paper", Color.WHITE, output.getPixel(10, 10))
+                            assertEquals("Chalk should become black ink", Color.BLACK, output.getPixel(width / 2, (height * .11f).toInt()))
+                        }
+                        val outputDir = File(context.getExternalFilesDir(null), "filter-probe").apply { mkdirs() }
+                        val shadowSuffix = forcedShadowType?.toString() ?: "auto"
+                        File(outputDir, "$caseId-${treatment.name}-$shadowSuffix.png").outputStream().use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        row.put("pixel_sha256", MessageDigest.getInstance("SHA-256").digest(java.nio.ByteBuffer.allocate(actual.size * 4).apply { actual.forEach { putInt(it) } }.array()).joinToString("") { "%02x".format(it.toInt() and 255) })
+                        row.put("passed", true)
+                    } finally { output.recycle() }
+                } catch (failure: Throwable) {
+                    row.put("passed", false).put("error_type", failure.javaClass.simpleName).put("error", failure.message)
+                    failures.add(treatment.name + ": " + failure.message)
+                } finally {
+                    val after = IntArray(width * height).also { source.getPixels(it, 0, width, 0, 0, width, height) }
+                    val preserved = before.contentEquals(after)
+                    row.put("source_preserved", preserved).put("elapsed_ms", android.os.SystemClock.elapsedRealtime() - start)
+                    if (!preserved) failures.add(treatment.name + ": source changed")
+                    android.util.Log.i("DocScanFilterProbe", row.toString())
+                }
+            }
+            assertTrue(failures.joinToString("; "), failures.isEmpty())
+        } finally { source.recycle() }
     }
 
     @Test fun invalidCropCannotOverwriteSourceOrSavedRecipe(): Unit = runBlocking {
@@ -1250,6 +1406,71 @@ class RebuildFlowTest {
         compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
         pages.forEachIndexed { index, page -> assertEquals(hashes[index], hash(store.source(page))) }
         input.delete()
+    }
+
+    @Test fun nativeReviewKeepsAllFourteenFiltersAndExportsAfterReopen() {
+        Assume.assumeTrue("Requires the ARM64 Native profile", ImagePipeline.referenceEngineAvailable)
+        val treatments = Treatment.entries.toList()
+        assertEquals(14, treatments.size)
+        val store = (compose.activity.application as ScanApplication).store
+        val title = "Native 0.1.5 to 0.1.6 ${System.nanoTime()}"
+        val input = Bitmap.createBitmap(320, 480, Bitmap.Config.ARGB_8888)
+        Canvas(input).apply {
+            drawColor(Color.rgb(155, 165, 145))
+            val paint = Paint().apply { color = Color.rgb(25, 30, 20) }
+            repeat(8) { drawRect(32f, 48f + it * 48f, 288f, 58f + it * 48f, paint) }
+        }
+        val file = File(context.cacheDir, "native-review.png")
+        file.outputStream().use { input.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        input.recycle()
+        val pages = runBlocking {
+            val book = store.create(title)
+            treatments.map { store.captured(book.id, file) }
+        }
+        val originals = pages.map { hash(store.source(it)) }
+        try {
+            compose.waitUntil(10000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(title).performClick()
+            compose.onNodeWithTag("doc-add").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("capture-batch").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(compose.activity.getString(R.string.done)).performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("filter-strip").fetchSemanticsNodes().isNotEmpty() }
+            treatments.forEachIndexed { index, treatment ->
+                selectFilter(treatment)
+                compose.onNodeWithTag("filter-${treatment.name}").assertIsSelected()
+                compose.onNodeWithTag("review-counter").assertTextEquals(compose.activity.getString(R.string.page_counter, index + 1, treatments.size))
+                if (index < treatments.lastIndex) compose.onNodeWithTag("review-next").performClick()
+                else compose.onNodeWithTag("save-edit").performClick()
+                compose.waitUntil(10000) { runBlocking { store.dao.page(pages[index].id)?.edit()?.treatment == treatment } }
+                if (index < treatments.lastIndex) compose.waitUntil(10000) {
+                    compose.onAllNodes(hasTestTag("review-counter") and hasText(compose.activity.getString(R.string.page_counter, index + 2, treatments.size))).fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
+            compose.activityRule.scenario.recreate()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("document-pages").fetchSemanticsNodes().isNotEmpty() }
+            runBlocking {
+                val restored = store.dao.snapshot(pages.first().notebookId)
+                assertEquals(treatments, restored.map { it.edit().treatment })
+                val output = DocumentOutput(context, store)
+                restored.forEachIndexed { index, page ->
+                    val image = output.image(page, page.edit())
+                    try {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeFile(image.path, bounds)
+                        assertEquals(320, bounds.outWidth); assertEquals(480, bounds.outHeight)
+                        assertEquals(originals[index], hash(store.source(page)))
+                    } finally { image.delete() }
+                }
+                val pdf = output.pdf(pages.first().notebookId)
+                try {
+                    ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                        PdfRenderer(fd).use { assertEquals(14, it.pageCount) }
+                    }
+                } finally { pdf.delete() }
+            }
+            screenshot("native-fourteen-filter-document")
+        } finally { file.delete() }
     }
 
     @Test fun editorHasInlineFiltersAndActionsAboveSystemNavigation() {

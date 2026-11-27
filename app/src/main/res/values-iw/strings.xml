@@ -65,8 +65,11 @@
     <string name="title_scan">סריקה %1$s</string>
     <plurals name="pages"><item quantity="one">עמוד אחד</item><item quantity="two">%1$d עמודים</item><item quantity="many">%1$d עמודים</item><item quantity="other">%1$d עמודים</item></plurals>
     <plurals name="saved_count"><item quantity="one">%1$d עמוד נשמר</item><item quantity="two">%1$d עמודים נשמרו</item><item quantity="many">%1$d עמודים נשמרו</item><item quantity="other">%1$d עמודים נשמרו</item></plurals>
+    <string name="native_app_name">DocScan ניסוי Native</string>
+    <string name="native_preview_app_name">DocScan Native 0.1.7</string>
     <string name="release_app_name">DocScan סורק</string>
     <string name="clean_paper">ניקוי נייר</string>
+    <string name="native_paper">CamScanner</string>
     <string name="save_gallery">שמירת תמונות לגלריה</string>
     <string name="gallery_saved">התמונות נשמרו בגלריה באלבום DocScan</string>
     <string name="gallery_permission_denied">לשמירה בגלריה בגרסת Android זו נדרשת הרשאת אחסון.</string>
@@ -124,6 +127,7 @@
     <string name="local_profile_hint">המסמכים והעריכות נשמרים במכשיר הזה. המקורות נשמרים בנפרד ברזולוציה שבה נקלטו.</string>
     <string name="previous_page">העמוד הקודם</string>
     <string name="next_page">העמוד הבא</string>
+    <string name="local_processing_active">עיבוד מקומי פעיל במכשיר זה</string>
     <string name="crop_corner">פינת חיתוך %1$d</string>
     <string name="crop_edge">צלע חיתוך %1$d</string>
     <string name="move_left">הזזה שמאלה</string>

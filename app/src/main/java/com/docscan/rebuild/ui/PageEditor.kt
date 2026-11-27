@@ -1,5 +1,6 @@
 package com.docscan.rebuild.ui
 
+import com.docscan.rebuild.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.magnifier
@@ -59,7 +60,7 @@ fun fitImageRect(size: Size, aspect: Float): Rect {
 }
 
 fun Treatment.label(): Int = when (this) {
-    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> R.string.clean_paper
+    Treatment.ORIGINAL -> R.string.original; Treatment.COLOR -> R.string.color; Treatment.GRAY -> R.string.gray; Treatment.INK -> R.string.ink; Treatment.PAPER -> if (ImagePipeline.referenceEngineAvailable) R.string.native_paper else R.string.clean_paper
     Treatment.NATIVE_MAGIC_COLOR -> R.string.native_magic_color
     Treatment.NATIVE_NO_SHADOW -> R.string.native_no_shadow
     Treatment.NATIVE_INVERT -> R.string.native_invert
@@ -142,7 +143,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
             onHeader?.invoke(choice)
         })
     }
-    // All 14 filters, DocScan's own.
+    val nativeAvailable = ImagePipeline.referenceEngineAvailable
+    // All 14 filters in every build: the research engine when present, otherwise DocScan's original filters.
     val treatments = listOf(Treatment.PAPER, Treatment.NATIVE_MAGIC_COLOR, Treatment.NATIVE_NO_SHADOW, Treatment.NATIVE_INVERT, Treatment.NATIVE_PRO_LOCAL, Treatment.ORIGINAL, Treatment.COLOR, Treatment.LIGHTEN, Treatment.GRAY, Treatment.INK, Treatment.ECO, Treatment.NATIVE_BOARD, Treatment.NATIVE_BOARD_PAPER, Treatment.NATIVE_INVERT_BOARD)
     if (export) ModalBottomSheet(onDismissRequest = { export = false }, modifier = Modifier.testTag("editor-export-sheet")) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
@@ -222,6 +224,8 @@ fun PageEditor(store: ScanStore, page: Sheet, busy: Boolean, snack: SnackbarHost
         bottomBar = {
             Surface(shadowElevation = 6.dp, shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)) {
                 Column(Modifier.navigationBarsPadding().testTag("editor-actions")) {
+                    if (BuildConfig.UNIVERSAL_PREVIEW && !nativeAvailable) Text(stringResource(R.string.local_processing_active),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("local-processing-mode"), style = MaterialTheme.typography.labelSmall)
                     when (tool) {
                         "split" -> Column(Modifier.padding(horizontal=16.dp)) {
                             Text(stringResource(R.string.split_hint),style=MaterialTheme.typography.bodySmall)
