@@ -1,3 +1,17 @@
+# Originality
+
+All DocScan Scanner code was written from scratch in this project and belongs to the project owner. No CamScanner code, decompiled code, resources, filters, models, outputs or data were used. This covers:
+- page boundary detection;
+- the page network (pagenet-v1): its architecture, training code and weights;
+- the filters and page clean-up;
+- cropping, perspective correction and flattening of curved pages.
+
+CamScanner research (screenshots, screen recordings and analysis) was used only to understand behaviour and to measure DocScan against it.
+
+The third-party components listed below remain their authors' work under their own licenses. Text recognition uses Tesseract and the tessdata_fast models; only the code that integrates them is DocScan's.
+
+The one exception is the optional local native research profile described below. Its two JNI declaration files in com/intsig/nativelib reproduce CamScanner's package name and method signatures, so that they can bind to binaries the owner supplies locally. Those binaries are never stored in Git, and the build refuses to include them in the phone release.
+
 # Third-party components
 
 This independent implementation uses the public AndroidX CameraX, Compose, Lifecycle, Room and ExifInterface APIs, Kotlin and kotlinx.coroutines, and the official OpenCV Android AAR 4.12.0 from Maven Central. AndroidX, Kotlin, coroutines and OpenCV are provided under Apache-2.0 with their applicable notices. Gradle's generated wrapper is also Apache-2.0. Transitive components retain their own licenses.
